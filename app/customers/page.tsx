@@ -25,12 +25,13 @@ type CustomerRow = {
 export default async function CustomersListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; outstanding?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; outstanding?: string; include_internal?: string }>;
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
   const page = Math.max(1, Number(params.page ?? "1"));
   const outstandingOnly = params.outstanding === "1";
+  const includeInternal = params.include_internal === "1";
 
   const supa = db();
   let query = supa
@@ -41,6 +42,11 @@ export default async function CustomersListPage({
     );
   if (q) query = query.ilike("name", `%${q}%`);
   if (outstandingOnly) query = query.gt("outstanding_due_dollars", 0);
+  // Hide internal/noise rows by default. Same filter pattern as /jobs +
+  // the recurring-jobs view.
+  if (!includeInternal) {
+    query = query.not("name", "in", '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")');
+  }
 
   const { data, count } = await query
     .order("most_recent_comm", { ascending: false, nullsFirst: false })
@@ -78,6 +84,7 @@ export default async function CustomersListPage({
   const baseHref = `/customers?${new URLSearchParams({
     ...(q ? { q } : {}),
     ...(outstandingOnly ? { outstanding: "1" } : {}),
+    ...(includeInternal ? { include_internal: "1" } : {}),
   }).toString()}`;
 
   return (
@@ -99,6 +106,10 @@ export default async function CustomersListPage({
         <label className="inline-flex items-center gap-2 pb-1.5">
           <input type="checkbox" name="outstanding" value="1" defaultChecked={outstandingOnly} />
           <span className="text-sm text-neutral-600">Outstanding balance only</span>
+        </label>
+        <label className="inline-flex items-center gap-2 pb-1.5">
+          <input type="checkbox" name="include_internal" value="1" defaultChecked={includeInternal} />
+          <span className="text-sm text-neutral-600">Include TPAR-internal</span>
         </label>
         <button
           type="submit"
