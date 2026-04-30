@@ -41,12 +41,20 @@ type RecentJob = {
   on_time: boolean | null;
 };
 
+type PatternFlag = {
+  hcp_customer_id: string;
+  customer_name: string | null;
+  job_count_12mo: number;
+  span_days: number;
+  total_revenue_12mo: number;
+};
+
 async function loadData() {
   const supabase = db();
   const since14d = new Date(Date.now() - 14 * 86400_000).toISOString();
   const sinceJobs = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
 
-  const [followupsRes, leadersRes, recentJobsRes] = await Promise.all([
+  const [followupsRes, leadersRes, recentJobsRes, patternsRes, arRes] = await Promise.all([
     supabase
       .from("communication_events")
       .select("id, occurred_at, channel, direction, customer_name, hcp_customer_id, tech_short_name, importance, sentiment, flags, summary")
@@ -68,12 +76,49 @@ async function loadData() {
       .gte("job_date", sinceJobs)
       .order("job_date", { ascending: false })
       .limit(20),
+    supabase
+      .from("customer_repeat_jobs_v")
+      .select("hcp_customer_id, customer_name, job_count_12mo, span_days, total_revenue_12mo")
+      .eq("preventative_candidate", true)
+      .order("job_count_12mo", { ascending: false })
+      .limit(5),
+    supabase
+      .from("job_360")
+      .select("hcp_customer_id, customer_name, due_amount, days_outstanding")
+      .gt("due_amount", 0)
+      .order("due_amount", { ascending: false })
+      .limit(50),
   ]);
+
+  // Build top-AR-customers from the open-invoice rows
+  const arByCustomer = new Map<string, { name: string; total: number; oldest: number }>();
+  for (const r of (arRes.data ?? []) as Array<Record<string, unknown>>) {
+    const key = (r.hcp_customer_id as string) ?? `anon:${r.customer_name}`;
+    const existing = arByCustomer.get(key);
+    const due = Number(r.due_amount) || 0;
+    const days = Number(r.days_outstanding) || 0;
+    if (existing) {
+      existing.total += due;
+      existing.oldest = Math.max(existing.oldest, days);
+    } else {
+      arByCustomer.set(key, {
+        name: (r.customer_name as string) ?? "—",
+        total: due,
+        oldest: days,
+      });
+    }
+  }
+  const arTop = [...arByCustomer.entries()]
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 5)
+    .map(([id, v]) => ({ hcp_customer_id: id.startsWith("anon:") ? null : id, ...v }));
 
   return {
     followups: (followupsRes.data ?? []) as FollowupRow[],
     leaders: (leadersRes.data ?? []) as CustomerLeader[],
     recentJobs: (recentJobsRes.data ?? []) as RecentJob[],
+    patterns: (patternsRes.data ?? []) as PatternFlag[],
+    arTop,
     error: followupsRes.error?.message || leadersRes.error?.message || recentJobsRes.error?.message,
   };
 }
@@ -88,7 +133,7 @@ function Pill({ children, tone }: { children: React.ReactNode; tone?: "red" | "a
 }
 
 export default async function Today() {
-  const { followups, leaders, recentJobs, error } = await loadData();
+  const { followups, leaders, recentJobs, patterns, arTop, error } = await loadData();
 
   return (
     <main className="mx-auto max-w-6xl p-6 space-y-10">
@@ -103,6 +148,56 @@ export default async function Today() {
       {error && (
         <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-900">DB error: {error}</div>
       )}
+
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="text-sm font-semibold text-amber-900">Preventative-agreement candidates</h2>
+            <Link href="/reports/patterns" className="text-xs text-amber-900 hover:underline">all →</Link>
+          </div>
+          {patterns.length === 0 ? (
+            <p className="text-sm text-amber-900">None flagged.</p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {patterns.map((p) => (
+                <li key={p.hcp_customer_id}>
+                  <Link href={`/customer/${p.hcp_customer_id}`} className="font-medium text-amber-900 hover:underline">
+                    {p.customer_name ?? "—"}
+                  </Link>
+                  <span className="ml-2 text-xs text-amber-900">
+                    {p.job_count_12mo} jobs / {p.span_days}d · ${Number(p.total_revenue_12mo).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="rounded border border-red-200 bg-red-50 p-4">
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="text-sm font-semibold text-red-900">Top open AR</h2>
+            <Link href="/reports/ar" className="text-xs text-red-900 hover:underline">all →</Link>
+          </div>
+          {arTop.length === 0 ? (
+            <p className="text-sm text-red-900">No open AR.</p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {arTop.map((a) => (
+                <li key={a.hcp_customer_id ?? a.name}>
+                  {a.hcp_customer_id ? (
+                    <Link href={`/customer/${a.hcp_customer_id}`} className="font-medium text-red-900 hover:underline">{a.name}</Link>
+                  ) : (
+                    <span className="font-medium text-red-900">{a.name}</span>
+                  )}
+                  <span className="ml-2 text-xs text-red-900">
+                    ${a.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {a.oldest > 0 && ` · oldest ${a.oldest}d`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
       <section>
         <h2 className="text-xl font-semibold mb-3">Open follow-ups (last 14d, importance ≥ 5)</h2>
