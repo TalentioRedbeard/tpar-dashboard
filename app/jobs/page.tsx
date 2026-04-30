@@ -115,8 +115,28 @@ export default async function JobsListPage({
     ...(includeInternal ? { include_internal: "1" } : {}),
   }).toString()}`;
 
+  // Build CSV download URL preserving current filters
+  const csvHref = `/jobs/export.csv?${new URLSearchParams({
+    ...(q ? { q } : {}),
+    ...(tech ? { tech } : {}),
+    ...(status ? { status } : {}),
+    ...(outstandingOnly ? { outstanding: "1" } : {}),
+    ...(includeInternal ? { include_internal: "1" } : {}),
+  }).toString()}`;
+
   return (
-    <PageShell title="Jobs" description="Active and recent jobs across the team.">
+    <PageShell
+      title="Jobs"
+      description="Active and recent jobs across the team."
+      actions={
+        <a
+          href={csvHref}
+          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+        >
+          Download CSV
+        </a>
+      }
+    >
       <FilterBar>
         <label className="block">
           <span className="block text-xs font-medium text-neutral-600">Search</span>
