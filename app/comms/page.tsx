@@ -26,13 +26,16 @@ type CommRow = {
 export default async function CommsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; channel?: string; tech?: string; min_importance?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; channel?: string; tech?: string; min_importance?: string; include_noise?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
   const channel = (params.channel ?? "").trim();
   const tech = (params.tech ?? "").trim();
   const minImp = Number(params.min_importance ?? "0");
+  // Noise = importance=0 events. Per 04-30 observation, 28.8% of comms are
+  // imp=0 (mostly HCP system notifications); default to hiding them.
+  const includeNoise = params.include_noise === "1";
   const page = Math.max(1, Number(params.page ?? "1"));
 
   const supa = db();
@@ -43,6 +46,8 @@ export default async function CommsPage({
   if (channel) query = query.eq("channel", channel);
   if (tech) query = query.eq("tech_short_name", tech);
   if (minImp > 0) query = query.gte("importance", minImp);
+  // Hide noise (importance=0) unless explicitly included.
+  if (!includeNoise && minImp === 0) query = query.gt("importance", 0);
 
   const { data, count } = await query
     .order("occurred_at", { ascending: false })
@@ -96,6 +101,7 @@ export default async function CommsPage({
     ...(channel ? { channel } : {}),
     ...(tech ? { tech } : {}),
     ...(minImp ? { min_importance: String(minImp) } : {}),
+    ...(includeNoise ? { include_noise: "1" } : {}),
   }).toString()}`;
 
   return (
@@ -138,6 +144,16 @@ export default async function CommsPage({
             <option value="7">≥ 7</option>
             <option value="9">≥ 9</option>
           </select>
+        </label>
+        <label className="flex items-center gap-2 self-end pb-1">
+          <input
+            type="checkbox"
+            name="include_noise"
+            value="1"
+            defaultChecked={includeNoise}
+            className="h-4 w-4 rounded border-neutral-300"
+          />
+          <span className="text-xs text-neutral-600">Include importance-0 (system notifications, ~29% of volume)</span>
         </label>
         <button
           type="submit"
