@@ -1,0 +1,167 @@
+// Jobs list. Sources from job_360. Filter by status / tech / outstanding /
+// date range. Pagination via ?page=N. Each row links to /job/[id].
+
+import { db } from "../../lib/supabase";
+import { PageShell } from "../../components/PageShell";
+import { Table, Pagination, FilterBar, fmtMoney, fmtPct, fmtDateShort, type Column } from "../../components/Table";
+
+export const metadata = { title: "Jobs · TPAR-DB" };
+
+const PAGE_SIZE = 50;
+
+type JobRow = {
+  hcp_job_id: string;
+  hcp_customer_id: string | null;
+  customer_name: string | null;
+  invoice_number: string | null;
+  job_date: string | null;
+  tech_primary_name: string | null;
+  appointment_status: string | null;
+  revenue: number | null;
+  due_amount: number | null;
+  days_outstanding: number | null;
+  gross_margin_pct: number | null;
+  on_time: boolean | null;
+  gps_matched: boolean | null;
+};
+
+export default async function JobsListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; page?: string }>;
+}) {
+  const params = await searchParams;
+  const q = (params.q ?? "").trim();
+  const tech = (params.tech ?? "").trim();
+  const status = (params.status ?? "").trim();
+  const outstandingOnly = params.outstanding === "1";
+  const page = Math.max(1, Number(params.page ?? "1"));
+
+  const supa = db();
+  let query = supa
+    .from("job_360")
+    .select(
+      "hcp_job_id, hcp_customer_id, customer_name, invoice_number, job_date, tech_primary_name, appointment_status, revenue, due_amount, days_outstanding, gross_margin_pct, on_time, gps_matched",
+      { count: "exact" }
+    );
+  if (q)      query = query.or(`customer_name.ilike.%${q}%,invoice_number.ilike.%${q}%`);
+  if (tech)   query = query.eq("tech_primary_name", tech);
+  if (status) query = query.eq("appointment_status", status);
+  if (outstandingOnly) query = query.gt("due_amount", 0);
+
+  const { data, count } = await query
+    .order("job_date", { ascending: false, nullsFirst: false })
+    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  const rows = (data ?? []) as JobRow[];
+
+  // Tech list for the tech filter — distinct values from the current page set
+  // is hacky; a better approach would be a separate query, but at our scale
+  // this is fine for the v1.
+  const { data: techData } = await supa
+    .from("job_360")
+    .select("tech_primary_name")
+    .order("tech_primary_name", { ascending: true })
+    .limit(2000);
+  const techNames = Array.from(
+    new Set((techData ?? []).map((r: { tech_primary_name: string | null }) => r.tech_primary_name).filter(Boolean) as string[])
+  ).sort();
+
+  const columns: Column<JobRow>[] = [
+    { header: "Date", cell: (r) => fmtDateShort(r.job_date), className: "text-neutral-600" },
+    { header: "Invoice", cell: (r) => r.invoice_number ?? "—", className: "font-mono text-xs" },
+    { header: "Customer", cell: (r) => r.customer_name ?? "—", className: "font-medium text-neutral-900" },
+    { header: "Tech", cell: (r) => r.tech_primary_name ?? "—" },
+    { header: "Status", cell: (r) => r.appointment_status ?? "—", className: "text-neutral-600" },
+    { header: "Revenue", cell: (r) => fmtMoney(r.revenue), align: "right" },
+    {
+      header: "Margin",
+      cell: (r) =>
+        r.gross_margin_pct != null && Number(r.gross_margin_pct) < 100 ? (
+          <span>{fmtPct(r.gross_margin_pct)}</span>
+        ) : (
+          <span className="text-neutral-400">—</span>
+        ),
+      align: "right",
+    },
+    {
+      header: "Due",
+      cell: (r) =>
+        Number(r.due_amount) > 0 ? (
+          <span className="font-medium text-red-700">
+            {fmtMoney(r.due_amount)} · {r.days_outstanding ?? "?"}d
+          </span>
+        ) : (
+          <span className="text-neutral-400">paid</span>
+        ),
+      align: "right",
+    },
+    {
+      header: "GPS",
+      cell: (r) =>
+        r.gps_matched ? (r.on_time === true ? "✓ on-time" : r.on_time === false ? "late" : "—") : <span className="text-neutral-400">—</span>,
+      className: "text-xs",
+    },
+  ];
+
+  const baseHref = `/jobs?${new URLSearchParams({
+    ...(q ? { q } : {}),
+    ...(tech ? { tech } : {}),
+    ...(status ? { status } : {}),
+    ...(outstandingOnly ? { outstanding: "1" } : {}),
+  }).toString()}`;
+
+  return (
+    <PageShell title="Jobs" description="Active and recent jobs across the team.">
+      <FilterBar>
+        <label className="block">
+          <span className="block text-xs font-medium text-neutral-600">Search</span>
+          <input
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder="customer or invoice"
+            className="mt-1 w-56 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-xs font-medium text-neutral-600">Tech</span>
+          <select name="tech" defaultValue={tech} className="mt-1 w-40 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm">
+            <option value="">All techs</option>
+            {techNames.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-medium text-neutral-600">Status</span>
+          <select name="status" defaultValue={status} className="mt-1 w-40 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm">
+            <option value="">Any</option>
+            <option value="scheduled">scheduled</option>
+            <option value="in progress">in progress</option>
+            <option value="complete rated">complete rated</option>
+            <option value="complete unrated">complete unrated</option>
+            <option value="canceled">canceled</option>
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-2 pb-1.5">
+          <input type="checkbox" name="outstanding" value="1" defaultChecked={outstandingOnly} />
+          <span className="text-sm text-neutral-600">Outstanding only</span>
+        </label>
+        <button
+          type="submit"
+          className="ml-auto rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800"
+        >
+          Apply
+        </button>
+      </FilterBar>
+
+      <Table
+        columns={columns}
+        rows={rows}
+        rowHref={(r) => (r.hcp_job_id ? `/job/${r.hcp_job_id}` : null)}
+        emptyText="No jobs match those filters."
+      />
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={count ?? null} baseHref={baseHref} />
+    </PageShell>
+  );
+}
