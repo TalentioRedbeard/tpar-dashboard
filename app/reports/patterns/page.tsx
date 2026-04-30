@@ -1,12 +1,15 @@
 // Customers showing recurring themes — preventative-agreement candidates.
 //
-// Two signals in one surface:
-//   1. customer_repeat_jobs_v — JOB-level recurrence (came back N times). The
-//      stronger leading indicator: customer paid us for a real problem >= 2x
-//      in 12 months.
-//   2. customer_recurring_patterns_v — COMMUNICATION-level recurrence
-//      (similar topics in messages). Tighter signal but smaller sample —
-//      requires importance ≥5 comm events.
+// Three signals in one surface, ordered by leading-indicator strength:
+//   1. customer_repeat_jobs_v — JOB-COUNT recurrence (came back N times).
+//      Strongest leading indicator: customer paid for a real problem 2+ times.
+//   2. customer_recurring_jobs_v — JOB-CONTENT recurrence (same KIND of job
+//      came back). Uses the richer 2026-04-30 job embeddings (notes + linked
+//      comm summaries; customer/tech name omitted) — catches "same problem,
+//      different visit" cases that simple count misses.
+//   3. customer_recurring_patterns_v — COMMUNICATION-level recurrence
+//      (similar topics in messages). Tightest content signal but smallest
+//      sample — requires importance ≥5 comm events.
 
 import { db } from "../../../lib/supabase";
 import { PageShell } from "../../../components/PageShell";
@@ -27,6 +30,17 @@ type RepeatJobRow = {
   preventative_candidate: boolean;
 };
 
+type RecurringJobRow = {
+  hcp_customer_id: string;
+  customer_name: string | null;
+  recurring_job_pairs: number;
+  max_similarity: number;
+  earliest_job: string | null;
+  most_recent_job: string | null;
+  sample_job_a: string | null;
+  sample_job_b: string | null;
+};
+
 type CommPatternRow = {
   hcp_customer_id: string;
   customer_name: string | null;
@@ -40,12 +54,17 @@ type CommPatternRow = {
 
 export default async function PatternsReport() {
   const supa = db();
-  const [repeatRes, commRes] = await Promise.all([
+  const [repeatRes, recurringJobsRes, commRes] = await Promise.all([
     supa
       .from("customer_repeat_jobs_v")
       .select("*")
       .eq("preventative_candidate", true)
       .order("job_count_12mo", { ascending: false })
+      .limit(50),
+    supa
+      .from("customer_recurring_jobs_v")
+      .select("*")
+      .order("recurring_job_pairs", { ascending: false })
       .limit(50),
     supa
       .from("customer_recurring_patterns_v")
@@ -54,6 +73,7 @@ export default async function PatternsReport() {
       .limit(50),
   ]);
   const repeatRows = (repeatRes.data ?? []) as RepeatJobRow[];
+  const recurringJobsRows = (recurringJobsRes.data ?? []) as RecurringJobRow[];
   const commRows = (commRes.data ?? []) as CommPatternRow[];
 
   const repeatColumns: Column<RepeatJobRow>[] = [
@@ -82,6 +102,22 @@ export default async function PatternsReport() {
       header: "Techs",
       cell: (r) => (
         <span className="text-xs text-neutral-600">{(r.techs_seen ?? []).slice(0, 3).join(", ") || "—"}</span>
+      ),
+    },
+  ];
+
+  const recurringJobColumns: Column<RecurringJobRow>[] = [
+    { header: "Customer", cell: (r) => r.customer_name ?? "—", className: "font-medium text-neutral-900" },
+    { header: "Job pairs", cell: (r) => r.recurring_job_pairs, align: "right" },
+    { header: "Max sim", cell: (r) => Number(r.max_similarity).toFixed(2), align: "right", className: "text-neutral-600" },
+    { header: "First", cell: (r) => fmtDateShort(r.earliest_job), className: "text-neutral-600 text-xs" },
+    { header: "Latest", cell: (r) => fmtDateShort(r.most_recent_job), className: "text-neutral-600 text-xs" },
+    {
+      header: "Sample job",
+      cell: (r) => (
+        <div className="max-w-xl whitespace-pre-line text-xs text-neutral-600">
+          {r.sample_job_a ? r.sample_job_a.slice(0, 300) : "—"}
+        </div>
       ),
     },
   ];
@@ -119,6 +155,21 @@ export default async function PatternsReport() {
           rows={repeatRows}
           rowHref={(r) => (r.hcp_customer_id ? `/customer/${r.hcp_customer_id}` : null)}
           emptyText="No repeat-job customers in the last 12 months."
+        />
+      </section>
+
+      <section className="mb-8">
+        <header className="mb-2">
+          <h2 className="text-base font-semibold text-neutral-900">Recurring same-kind jobs (content-similar across visits)</h2>
+          <p className="text-xs text-neutral-500">
+            Two jobs at the same customer, ≥14 days apart, cosine ≥0.70 on the richer 2026-04-30 job embeddings. Catches "same problem returned" patterns that pure visit count misses.
+          </p>
+        </header>
+        <Table
+          columns={recurringJobColumns}
+          rows={recurringJobsRows}
+          rowHref={(r) => (r.hcp_customer_id ? `/customer/${r.hcp_customer_id}` : null)}
+          emptyText="No content-similar job recurrences detected."
         />
       </section>
 
