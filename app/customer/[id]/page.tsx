@@ -1,14 +1,24 @@
 // Per-customer 360 view
 import { db } from "@/lib/supabase";
 import Link from "next/link";
+import { NoteForm } from "../../../components/NoteForm";
+import { addCustomerNote } from "../../../lib/notes-actions";
 
 export const dynamic = "force-dynamic";
+
+type CustomerNote = {
+  id: string;
+  hcp_customer_id: string;
+  author_email: string;
+  body: string;
+  created_at: string;
+};
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = db();
 
-  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes] = await Promise.all([
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -25,7 +35,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     supabase.from("customer_repeat_jobs_v").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase.from("customer_recurring_jobs_v").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase.rpc("customer_similar_to", { target_id: id, n: 6 }),
+    supabase
+      .from("customer_notes")
+      .select("id, hcp_customer_id, author_email, body, created_at")
+      .eq("hcp_customer_id", id)
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
+  const notes = (notesRes.data ?? []) as CustomerNote[];
 
   if (!c.data) {
     return (
@@ -136,6 +153,34 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </ul>
         </section>
       )}
+
+      <section>
+        <h2 className="text-xl font-semibold mb-3">Operator notes</h2>
+        <div className="rounded border border-zinc-200 bg-white p-3 mb-3">
+          <NoteForm
+            action={addCustomerNote}
+            hiddenFieldName="hcp_customer_id"
+            hiddenFieldValue={id}
+            placeholder="Internal note about this customer (not customer-facing)…"
+            label="Add note"
+          />
+        </div>
+        {notes.length > 0 ? (
+          <ul className="space-y-2">
+            {notes.map((n) => (
+              <li key={n.id} className="rounded border border-zinc-200 bg-white p-3">
+                <div className="text-xs text-zinc-500 mb-1">
+                  {new Date(n.created_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
+                  {" · "}{n.author_email}
+                </div>
+                <p className="text-sm whitespace-pre-wrap">{n.body}</p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-zinc-500">No notes yet.</p>
+        )}
+      </section>
 
       <section>
         <h2 className="text-xl font-semibold mb-3">Recent jobs</h2>

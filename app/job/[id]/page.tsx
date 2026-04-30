@@ -1,8 +1,18 @@
 // Per-job 360 view
 import { db } from "@/lib/supabase";
 import Link from "next/link";
+import { NoteForm } from "../../../components/NoteForm";
+import { addJobNote } from "../../../lib/notes-actions";
 
 export const dynamic = "force-dynamic";
+
+type JobNote = {
+  id: string;
+  hcp_job_id: string;
+  author_email: string;
+  body: string;
+  created_at: string;
+};
 
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,9 +37,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const j = jobRow as Record<string, unknown>;
   const customerId = j.hcp_customer_id as string | null;
 
-  // Pull the appointment-window communications for this customer
-  // and similar past jobs in parallel
-  const [{ data: comms }, similarRes] = await Promise.all([
+  // Pull the appointment-window communications for this customer,
+  // similar past jobs, and operator notes in parallel
+  const [{ data: comms }, similarRes, notesRes] = await Promise.all([
     customerId
       ? supabase
           .from("communication_events")
@@ -39,7 +49,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           .limit(20)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     supabase.rpc("job_similar_to", { target_id: id, n: 6 }),
+    supabase
+      .from("job_notes")
+      .select("id, hcp_job_id, author_email, body, created_at")
+      .eq("hcp_job_id", id)
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
+  const notes = (notesRes.data ?? []) as JobNote[];
 
   return (
     <main className="mx-auto max-w-5xl p-6 space-y-8">
@@ -124,6 +141,34 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </section>
         );
       })()}
+
+      <section>
+        <h2 className="text-xl font-semibold mb-3">Operator notes</h2>
+        <div className="rounded border border-zinc-200 bg-white p-3 mb-3">
+          <NoteForm
+            action={addJobNote}
+            hiddenFieldName="hcp_job_id"
+            hiddenFieldValue={id}
+            placeholder="Internal note about this job (not customer-facing)…"
+            label="Add note"
+          />
+        </div>
+        {notes.length > 0 ? (
+          <ul className="space-y-2">
+            {notes.map((n) => (
+              <li key={n.id} className="rounded border border-zinc-200 bg-white p-3">
+                <div className="text-xs text-zinc-500 mb-1">
+                  {new Date(n.created_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
+                  {" · "}{n.author_email}
+                </div>
+                <p className="text-sm whitespace-pre-wrap">{n.body}</p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-zinc-500">No notes yet.</p>
+        )}
+      </section>
 
       <section>
         <h2 className="text-xl font-semibold mb-3">Recent communications for this customer</h2>
