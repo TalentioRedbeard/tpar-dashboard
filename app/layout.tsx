@@ -17,6 +17,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "TPAR-DB",
   description: "TPAR-DB unified app — customers, jobs, estimates, comms, dispatch, reports",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "TPAR" },
+};
+
+export const viewport = {
+  themeColor: "#171717",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default async function RootLayout({

@@ -17,7 +17,12 @@ const ALLOWED_EXTRA = (process.env.DASHBOARD_ALLOWED_EMAILS ?? "")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
-const PUBLIC_PREFIXES = ["/login", "/auth", "/_next", "/favicon", "/api/health"];
+const PUBLIC_PREFIXES = [
+  "/login", "/auth", "/_next", "/favicon", "/api/health",
+  // PWA assets must be publicly fetchable so the browser can install the app
+  // before the user signs in. Manifest + auto-generated icons are non-sensitive.
+  "/manifest.webmanifest", "/icon", "/apple-icon",
+];
 
 function isAllowed(email: string | null | undefined): boolean {
   if (!email) return false;
