@@ -8,7 +8,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const supabase = db();
 
-  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow] = await Promise.all([
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -24,6 +24,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       .limit(20),
     supabase.from("customer_repeat_jobs_v").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase.from("customer_recurring_jobs_v").select("*").eq("hcp_customer_id", id).maybeSingle(),
+    supabase.rpc("customer_similar_to", { target_id: id, n: 6 }),
   ]);
 
   if (!c.data) {
@@ -103,6 +104,35 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                 </li>
               );
             })()}
+          </ul>
+        </section>
+      )}
+
+      {Array.isArray(similarRes.data) && (similarRes.data as Array<Record<string, unknown>>).length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-zinc-500 mb-2">Similar customers (cosine on richer 2026-04-30 embeddings)</h2>
+          <ul className="space-y-1">
+            {(similarRes.data as Array<Record<string, unknown>>).map((s) => {
+              const overlap = (s.topic_overlap as string[] | null) ?? [];
+              return (
+                <li key={s.hcp_customer_id as string} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">
+                  <Link href={`/customer/${s.hcp_customer_id}`} className="font-medium hover:underline">
+                    {s.customer_name as string}
+                  </Link>
+                  <span className="ml-2 text-xs text-zinc-500">
+                    sim {Number(s.similarity).toFixed(2)}
+                    {" · "}
+                    comms 90d: {(s.comm_count_90d as number) ?? 0}
+                    {Number(s.outstanding_due_dollars) > 0 && (
+                      <span className="ml-1 text-red-700">· ${Number(s.outstanding_due_dollars).toLocaleString(undefined, { maximumFractionDigits: 0 })} due</span>
+                    )}
+                  </span>
+                  {overlap.length > 0 && (
+                    <div className="text-xs text-zinc-500 mt-0.5">shared topics: {overlap.join(", ")}</div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
