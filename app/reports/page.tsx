@@ -8,6 +8,7 @@ const REPORTS = [
   { href: "/reports/margin",   title: "Margin",      desc: "Per-job and per-tech profitability, revenue-weighted across cost-validated jobs." },
   { href: "/reports/tech",     title: "Tech KPIs",   desc: "On-time, hours, revenue, customer ratings per technician." },
   { href: "/reports/patterns", title: "Patterns",    desc: "Customers showing recurring themes — preventative-agreement candidates." },
+  { href: "/reports/audit",    title: "Audit (values-gate)", desc: "Auto-approval log for development-side decisions. What the system has been deciding on its own, with the values reasoning preserved." },
 ];
 
 export default function ReportsIndexPage() {
