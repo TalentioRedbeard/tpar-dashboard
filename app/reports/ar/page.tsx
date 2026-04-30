@@ -56,6 +56,41 @@ export default async function ARReport() {
     grandTotal += Number(r.due_amount) || 0;
   }
 
+  // AR concentration: aggregate by customer to surface pareto risk.
+  // Pure aggregation — no inference.
+  const byCustomer = new Map<string, {
+    name: string;
+    customerId: string | null;
+    invoiceCount: number;
+    totalDue: number;
+    maxDays: number;
+    oldestInvoice: string | null;
+  }>();
+  for (const r of rows) {
+    const key = r.hcp_customer_id ?? `anon:${r.customer_name ?? "?"}`;
+    const existing = byCustomer.get(key);
+    const due = Number(r.due_amount) || 0;
+    const days = r.days_outstanding ?? 0;
+    if (existing) {
+      existing.invoiceCount += 1;
+      existing.totalDue += due;
+      existing.maxDays = Math.max(existing.maxDays, days);
+    } else {
+      byCustomer.set(key, {
+        name: r.customer_name ?? "—",
+        customerId: r.hcp_customer_id,
+        invoiceCount: 1,
+        totalDue: due,
+        maxDays: days,
+        oldestInvoice: r.invoice_number,
+      });
+    }
+  }
+  const customerRows = [...byCustomer.values()].sort((a, b) => b.totalDue - a.totalDue);
+  const top10 = customerRows.slice(0, 10);
+  const top10Total = top10.reduce((s, c) => s + c.totalDue, 0);
+  const top10Pct = grandTotal > 0 ? (top10Total / grandTotal) * 100 : 0;
+
   const columns: Column<ARRow>[] = [
     { header: "Date", cell: (r) => fmtDateShort(r.job_date), className: "text-neutral-600" },
     { header: "Invoice", cell: (r) => r.invoice_number ?? "—", className: "font-mono text-xs" },
@@ -99,6 +134,50 @@ export default async function ARReport() {
         ))}
       </section>
 
+      <section className="mb-8">
+        <header className="mb-2">
+          <h2 className="text-base font-semibold text-neutral-900">Top customers holding AR</h2>
+          <p className="text-xs text-neutral-500">
+            {customerRows.length} distinct customer{customerRows.length === 1 ? "" : "s"} with open AR · top 10 hold{" "}
+            <strong>{fmtMoney(top10Total)}</strong> ({top10Pct.toFixed(1)}% of total). Pure aggregation.
+          </p>
+        </header>
+        <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="border-b border-neutral-200 bg-neutral-50">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium text-neutral-600">Customer</th>
+                <th className="px-4 py-2 text-right font-medium text-neutral-600">Invoices</th>
+                <th className="px-4 py-2 text-right font-medium text-neutral-600">Total due</th>
+                <th className="px-4 py-2 text-right font-medium text-neutral-600">% of AR</th>
+                <th className="px-4 py-2 text-right font-medium text-neutral-600">Oldest (days)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {top10.map((c) => {
+                const pct = grandTotal > 0 ? (c.totalDue / grandTotal) * 100 : 0;
+                return (
+                  <tr key={c.customerId ?? c.name} className="hover:bg-neutral-50">
+                    <td className="px-4 py-2 align-top">
+                      {c.customerId ? (
+                        <Link href={`/customer/${c.customerId}`} className="font-medium text-neutral-900 hover:underline">{c.name}</Link>
+                      ) : (
+                        <span className="font-medium text-neutral-900">{c.name}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-right">{c.invoiceCount}</td>
+                    <td className="px-4 py-2 text-right font-medium text-red-700">{fmtMoney(c.totalDue)}</td>
+                    <td className="px-4 py-2 text-right text-neutral-700">{pct.toFixed(1)}%</td>
+                    <td className={`px-4 py-2 text-right ${c.maxDays > 60 ? "font-medium text-red-700" : "text-neutral-700"}`}>{c.maxDays}d</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <h2 className="mb-2 text-base font-semibold text-neutral-900">All open invoices ({rows.length})</h2>
       <Table
         columns={columns}
         rows={rows}
