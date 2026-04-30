@@ -8,7 +8,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const supabase = db();
 
-  const [c, recentComms, recentJobs] = await Promise.all([
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -22,6 +22,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       .eq("hcp_customer_id", id)
       .order("job_date", { ascending: false, nullsFirst: false })
       .limit(20),
+    supabase.from("customer_repeat_jobs_v").select("*").eq("hcp_customer_id", id).maybeSingle(),
+    supabase.from("customer_recurring_jobs_v").select("*").eq("hcp_customer_id", id).maybeSingle(),
   ]);
 
   if (!c.data) {
@@ -69,6 +71,39 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <section>
           <h2 className="text-sm font-semibold text-zinc-500 mb-2">AI summary (existing customer card)</h2>
           <p className="text-sm leading-relaxed">{cust.ai_summary as string}</p>
+        </section>
+      )}
+
+      {(repeatRow.data || recurringJobsRow.data) && (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <h2 className="text-sm font-semibold text-amber-900 mb-2">Pattern signal — preventative-agreement candidate</h2>
+          <ul className="space-y-1 text-sm text-amber-900">
+            {repeatRow.data && (() => {
+              const r = repeatRow.data as Record<string, unknown>;
+              return (
+                <li>
+                  <strong>{r.job_count_12mo as number}</strong> jobs in {r.span_days as number}d
+                  {" · avg "}
+                  <strong>{r.avg_days_between as number}d</strong> between visits
+                  {" · "}
+                  ${Number(r.total_revenue_12mo).toLocaleString(undefined, { maximumFractionDigits: 0 })} revenue last 12mo
+                  {(r.preventative_candidate as boolean) && <span className="ml-2 inline-flex px-2 py-0.5 rounded bg-amber-200 text-amber-900 text-xs font-medium">flagged</span>}
+                </li>
+              );
+            })()}
+            {recurringJobsRow.data && (() => {
+              const r = recurringJobsRow.data as Record<string, unknown>;
+              return (
+                <li>
+                  <strong>{r.recurring_job_pairs as number}</strong> same-kind job pair{(r.recurring_job_pairs as number) === 1 ? "" : "s"}
+                  {" · max similarity "}
+                  <strong>{Number(r.max_similarity).toFixed(2)}</strong>
+                  {" · "}
+                  spans {r.earliest_job as string} → {r.most_recent_job as string}
+                </li>
+              );
+            })()}
+          </ul>
         </section>
       )}
 
