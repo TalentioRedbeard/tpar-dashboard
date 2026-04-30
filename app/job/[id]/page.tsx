@@ -28,14 +28,18 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const customerId = j.hcp_customer_id as string | null;
 
   // Pull the appointment-window communications for this customer
-  const { data: comms } = customerId
-    ? await supabase
-        .from("communication_events")
-        .select("id, occurred_at, channel, direction, importance, sentiment, flags, tech_short_name, summary")
-        .eq("hcp_customer_id", customerId)
-        .order("occurred_at", { ascending: false })
-        .limit(20)
-    : { data: [] as Record<string, unknown>[] };
+  // and similar past jobs in parallel
+  const [{ data: comms }, similarRes] = await Promise.all([
+    customerId
+      ? supabase
+          .from("communication_events")
+          .select("id, occurred_at, channel, direction, importance, sentiment, flags, tech_short_name, summary")
+          .eq("hcp_customer_id", customerId)
+          .order("occurred_at", { ascending: false })
+          .limit(20)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    supabase.rpc("job_similar_to", { target_id: id, n: 6 }),
+  ]);
 
   return (
     <main className="mx-auto max-w-5xl p-6 space-y-8">
@@ -81,6 +85,45 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </div>
         </section>
       )}
+
+      {Array.isArray(similarRes.data) && (similarRes.data as Array<Record<string, unknown>>).length > 0 && (() => {
+        const rows = similarRes.data as Array<Record<string, unknown>>;
+        const revenues = rows
+          .map((r) => Number(r.revenue))
+          .filter((v) => Number.isFinite(v) && v > 0);
+        const avg = revenues.length > 0 ? revenues.reduce((a, b) => a + b, 0) / revenues.length : null;
+        return (
+          <section>
+            <h2 className="text-sm font-semibold text-zinc-500 mb-2">
+              Similar past jobs
+              {avg !== null && (
+                <span className="ml-2 font-normal text-zinc-500">
+                  · avg revenue ${avg.toLocaleString(undefined, { maximumFractionDigits: 0 })} across {revenues.length} priced
+                </span>
+              )}
+            </h2>
+            <ul className="space-y-1">
+              {rows.map((s) => (
+                <li key={s.hcp_job_id as string} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">
+                  <Link href={`/job/${s.hcp_job_id}`} className="font-medium hover:underline">
+                    {s.customer_name as string ?? "(no name)"}
+                  </Link>
+                  <span className="ml-2 text-xs text-zinc-500">
+                    sim {Number(s.similarity).toFixed(2)}
+                    {" · "}{(s.job_date as string) ?? "no date"}
+                    {" · "}{(s.tech_primary_name as string) ?? "—"}
+                    {" · "}{s.revenue != null ? `$${Number(s.revenue).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                    {s.gross_margin_pct != null && ` · ${Number(s.gross_margin_pct).toFixed(0)}% margin`}
+                  </span>
+                  <div className="text-xs text-zinc-500 italic mt-0.5 max-w-3xl whitespace-pre-line">
+                    {(s.text_preview as string ?? "").slice(0, 250)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })()}
 
       <section>
         <h2 className="text-xl font-semibold mb-3">Recent communications for this customer</h2>
