@@ -123,6 +123,14 @@ export default async function ARReport() {
     <PageShell
       title="Receivables"
       description={`${rows.length} open invoice${rows.length === 1 ? "" : "s"} totaling ${fmtMoney(grandTotal)} outstanding.`}
+      actions={
+        <a
+          href="/reports/ar/export.csv"
+          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+        >
+          Download CSV
+        </a>
+      }
     >
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
         {Object.entries(buckets).map(([label, v]) => (
