@@ -28,13 +28,14 @@ type JobRow = {
 export default async function JobsListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; include_internal?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
   const tech = (params.tech ?? "").trim();
   const status = (params.status ?? "").trim();
   const outstandingOnly = params.outstanding === "1";
+  const includeInternal = params.include_internal === "1";
   const page = Math.max(1, Number(params.page ?? "1"));
 
   const supa = db();
@@ -48,23 +49,26 @@ export default async function JobsListPage({
   if (tech)   query = query.eq("tech_primary_name", tech);
   if (status) query = query.eq("appointment_status", status);
   if (outstandingOnly) query = query.gt("due_amount", 0);
+  // Hide internal "TPAR" jobs by default — these are estimate-drafts, not
+  // customer work. Same filter the recurring-jobs view applies.
+  if (!includeInternal) {
+    query = query.not("customer_name", "in", '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")');
+  }
 
   const { data, count } = await query
     .order("job_date", { ascending: false, nullsFirst: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   const rows = (data ?? []) as JobRow[];
 
-  // Tech list for the tech filter — distinct values from the current page set
-  // is hacky; a better approach would be a separate query, but at our scale
-  // this is fine for the v1.
+  // Tech list from tech_directory — authoritative, no scan-and-distinct hack.
   const { data: techData } = await supa
-    .from("job_360")
-    .select("tech_primary_name")
-    .order("tech_primary_name", { ascending: true })
-    .limit(2000);
-  const techNames = Array.from(
-    new Set((techData ?? []).map((r: { tech_primary_name: string | null }) => r.tech_primary_name).filter(Boolean) as string[])
-  ).sort();
+    .from("tech_directory")
+    .select("hcp_full_name")
+    .eq("is_active", true)
+    .order("hcp_full_name", { ascending: true });
+  const techNames = (techData ?? [])
+    .map((r: { hcp_full_name: string | null }) => r.hcp_full_name)
+    .filter((n): n is string => Boolean(n));
 
   const columns: Column<JobRow>[] = [
     { header: "Date", cell: (r) => fmtDateShort(r.job_date), className: "text-neutral-600" },
@@ -108,6 +112,7 @@ export default async function JobsListPage({
     ...(tech ? { tech } : {}),
     ...(status ? { status } : {}),
     ...(outstandingOnly ? { outstanding: "1" } : {}),
+    ...(includeInternal ? { include_internal: "1" } : {}),
   }).toString()}`;
 
   return (
@@ -146,6 +151,10 @@ export default async function JobsListPage({
         <label className="inline-flex items-center gap-2 pb-1.5">
           <input type="checkbox" name="outstanding" value="1" defaultChecked={outstandingOnly} />
           <span className="text-sm text-neutral-600">Outstanding only</span>
+        </label>
+        <label className="inline-flex items-center gap-2 pb-1.5">
+          <input type="checkbox" name="include_internal" value="1" defaultChecked={includeInternal} />
+          <span className="text-sm text-neutral-600">Include TPAR-internal</span>
         </label>
         <button
           type="submit"
