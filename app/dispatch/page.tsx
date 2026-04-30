@@ -83,14 +83,38 @@ export default async function DispatchPage() {
   const startUtc = new Date(`${nowCtKey}T00:00:00-05:00`).toISOString();
   const endDate = new Date(new Date(`${nowCtKey}T00:00:00-05:00`).getTime() + 7 * 86_400_000).toISOString();
 
-  const { data } = await supa
-    .from("appointments_master")
-    .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags")
-    .gte("scheduled_start", startUtc)
-    .lt("scheduled_start", endDate)
-    .order("scheduled_start", { ascending: true });
+  // Stale window: appointments scheduled >7d ago that are still in
+  // 'scheduled' / 'needs scheduling' status — likely operational debt.
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
 
-  const rows = (data ?? []) as Appt[];
+  const [upcomingRes, staleRes] = await Promise.all([
+    supa
+      .from("appointments_master")
+      .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags")
+      .gte("scheduled_start", startUtc)
+      .lt("scheduled_start", endDate)
+      .order("scheduled_start", { ascending: true }),
+    supa
+      .from("appointments_master")
+      .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, status, tech_primary_name, customer_name, street, city")
+      .lt("scheduled_start", sevenDaysAgo)
+      .in("status", ["scheduled", "Scheduled", "needs scheduling", "Needs Scheduling"])
+      .order("scheduled_start", { ascending: false })
+      .limit(40),
+  ]);
+
+  const rows = (upcomingRes.data ?? []) as Appt[];
+  const staleRows = (staleRes.data ?? []) as Array<{
+    appointment_id: string | null;
+    hcp_job_id: string | null;
+    hcp_customer_id: string | null;
+    scheduled_start: string;
+    status: string | null;
+    tech_primary_name: string | null;
+    customer_name: string | null;
+    street: string | null;
+    city: string | null;
+  }>;
 
   // Group by Chicago-local date key.
   const grouped = new Map<string, Appt[]>();
@@ -111,6 +135,39 @@ export default async function DispatchPage() {
       title="Dispatch"
       description={`${totalCount} appointment${totalCount === 1 ? "" : "s"} across ${techCount} tech${techCount === 1 ? "" : "s"} in the next 7 days · ${todayCount} today`}
     >
+      {staleRows.length > 0 && (
+        <details className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-amber-900">
+            Stale: {staleRows.length} appointment{staleRows.length === 1 ? "" : "s"} more than 7 days past with status still &quot;scheduled&quot; / &quot;needs scheduling&quot;
+            <span className="ml-2 font-normal text-amber-900/70">(click to expand)</span>
+          </summary>
+          <ul className="mt-3 space-y-1 text-sm">
+            {staleRows.map((s) => {
+              const ageDays = Math.round((Date.now() - new Date(s.scheduled_start).getTime()) / 86_400_000);
+              return (
+                <li key={s.appointment_id ?? s.hcp_job_id ?? s.scheduled_start} className="flex flex-wrap items-baseline gap-2">
+                  <span className="font-mono text-xs text-amber-900/70">{ageDays}d ago</span>
+                  {s.hcp_job_id ? (
+                    <Link href={`/job/${s.hcp_job_id}`} className="font-medium text-amber-900 hover:underline">{s.customer_name ?? "—"}</Link>
+                  ) : (
+                    <span className="font-medium text-amber-900">{s.customer_name ?? "—"}</span>
+                  )}
+                  <span className="text-xs text-amber-900/70">
+                    · {s.tech_primary_name ?? "—"}
+                    {s.street ? ` · ${s.street}${s.city ? ", " + s.city : ""}` : ""}
+                    · status: {s.status}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-3 text-xs text-amber-900/70">
+            Each row needs to be either rescheduled / completed / cancelled in HCP.
+            This list is descriptive — no auto-action.
+          </p>
+        </details>
+      )}
+
       {groupKeys.length === 0 ? (
         <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center text-sm text-neutral-500">
           No appointments scheduled in the next 7 days.
