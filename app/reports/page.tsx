@@ -9,6 +9,7 @@ const REPORTS = [
   { href: "/reports/tech",     title: "Tech KPIs",   desc: "On-time, hours, revenue, customer ratings per technician." },
   { href: "/reports/patterns", title: "Patterns",    desc: "Customers showing recurring themes — preventative-agreement candidates." },
   { href: "/reports/audit",    title: "Audit (values-gate)", desc: "Auto-approval log for development-side decisions. What the system has been deciding on its own, with the values reasoning preserved." },
+  { href: "/reports/notes",    title: "Notes feed",          desc: "Recent operator notes added across customers and jobs. Filter by author + window. Pure read." },
 ];
 
 export default function ReportsIndexPage() {
