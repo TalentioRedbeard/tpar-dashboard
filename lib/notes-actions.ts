@@ -65,3 +65,42 @@ export async function addJobNote(formData: FormData): Promise<AddNoteResult> {
   revalidatePath(`/job/${jobId}`);
   return { ok: true };
 }
+
+// Phase 3 Tier 2 — reversible state change.
+// ackComm: mark a communication_event as handled. Sets acked_at + acked_by.
+// unackComm: clear the ack (re-flag as needing attention).
+//
+// Operator distinction: any tulsapar.com signed-in user can ack/un-ack.
+// We DON'T scope to "only the original recipient" — Madisson sometimes
+// resolves something Danny would have, and that's correct.
+
+export type AckCommResult =
+  | { ok: true; acked: boolean }
+  | { ok: false; error: string };
+
+export async function ackComm(formData: FormData): Promise<AckCommResult> {
+  const id = Number(formData.get("comm_id") ?? "0");
+  const action = String(formData.get("action") ?? "ack");
+  if (!id || Number.isNaN(id)) return { ok: false, error: "missing comm_id" };
+  if (action !== "ack" && action !== "unack") return { ok: false, error: "action must be ack|unack" };
+
+  const user = await getSessionUser();
+  if (!user?.email) return { ok: false, error: "not signed in" };
+
+  const supa = db();
+  const update = action === "ack"
+    ? { acked_at: new Date().toISOString(), acked_by: user.email }
+    : { acked_at: null, acked_by: null };
+
+  const { error } = await supa
+    .from("communication_events")
+    .update(update)
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  // Refresh the surfaces that filter on acked_at
+  revalidatePath("/");
+  revalidatePath("/comms");
+
+  return { ok: true, acked: action === "ack" };
+}

@@ -3,6 +3,7 @@
 
 import { db } from "@/lib/supabase";
 import Link from "next/link";
+import { AckButton } from "../components/AckButton";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ type FollowupRow = {
   sentiment: string | null;
   flags: string[] | null;
   summary: string | null;
+  acked_at: string | null;
 };
 
 type CustomerLeader = {
@@ -73,10 +75,11 @@ async function loadData() {
   const [followupsRes, leadersRes, recentJobsRes, patternsRes, arRes, todayApptsRes] = await Promise.all([
     supabase
       .from("communication_events")
-      .select("id, occurred_at, channel, direction, customer_name, hcp_customer_id, tech_short_name, importance, sentiment, flags, summary")
+      .select("id, occurred_at, channel, direction, customer_name, hcp_customer_id, tech_short_name, importance, sentiment, flags, summary, acked_at")
       .gte("occurred_at", since14d)
       .or("flags.cs.{needs_followup},flags.cs.{unresolved},flags.cs.{escalation_needed}")
       .gte("importance", 5)
+      .is("acked_at", null)
       .order("importance", { ascending: false, nullsFirst: false })
       .order("occurred_at", { ascending: false })
       .limit(20),
@@ -280,6 +283,7 @@ export default async function Today() {
                   <span className="text-xs text-zinc-500 ml-auto">
                     {new Date(f.occurred_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
                   </span>
+                  <AckButton commId={f.id} acked={!!f.acked_at} />
                 </div>
                 <div className="text-sm">
                   <span className="font-medium">
