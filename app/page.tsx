@@ -49,12 +49,28 @@ type PatternFlag = {
   total_revenue_12mo: number;
 };
 
+type TodayAppt = {
+  appointment_id: string | null;
+  hcp_job_id: string | null;
+  scheduled_start: string;
+  customer_name: string | null;
+  tech_primary_name: string | null;
+  status: string | null;
+  street: string | null;
+  city: string | null;
+};
+
 async function loadData() {
   const supabase = db();
   const since14d = new Date(Date.now() - 14 * 86400_000).toISOString();
   const sinceJobs = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
 
-  const [followupsRes, leadersRes, recentJobsRes, patternsRes, arRes] = await Promise.all([
+  // Today (Chicago-local) appointment window
+  const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const todayStart = new Date(`${todayKey}T00:00:00-05:00`).toISOString();
+  const todayEnd   = new Date(`${todayKey}T23:59:59-05:00`).toISOString();
+
+  const [followupsRes, leadersRes, recentJobsRes, patternsRes, arRes, todayApptsRes] = await Promise.all([
     supabase
       .from("communication_events")
       .select("id, occurred_at, channel, direction, customer_name, hcp_customer_id, tech_short_name, importance, sentiment, flags, summary")
@@ -88,6 +104,12 @@ async function loadData() {
       .gt("due_amount", 0)
       .order("due_amount", { ascending: false })
       .limit(50),
+    supabase
+      .from("appointments_master")
+      .select("appointment_id, hcp_job_id, scheduled_start, customer_name, tech_primary_name, status, street, city")
+      .gte("scheduled_start", todayStart)
+      .lte("scheduled_start", todayEnd)
+      .order("scheduled_start", { ascending: true }),
   ]);
 
   // Build top-AR-customers from the open-invoice rows
@@ -113,12 +135,15 @@ async function loadData() {
     .slice(0, 5)
     .map(([id, v]) => ({ hcp_customer_id: id.startsWith("anon:") ? null : id, ...v }));
 
+  const todayAppts = (todayApptsRes.data ?? []) as TodayAppt[];
+
   return {
     followups: (followupsRes.data ?? []) as FollowupRow[],
     leaders: (leadersRes.data ?? []) as CustomerLeader[],
     recentJobs: (recentJobsRes.data ?? []) as RecentJob[],
     patterns: (patternsRes.data ?? []) as PatternFlag[],
     arTop,
+    todayAppts,
     error: followupsRes.error?.message || leadersRes.error?.message || recentJobsRes.error?.message,
   };
 }
@@ -133,7 +158,12 @@ function Pill({ children, tone }: { children: React.ReactNode; tone?: "red" | "a
 }
 
 export default async function Today() {
-  const { followups, leaders, recentJobs, patterns, arTop, error } = await loadData();
+  const { followups, leaders, recentJobs, patterns, arTop, todayAppts, error } = await loadData();
+  const apptCount = todayAppts.length;
+  const techCount = new Set(todayAppts.map((a) => a.tech_primary_name).filter(Boolean)).size;
+  const firstAppt = todayAppts[0]?.scheduled_start
+    ? new Date(todayAppts[0].scheduled_start).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" })
+    : null;
 
   return (
     <main className="mx-auto max-w-6xl p-6 space-y-10">
@@ -149,7 +179,38 @@ export default async function Today() {
         <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-900">DB error: {error}</div>
       )}
 
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="rounded border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="text-sm font-semibold text-blue-900">Today on the books</h2>
+            <Link href="/dispatch" className="text-xs text-blue-900 hover:underline">all →</Link>
+          </div>
+          {apptCount === 0 ? (
+            <p className="text-sm text-blue-900">No appointments today.</p>
+          ) : (
+            <>
+              <p className="text-sm text-blue-900">
+                <strong>{apptCount}</strong> appt{apptCount === 1 ? "" : "s"} · <strong>{techCount}</strong> tech{techCount === 1 ? "" : "s"}
+                {firstAppt ? <> · first <strong>{firstAppt}</strong></> : null}
+              </p>
+              <ul className="mt-2 space-y-0.5 text-xs text-blue-900">
+                {todayAppts.slice(0, 5).map((a) => (
+                  <li key={a.appointment_id ?? a.hcp_job_id ?? a.scheduled_start}>
+                    <span className="font-mono">{new Date(a.scheduled_start).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" })}</span>
+                    {" · "}
+                    {a.hcp_job_id ? (
+                      <Link href={`/job/${a.hcp_job_id}`} className="font-medium hover:underline">{a.customer_name ?? "—"}</Link>
+                    ) : (
+                      <span className="font-medium">{a.customer_name ?? "—"}</span>
+                    )}
+                    {" · "}{a.tech_primary_name ?? "—"}
+                  </li>
+                ))}
+                {apptCount > 5 ? <li className="text-blue-900/70">+{apptCount - 5} more →</li> : null}
+              </ul>
+            </>
+          )}
+        </div>
         <div className="rounded border border-amber-200 bg-amber-50 p-4">
           <div className="flex items-baseline justify-between mb-2">
             <h2 className="text-sm font-semibold text-amber-900">Preventative-agreement candidates</h2>
