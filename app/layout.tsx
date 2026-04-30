@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { getSessionUser } from "../lib/supabase-server";
 import { Nav } from "../components/Nav";
+import { RegisterServiceWorker } from "../components/RegisterServiceWorker";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,6 +45,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col bg-neutral-50 text-neutral-900">
         {user && <Nav userEmail={user.email} />}
         <div className="flex-1">{children}</div>
+        <RegisterServiceWorker />
       </body>
     </html>
   );

@@ -22,6 +22,10 @@ const PUBLIC_PREFIXES = [
   // PWA assets must be publicly fetchable so the browser can install the app
   // before the user signs in. Manifest + auto-generated icons are non-sensitive.
   "/manifest.webmanifest", "/icon", "/apple-icon",
+  // Service worker — must be fetchable at /sw.js without auth so the browser
+  // can register it. The SW does not bypass middleware for protected routes;
+  // it just caches responses the user already had access to.
+  "/sw.js",
 ];
 
 function isAllowed(email: string | null | undefined): boolean {
