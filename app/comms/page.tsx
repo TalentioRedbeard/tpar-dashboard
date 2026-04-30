@@ -5,6 +5,7 @@ import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, fmtDateShort, type Column } from "../../components/Table";
+import { AckButton } from "../../components/AckButton";
 
 export const metadata = { title: "Comms · TPAR-DB" };
 
@@ -21,6 +22,8 @@ type CommRow = {
   importance: number | null;
   sentiment: string | null;
   summary: string | null;
+  flags: string[] | null;
+  acked_at: string | null;
 };
 
 export default async function CommsPage({
@@ -41,7 +44,7 @@ export default async function CommsPage({
   const supa = db();
   let query = supa
     .from("communication_events")
-    .select("id, occurred_at, channel, direction, hcp_customer_id, customer_name, tech_short_name, importance, sentiment, summary", { count: "exact" });
+    .select("id, occurred_at, channel, direction, hcp_customer_id, customer_name, tech_short_name, importance, sentiment, summary, flags, acked_at", { count: "exact" });
   if (q) query = query.or(`customer_name.ilike.%${q}%,summary.ilike.%${q}%`);
   if (channel) query = query.eq("channel", channel);
   if (tech) query = query.eq("tech_short_name", tech);
@@ -92,7 +95,19 @@ export default async function CommsPage({
     },
     {
       header: "Summary",
-      cell: (r) => <span className="block max-w-xl text-xs text-neutral-700">{r.summary?.slice(0, 250) ?? "—"}</span>,
+      cell: (r) => (
+        <div className="max-w-xl">
+          <div className="text-xs text-neutral-700">{r.summary?.slice(0, 250) ?? "—"}</div>
+          {(r.flags && r.flags.some((f) => f === "needs_followup" || f === "unresolved" || f === "escalation_needed")) && (
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wide text-amber-700">
+                {r.flags.filter((f) => ["needs_followup", "unresolved", "escalation_needed"].includes(f)).join(", ")}
+              </span>
+              <AckButton commId={r.id} acked={!!r.acked_at} />
+            </div>
+          )}
+        </div>
+      ),
     },
   ];
 
