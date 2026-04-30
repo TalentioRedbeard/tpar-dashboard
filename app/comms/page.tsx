@@ -104,8 +104,27 @@ export default async function CommsPage({
     ...(includeNoise ? { include_noise: "1" } : {}),
   }).toString()}`;
 
+  const csvHref = `/comms/export.csv?${new URLSearchParams({
+    ...(q ? { q } : {}),
+    ...(channel ? { channel } : {}),
+    ...(tech ? { tech } : {}),
+    ...(minImp ? { min_importance: String(minImp) } : {}),
+    ...(includeNoise ? { include_noise: "1" } : {}),
+  }).toString()}`;
+
   return (
-    <PageShell title="Comms" description="Unified inbox of every call, text, email across all channels.">
+    <PageShell
+      title="Comms"
+      description="Unified inbox of every call, text, email across all channels."
+      actions={
+        <a
+          href={csvHref}
+          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+        >
+          Download CSV
+        </a>
+      }
+    >
       <FilterBar>
         <label className="block">
           <span className="block text-xs font-medium text-neutral-600">Search</span>
