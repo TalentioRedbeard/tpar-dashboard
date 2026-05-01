@@ -31,7 +31,9 @@ function CallbackInner() {
   useEffect(() => {
     if (ranRef.current) return;
     ranRef.current = true;
-    const supa = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supa = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { flowType: "implicit" },
+    });
 
     (async () => {
       try {

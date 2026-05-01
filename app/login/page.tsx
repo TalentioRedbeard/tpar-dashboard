@@ -31,7 +31,15 @@ function LoginInner() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const supa = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // Use implicit flow (access_token in URL fragment) instead of PKCE.
+  // PKCE was failing intermittently (the code-verifier cookie didn't
+  // survive the Google → Supabase → dashboard redirect chain on some
+  // browsers, e.g. Brave/Firefox strict). Implicit flow uses the same
+  // path admin-generated magic links already use; /auth/callback is
+  // already wired to handle the fragment.
+  const supa = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { flowType: "implicit" },
+  });
 
   async function signInGoogle() {
     setStatus("sending");
