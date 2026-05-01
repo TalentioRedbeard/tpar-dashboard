@@ -29,10 +29,18 @@ export function StatCard({
 }) {
   const ring = emphasis ? "ring-1 ring-inset ring-brand-200" : "";
   return (
-    <div className={`rounded-2xl border border-neutral-200 bg-white p-4 ${ring}`}>
-      <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className={`mt-1 text-2xl font-semibold tabular-nums ${VALUE_TONE[tone]}`}>{value}</div>
-      {hint ? <div className="mt-1 text-xs text-neutral-500">{hint}</div> : null}
+    <div
+      className={`rounded-2xl border border-neutral-200 bg-white px-4 py-3.5 transition-all duration-150 hover:border-neutral-300 hover:shadow-sm ${ring}`}
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+        {label}
+      </div>
+      <div
+        className={`mt-1.5 text-2xl font-semibold leading-none tabular-nums tracking-tight ${VALUE_TONE[tone]}`}
+      >
+        {value}
+      </div>
+      {hint ? <div className="mt-1.5 text-xs text-neutral-500">{hint}</div> : null}
     </div>
   );
 }

@@ -7,13 +7,13 @@ import type { ReactNode } from "react";
 export type Tone = "neutral" | "brand" | "green" | "amber" | "red" | "violet" | "slate";
 
 const TONE: Record<Tone, string> = {
-  neutral: "bg-neutral-100 text-neutral-700 ring-neutral-200",
-  brand:   "bg-brand-50 text-brand-800 ring-brand-200",
-  green:   "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  neutral: "bg-neutral-100 text-neutral-700 ring-neutral-200/80",
+  brand:   "bg-brand-50 text-brand-800 ring-brand-200/80",
+  green:   "bg-emerald-50 text-emerald-800 ring-emerald-200/80",
   amber:   "bg-accent-50 text-accent-700 ring-accent-100",
-  red:     "bg-red-50 text-red-800 ring-red-200",
-  violet:  "bg-violet-50 text-violet-800 ring-violet-200",
-  slate:   "bg-neutral-50 text-neutral-600 ring-neutral-200",
+  red:     "bg-red-50 text-red-800 ring-red-200/80",
+  violet:  "bg-violet-50 text-violet-800 ring-violet-200/80",
+  slate:   "bg-neutral-50 text-neutral-600 ring-neutral-200/80",
 };
 
 export function Pill({
@@ -29,7 +29,7 @@ export function Pill({
   mono?: boolean;
   className?: string;
 }) {
-  const sizeCls = size === "md" ? "px-2.5 py-1 text-xs" : "px-2 py-0.5 text-xs";
+  const sizeCls = size === "md" ? "px-2.5 py-1 text-xs" : "px-2 py-0.5 text-[11px]";
   const monoCls = mono ? "font-mono" : "font-medium";
   return (
     <span

@@ -202,26 +202,27 @@ export default async function Today() {
       {/* Hero strip — three pulse cards */}
       <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-3">
         {/* Today on the books */}
-        <div className="rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5 shadow-sm">
-          <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-800">On the books</h2>
+        <div className="group relative overflow-hidden rounded-2xl border border-brand-200/80 bg-gradient-to-br from-brand-50 to-white p-5 shadow-sm transition-shadow hover:shadow-md">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-brand-200/30 blur-2xl" />
+          <div className="relative mb-3 flex items-baseline justify-between">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-800">On the books</h2>
             <Link href="/dispatch" className="text-xs font-medium text-brand-700 hover:underline">All →</Link>
           </div>
           {apptCount === 0 ? (
-            <p className="text-sm text-brand-900/80">No appointments scheduled today.</p>
+            <p className="relative text-sm text-brand-900/80">No appointments scheduled today.</p>
           ) : (
             <>
-              <div className="flex items-baseline gap-3">
-                <span className="text-3xl font-semibold tabular-nums text-brand-900">{apptCount}</span>
+              <div className="relative flex items-baseline gap-2">
+                <span className="text-4xl font-semibold leading-none tabular-nums tracking-tight text-brand-900">{apptCount}</span>
                 <span className="text-sm text-brand-900/70">appt{apptCount === 1 ? "" : "s"}</span>
               </div>
-              <div className="mt-1 text-xs text-brand-900/70">
+              <div className="relative mt-1.5 text-xs text-brand-900/70">
                 {techCount} tech{techCount === 1 ? "" : "s"}{firstAppt ? ` · first ${firstAppt}` : ""}
               </div>
-              <ul className="mt-3 space-y-1 border-t border-brand-200/70 pt-3 text-xs text-brand-900">
+              <ul className="relative mt-4 space-y-1 border-t border-brand-200/70 pt-3 text-xs text-brand-900">
                 {todayAppts.slice(0, 4).map((a) => (
                   <li key={a.appointment_id ?? a.hcp_job_id ?? a.scheduled_start} className="flex gap-2">
-                    <span className="w-12 shrink-0 font-mono text-brand-700">{fmtTime(a.scheduled_start)}</span>
+                    <span className="w-12 shrink-0 font-mono tabular-nums text-brand-700">{fmtTime(a.scheduled_start)}</span>
                     <span className="flex-1 truncate">
                       {a.hcp_job_id ? (
                         <Link href={`/job/${a.hcp_job_id}`} className="font-medium hover:underline">{a.customer_name ?? "—"}</Link>
@@ -241,30 +242,31 @@ export default async function Today() {
         </div>
 
         {/* Pattern signals */}
-        <div className="rounded-2xl border border-accent-100 bg-gradient-to-br from-accent-50 to-white p-5 shadow-sm">
-          <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-accent-700">Preventative candidates</h2>
+        <div className="group relative overflow-hidden rounded-2xl border border-accent-100 bg-gradient-to-br from-accent-50 to-white p-5 shadow-sm transition-shadow hover:shadow-md">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-accent-100/40 blur-2xl" />
+          <div className="relative mb-3 flex items-baseline justify-between">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-700">Preventative candidates</h2>
             <Link href="/reports/patterns" className="text-xs font-medium text-accent-700 hover:underline">All →</Link>
           </div>
           {patterns.length === 0 ? (
-            <p className="text-sm text-accent-700/80">No patterns flagged today.</p>
+            <p className="relative text-sm text-accent-700/80">No patterns flagged today.</p>
           ) : (
             <>
-              <div className="flex items-baseline gap-3">
-                <span className="text-3xl font-semibold tabular-nums text-accent-700">{patterns.length}</span>
+              <div className="relative flex items-baseline gap-2">
+                <span className="text-4xl font-semibold leading-none tabular-nums tracking-tight text-accent-700">{patterns.length}</span>
                 <span className="text-sm text-accent-700/80">customer{patterns.length === 1 ? "" : "s"}</span>
               </div>
-              <ul className="mt-3 space-y-1 border-t border-accent-100 pt-3 text-xs">
+              <ul className="relative mt-4 space-y-1 border-t border-accent-100 pt-3 text-xs">
                 {patterns.map((p) => (
                   <li key={p.hcp_customer_id} className="flex flex-wrap items-baseline gap-x-2">
                     <Link href={`/customer/${p.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">
                       {p.customer_name ?? "—"}
                     </Link>
-                    <span className="text-accent-700">
+                    <span className="text-accent-700 tabular-nums">
                       {p.job_count_12mo} jobs / {p.span_days}d
                     </span>
                     <span className="text-neutral-500">·</span>
-                    <span className="text-neutral-600">{fmtMoney(p.total_revenue_12mo)}</span>
+                    <span className="text-neutral-600 tabular-nums">{fmtMoney(p.total_revenue_12mo)}</span>
                   </li>
                 ))}
               </ul>
@@ -273,22 +275,23 @@ export default async function Today() {
         </div>
 
         {/* Top open AR */}
-        <div className="rounded-2xl border border-red-200 bg-gradient-to-br from-red-50 to-white p-5 shadow-sm">
-          <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-red-700">Top open AR</h2>
+        <div className="group relative overflow-hidden rounded-2xl border border-red-200/80 bg-gradient-to-br from-red-50 to-white p-5 shadow-sm transition-shadow hover:shadow-md">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-red-200/30 blur-2xl" />
+          <div className="relative mb-3 flex items-baseline justify-between">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-red-700">Top open AR</h2>
             <Link href="/reports/ar" className="text-xs font-medium text-red-700 hover:underline">All →</Link>
           </div>
           {arTop.length === 0 ? (
-            <p className="text-sm text-red-800/80">No open AR.</p>
+            <p className="relative text-sm text-red-800/80">No open AR.</p>
           ) : (
             <>
-              <div className="flex items-baseline gap-3">
-                <span className="text-3xl font-semibold tabular-nums text-red-700">
+              <div className="relative flex items-baseline gap-2">
+                <span className="text-4xl font-semibold leading-none tabular-nums tracking-tight text-red-700">
                   {fmtMoney(arTop.reduce((s, a) => s + a.total, 0))}
                 </span>
                 <span className="text-sm text-red-700/80">across {arTop.length}</span>
               </div>
-              <ul className="mt-3 space-y-1 border-t border-red-200 pt-3 text-xs">
+              <ul className="relative mt-4 space-y-1 border-t border-red-200 pt-3 text-xs">
                 {arTop.map((a) => (
                   <li key={a.hcp_customer_id ?? a.name} className="flex flex-wrap items-baseline gap-x-2">
                     {a.hcp_customer_id ? (
@@ -296,7 +299,7 @@ export default async function Today() {
                     ) : (
                       <span className="font-medium text-neutral-900">{a.name}</span>
                     )}
-                    <span className="text-red-700">{fmtMoney(a.total)}</span>
+                    <span className="text-red-700 tabular-nums">{fmtMoney(a.total)}</span>
                     {a.oldest > 0 ? (
                       <span className="text-neutral-500">· {a.oldest}d</span>
                     ) : null}
@@ -447,10 +450,11 @@ export default async function Today() {
         </Section>
       </div>
 
-      <footer className="mt-12 border-t border-neutral-200 pt-4 text-xs text-neutral-500">
-        Server-rendered from <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono">job_360</code> ·
-        <code className="ml-1 rounded bg-neutral-100 px-1 py-0.5 font-mono">customer_360</code> ·
-        <code className="ml-1 rounded bg-neutral-100 px-1 py-0.5 font-mono">communication_events</code>
+      <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-4 text-xs text-neutral-500">
+        <span>TPAR-DB · live operational substrate</span>
+        <span className="font-mono text-[10px] text-neutral-400">
+          job_360 · customer_360 · communication_events
+        </span>
       </footer>
     </PageShell>
   );

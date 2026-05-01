@@ -27,7 +27,7 @@ export function Nav({
   isManager?: boolean;
 }) {
   return (
-    <nav className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+    <nav className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70">
       <div className="mx-auto flex w-full max-w-7xl items-center gap-4 px-4 py-3 md:px-6">
         <Link href="/" className="shrink-0" aria-label="TPAR-DB home">
           <Wordmark size="md" />
