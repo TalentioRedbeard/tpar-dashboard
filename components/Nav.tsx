@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { href: "/reports",     label: "Reports" },
 ];
 
-export function Nav({ userEmail }: { userEmail: string | null }) {
+export function Nav({ userEmail, isTech }: { userEmail: string | null; isTech?: boolean }) {
   const showAdmin = isAdmin(userEmail);
   return (
     <nav className="border-b border-neutral-200 bg-white">
@@ -23,6 +23,16 @@ export function Nav({ userEmail }: { userEmail: string | null }) {
           TPAR-DB
         </Link>
         <ul className="flex flex-1 items-center gap-1 overflow-x-auto">
+          {isTech ? (
+            <li>
+              <Link
+                href="/me"
+                className="inline-block whitespace-nowrap rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-emerald-800 hover:bg-emerald-100"
+              >
+                My day
+              </Link>
+            </li>
+          ) : null}
           {NAV_ITEMS.map((item) => (
             <li key={item.href}>
               <Link

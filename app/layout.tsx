@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { getSessionUser } from "../lib/supabase-server";
+import { getCurrentTech } from "../lib/current-tech";
 import { Nav } from "../components/Nav";
 import { RegisterServiceWorker } from "../components/RegisterServiceWorker";
 
@@ -36,6 +37,8 @@ export default async function RootLayout({
   // Probe session — null on /login or /auth/* (no cookie yet, or middleware
   // redirected). Nav is only rendered when a session exists.
   const user = await getSessionUser().catch(() => null);
+  const me = user ? await getCurrentTech().catch(() => null) : null;
+  const isTech = !!me?.tech;
 
   return (
     <html
@@ -43,7 +46,7 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-neutral-50 text-neutral-900">
-        {user && <Nav userEmail={user.email} />}
+        {user && <Nav userEmail={user.email} isTech={isTech} />}
         <div className="flex-1">{children}</div>
         <RegisterServiceWorker />
       </body>
