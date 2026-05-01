@@ -5,7 +5,9 @@ import { NoteForm } from "../../../components/NoteForm";
 import { addCustomerNote } from "../../../lib/notes-actions";
 import { AgreementForm } from "../../../components/AgreementForm";
 import { AgreementStatusButton } from "../../../components/AgreementStatusButton";
+import { TechName } from "../../../components/ui/TechName";
 import { getCurrentTech } from "../../../lib/current-tech";
+import { getFormerTechNames } from "../../../lib/former-techs";
 import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
 import { StatCard } from "../../../components/ui/StatCard";
@@ -32,6 +34,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const me = await getCurrentTech().catch(() => null);
   const canWrite = !!me?.canWrite;
+  const formerSet = await getFormerTechNames();
   const supabase = db();
 
   const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes] = await Promise.all([
@@ -376,7 +379,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                       <td className="px-4 py-2 whitespace-nowrap text-neutral-700">
                         <Link href={`/job/${j.hcp_job_id}`} className="hover:underline">{(j.job_date as string) ?? "—"}</Link>
                       </td>
-                      <td className="px-4 py-2 text-neutral-700">{(j.tech_primary_name as string) ?? "—"}</td>
+                      <td className="px-4 py-2 text-neutral-700"><TechName name={j.tech_primary_name as string | null} formerSet={formerSet} /></td>
                       <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{fmtMoney(j.revenue)}</td>
                       <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}</td>
                       <td className="px-4 py-2">{j.gps_matched ? <Pill tone="green">yes</Pill> : <Pill tone="slate">no</Pill>}</td>

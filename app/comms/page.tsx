@@ -8,7 +8,9 @@ import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, fmtDateShort, type Column } from "../../components/Table";
 import { AckButton } from "../../components/AckButton";
+import { TechName } from "../../components/ui/TechName";
 import { getEffectiveTechName, getCurrentTech } from "../../lib/current-tech";
+import { getFormerTechShortNames } from "../../lib/former-techs";
 
 export const metadata = { title: "Comms · TPAR-DB" };
 
@@ -53,6 +55,7 @@ export default async function CommsPage({
 
   const me = await getCurrentTech().catch(() => null);
   const canWrite = !!me?.canWrite;
+  const formerShortSet = await getFormerTechShortNames();
 
   const supa = db();
   let query = supa
@@ -86,7 +89,7 @@ export default async function CommsPage({
           <span className="font-medium text-neutral-900">{r.customer_name ?? "—"}</span>
         ),
     },
-    { header: "Tech", cell: (r) => r.tech_short_name ?? "—" },
+    { header: "Tech", cell: (r) => <TechName name={r.tech_short_name} formerSet={formerShortSet} /> },
     {
       header: "Imp",
       cell: (r) =>

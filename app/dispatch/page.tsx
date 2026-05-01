@@ -5,6 +5,8 @@ import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { fmtMoney } from "../../components/Table";
+import { TechName } from "../../components/ui/TechName";
+import { getFormerTechNames } from "../../lib/former-techs";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
 
@@ -104,6 +106,7 @@ export default async function DispatchPage() {
   ]);
 
   const rows = (upcomingRes.data ?? []) as Appt[];
+  const formerSet = await getFormerTechNames();
   const staleRows = (staleRes.data ?? []) as Array<{
     appointment_id: string | null;
     hcp_job_id: string | null;
@@ -212,7 +215,9 @@ export default async function DispatchPage() {
                               {chicagoTime(r.scheduled_start)}
                             </td>
                             <td className="px-4 py-2 align-top">
-                              <div className="font-medium text-neutral-900">{r.tech_primary_name ?? "—"}</div>
+                              <div className="font-medium text-neutral-900">
+                                <TechName name={r.tech_primary_name} formerSet={formerSet} />
+                              </div>
                               {r.tech_all_names && r.tech_all_names.length > 1 ? (
                                 <div className="text-xs text-neutral-500">+{r.tech_all_names.length - 1} other</div>
                               ) : null}

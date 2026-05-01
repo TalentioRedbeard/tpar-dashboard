@@ -9,7 +9,9 @@ import { StatCard } from "../../../components/ui/StatCard";
 import { Pill } from "../../../components/ui/Pill";
 import { EmptyState } from "../../../components/ui/EmptyState";
 import { LinkButton } from "../../../components/ui/Button";
+import { TechName } from "../../../components/ui/TechName";
 import { getCurrentTech } from "../../../lib/current-tech";
+import { getFormerTechNames } from "../../../lib/former-techs";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const { id } = await params;
   const me = await getCurrentTech().catch(() => null);
   const canWrite = !!me?.canWrite;
+  const formerSet = await getFormerTechNames();
   const supabase = db();
 
   const { data: jobRow } = await supabase
@@ -108,7 +111,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         <Section title="At a glance">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatCard label="Date" value={(j.job_date as string) ?? "—"} />
-            <StatCard label="Tech" value={(j.tech_primary_name as string) ?? "—"} />
+            <StatCard label="Tech" value={<TechName name={j.tech_primary_name as string | null} formerSet={formerSet} />} />
             <StatCard label="Status" value={(j.appointment_status as string) ?? (j.status as string) ?? "—"} />
             <StatCard label="Crew size" value={(j.crew_size as number) ?? "—"} />
           </div>
@@ -183,7 +186,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                         <Pill tone="brand" mono>sim {Number(s.similarity).toFixed(2)}</Pill>
                         <span>{(s.job_date as string) ?? "no date"}</span>
                         <span>·</span>
-                        <span>{(s.tech_primary_name as string) ?? "—"}</span>
+                        <TechName name={s.tech_primary_name as string | null} formerSet={formerSet} />
                         <span>·</span>
                         <span className="font-medium text-neutral-700 tabular-nums">{fmtMoney(s.revenue)}</span>
                         {s.gross_margin_pct != null ? (
