@@ -45,7 +45,12 @@ export default async function JobsListPage({
   const page = Math.max(1, Number(params.page ?? "1"));
 
   // Resolve "mine" to the signed-in tech's name (admins can override via ?as=).
-  // job_360.tech_primary_name uses the HCP full name, so we filter on fullName.
+  // job_360.tech_primary_name and tech_all_names both use HCP full names.
+  // We filter on either: tech is the (currently-mislabeled) primary OR is in
+  // the assigned crew. Helpers see their own work; leads still see theirs.
+  // The "mislabeled primary" thing is a known issue — see project memory
+  // 'lead-vs-helper signal' — tech_primary_name = HCP assigned_employees[0]
+  // which sorts first-name alphabetically, not by role.
   const effective = mineOnly ? await getEffectiveTechName(asOverride) : null;
   const effectiveTechName = effective?.fullName ?? null;
 
@@ -57,9 +62,13 @@ export default async function JobsListPage({
       { count: "exact" }
     );
   if (q)      query = query.or(`customer_name.ilike.%${q}%,invoice_number.ilike.%${q}%`);
-  // "mine" filter takes precedence over the dropdown tech filter.
-  if (effectiveTechName) query = query.eq("tech_primary_name", effectiveTechName);
-  else if (tech) query = query.eq("tech_primary_name", tech);
+  // "mine" filter takes precedence over the dropdown tech filter. Match on
+  // either primary OR in tech_all_names so helpers see jobs they worked on.
+  if (effectiveTechName) {
+    query = query.or(`tech_primary_name.eq."${effectiveTechName}",tech_all_names.cs.{"${effectiveTechName}"}`);
+  } else if (tech) {
+    query = query.eq("tech_primary_name", tech);
+  }
   if (status) query = query.eq("appointment_status", status);
   if (outstandingOnly) query = query.gt("due_amount", 0);
   // Hide internal "TPAR" jobs by default — these are estimate-drafts, not
@@ -133,7 +142,7 @@ export default async function JobsListPage({
   const csvHref = `/jobs/export.csv?${new URLSearchParams(sharedFilters).toString()}`;
 
   const description = effectiveTechName
-    ? `Jobs where ${effectiveTechName} is the primary tech.`
+    ? `Jobs where ${effectiveTechName} is on the crew (lead or helper).`
     : "Active and recent jobs across the team.";
 
   return (
