@@ -153,9 +153,12 @@ export default async function PatternsReport() {
         <Table
           columns={repeatColumns}
           rows={repeatRows}
-          rowHref={(r) => (r.hcp_customer_id ? `/customer/${r.hcp_customer_id}` : null)}
+          rowHref={(r) => (r.hcp_customer_id ? `/customer/${r.hcp_customer_id}#agreement` : null)}
           emptyText="No repeat-job customers in the last 12 months."
         />
+        <p className="mt-2 text-xs text-neutral-500">
+          Click a row → opens customer with the agreement form pre-filled from this pattern&apos;s evidence.
+        </p>
       </section>
 
       <section className="mb-8">
@@ -168,7 +171,7 @@ export default async function PatternsReport() {
         <Table
           columns={recurringJobColumns}
           rows={recurringJobsRows}
-          rowHref={(r) => (r.hcp_customer_id ? `/customer/${r.hcp_customer_id}` : null)}
+          rowHref={(r) => (r.hcp_customer_id ? `/customer/${r.hcp_customer_id}#agreement` : null)}
           emptyText="No content-similar job recurrences detected."
         />
       </section>
@@ -183,7 +186,7 @@ export default async function PatternsReport() {
         <Table
           columns={commColumns}
           rows={commRows}
-          rowHref={(r) => (r.hcp_customer_id ? `/customer/${r.hcp_customer_id}` : null)}
+          rowHref={(r) => (r.hcp_customer_id ? `/customer/${r.hcp_customer_id}#agreement` : null)}
           emptyText="No recurring comm patterns detected."
         />
       </section>

@@ -2,6 +2,7 @@
 // active-link highlighting via Next.js segment matching is acceptable.
 
 import Link from "next/link";
+import { isAdmin } from "../lib/admin";
 
 const NAV_ITEMS = [
   { href: "/",            label: "Today" },
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
 ];
 
 export function Nav({ userEmail }: { userEmail: string | null }) {
+  const showAdmin = isAdmin(userEmail);
   return (
     <nav className="border-b border-neutral-200 bg-white">
       <div className="mx-auto flex w-full max-w-7xl items-center gap-6 px-4 py-2 text-sm">
@@ -31,6 +33,16 @@ export function Nav({ userEmail }: { userEmail: string | null }) {
               </Link>
             </li>
           ))}
+          {showAdmin ? (
+            <li>
+              <Link
+                href="/admin"
+                className="inline-block whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-800 hover:bg-amber-100"
+              >
+                Admin
+              </Link>
+            </li>
+          ) : null}
         </ul>
         <Link
           href="/search"

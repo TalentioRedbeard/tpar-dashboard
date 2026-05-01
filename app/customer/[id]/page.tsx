@@ -3,6 +3,8 @@ import { db } from "@/lib/supabase";
 import Link from "next/link";
 import { NoteForm } from "../../../components/NoteForm";
 import { addCustomerNote } from "../../../lib/notes-actions";
+import { AgreementForm } from "../../../components/AgreementForm";
+import { AgreementStatusButton } from "../../../components/AgreementStatusButton";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +20,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const supabase = db();
 
-  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes] = await Promise.all([
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -41,8 +43,61 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       .eq("hcp_customer_id", id)
       .order("created_at", { ascending: false })
       .limit(50),
+    supabase
+      .from("maintenance_agreements_v")
+      .select("*")
+      .eq("hcp_customer_id", id)
+      .order("status", { ascending: true })
+      .order("starts_on", { ascending: false }),
   ]);
   const notes = (notesRes.data ?? []) as CustomerNote[];
+  const agreements = (agreementsRes.data ?? []) as Array<{
+    id: number;
+    scope_text: string;
+    cadence_days: number | null;
+    base_price: string | number | null;
+    starts_on: string;
+    ends_on: string | null;
+    status: string;
+    origin_pattern: string | null;
+    next_visit_eta: string | null;
+    author_email: string;
+    created_at: string;
+  }>;
+  const hasRecurringSignal = !!recurringJobsRow.data || !!repeatRow.data;
+  const defaultOrigin: "recurring_jobs" | "repeat_jobs" | "manual" =
+    recurringJobsRow.data ? "recurring_jobs" : repeatRow.data ? "repeat_jobs" : "manual";
+
+  // Pre-fill the agreement scope when the customer shows a recurring signal
+  // and they don't already have an active agreement. This converts pattern
+  // detection into actionable suggestion at the form-fill layer.
+  function buildPrefilledScope(): string {
+    if (agreements.length > 0 && agreements.some((a) => a.status === "active")) return "";
+    const r = recurringJobsRow.data as Record<string, unknown> | null;
+    const p = repeatRow.data as Record<string, unknown> | null;
+    if (r) {
+      const pairs = r.recurring_job_pairs as number;
+      const earliest = r.earliest_job as string | null;
+      const latest = r.most_recent_job as string | null;
+      const sample = (r.sample_job_a as string | null)?.split("\n").find((l) => l.trim().length > 20)?.trim() ?? null;
+      const span = earliest && latest ? `${earliest} → ${latest}` : "";
+      return [
+        `Preventative service — recurring pattern detected: ${pairs} similar jobs ${span}.`,
+        sample ? `Representative scope: ${sample.slice(0, 200)}` : "",
+        `Replace recurring emergency-rate visits with scheduled cadence.`,
+      ].filter(Boolean).join("\n");
+    }
+    if (p) {
+      const count = p.job_count_12mo as number;
+      const span = p.span_days as number | null;
+      return [
+        `Preventative service — ${count} jobs in last 12 months${span ? ` (span ${span}d)` : ""}.`,
+        `Convert repeat-call cadence into a scheduled-service agreement.`,
+      ].filter(Boolean).join("\n");
+    }
+    return "";
+  }
+  const prefilledScope = buildPrefilledScope();
 
   if (!c.data) {
     return (
@@ -153,6 +208,59 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </ul>
         </section>
       )}
+
+      <section id="agreement" className="scroll-mt-20">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-xl font-semibold">Maintenance agreements</h2>
+          <span className="text-xs text-zinc-500">v0 — decision capture · execution coming in v1</span>
+        </div>
+        {agreements.length > 0 ? (
+          <ul className="mb-3 space-y-2">
+            {agreements.map((a) => (
+              <li key={a.id} className="rounded border border-zinc-200 bg-white p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div className="text-sm font-medium text-zinc-900">
+                    <span
+                      className={`mr-2 rounded-full px-2 py-0.5 text-xs ${
+                        a.status === "active"
+                          ? "bg-emerald-50 text-emerald-800"
+                          : a.status === "paused"
+                          ? "bg-amber-50 text-amber-800"
+                          : "bg-zinc-100 text-zinc-600"
+                      }`}
+                    >
+                      {a.status}
+                    </span>
+                    {a.cadence_days ? `every ${a.cadence_days}d` : "no cadence"}
+                    {a.base_price != null ? ` · $${Number(a.base_price).toLocaleString()}/visit` : ""}
+                  </div>
+                  <div className="text-xs text-zinc-500">
+                    {a.next_visit_eta ? `next ETA ${a.next_visit_eta}` : "—"}
+                    {" · "}
+                    started {a.starts_on}
+                    {a.origin_pattern && a.origin_pattern !== "manual" ? ` · from ${a.origin_pattern}` : ""}
+                  </div>
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">{a.scope_text}</p>
+                <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
+                  <span>by {a.author_email}</span>
+                  <AgreementStatusButton agreementId={a.id} currentStatus={a.status} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mb-3 text-sm text-zinc-500">
+            No agreements yet
+            {hasRecurringSignal ? " — but this customer shows recurring patterns; consider one." : "."}
+          </p>
+        )}
+        <AgreementForm
+          hcpCustomerId={id}
+          defaultOrigin={defaultOrigin}
+          prefilledScope={prefilledScope}
+        />
+      </section>
 
       <section>
         <h2 className="text-xl font-semibold mb-3">Operator notes</h2>
