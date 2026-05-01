@@ -14,7 +14,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./supabase";
-import { getSessionUser } from "./supabase-server";
+import { requireWriter } from "./current-tech";
 
 const MAX_NOTE_LEN = 10_000;
 
@@ -29,13 +29,13 @@ export async function addCustomerNote(formData: FormData): Promise<AddNoteResult
   if (!body) return { ok: false, error: "note body required" };
   if (body.length > MAX_NOTE_LEN) return { ok: false, error: `note too long (>${MAX_NOTE_LEN} chars)` };
 
-  const user = await getSessionUser();
-  if (!user?.email) return { ok: false, error: "not signed in" };
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
 
   const supa = db();
   const { error } = await supa.from("customer_notes").insert({
     hcp_customer_id: customerId,
-    author_email: user.email,
+    author_email: writer.email,
     body,
   });
   if (error) return { ok: false, error: error.message };
@@ -51,13 +51,13 @@ export async function addJobNote(formData: FormData): Promise<AddNoteResult> {
   if (!body) return { ok: false, error: "note body required" };
   if (body.length > MAX_NOTE_LEN) return { ok: false, error: `note too long (>${MAX_NOTE_LEN} chars)` };
 
-  const user = await getSessionUser();
-  if (!user?.email) return { ok: false, error: "not signed in" };
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
 
   const supa = db();
   const { error } = await supa.from("job_notes").insert({
     hcp_job_id: jobId,
-    author_email: user.email,
+    author_email: writer.email,
     body,
   });
   if (error) return { ok: false, error: error.message };
@@ -84,12 +84,12 @@ export async function ackComm(formData: FormData): Promise<AckCommResult> {
   if (!id || Number.isNaN(id)) return { ok: false, error: "missing comm_id" };
   if (action !== "ack" && action !== "unack") return { ok: false, error: "action must be ack|unack" };
 
-  const user = await getSessionUser();
-  if (!user?.email) return { ok: false, error: "not signed in" };
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
 
   const supa = db();
   const update = action === "ack"
-    ? { acked_at: new Date().toISOString(), acked_by: user.email }
+    ? { acked_at: new Date().toISOString(), acked_by: writer.email }
     : { acked_at: null, acked_by: null };
 
   const { error } = await supa

@@ -5,6 +5,7 @@ import { NoteForm } from "../../../components/NoteForm";
 import { addCustomerNote } from "../../../lib/notes-actions";
 import { AgreementForm } from "../../../components/AgreementForm";
 import { AgreementStatusButton } from "../../../components/AgreementStatusButton";
+import { getCurrentTech } from "../../../lib/current-tech";
 import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
 import { StatCard } from "../../../components/ui/StatCard";
@@ -29,6 +30,8 @@ function fmtMoney(n: unknown): string {
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const me = await getCurrentTech().catch(() => null);
+  const canWrite = !!me?.canWrite;
   const supabase = db();
 
   const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes] = await Promise.all([
@@ -291,7 +294,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                   <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-700">{a.scope_text}</p>
                   <div className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
                     <span>by {a.author_email}</span>
-                    <AgreementStatusButton agreementId={a.id} currentStatus={a.status} />
+                    {canWrite ? (
+                      <AgreementStatusButton agreementId={a.id} currentStatus={a.status} />
+                    ) : null}
                   </div>
                 </li>
               ))}
@@ -302,23 +307,35 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
               {hasRecurringSignal ? " — but this customer shows recurring patterns; consider one." : "."}
             </p>
           )}
-          <AgreementForm
-            hcpCustomerId={id}
-            defaultOrigin={defaultOrigin}
-            prefilledScope={prefilledScope}
-          />
+          {canWrite ? (
+            <AgreementForm
+              hcpCustomerId={id}
+              defaultOrigin={defaultOrigin}
+              prefilledScope={prefilledScope}
+            />
+          ) : (
+            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-500">
+              Manager view — read-only. New agreements can be created by Danny or a tech.
+            </div>
+          )}
         </Section>
 
         <Section title="Operator notes">
-          <div className="mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
-            <NoteForm
-              action={addCustomerNote}
-              hiddenFieldName="hcp_customer_id"
-              hiddenFieldValue={id}
-              placeholder="Internal note about this customer (not customer-facing)…"
-              label="Add note"
-            />
-          </div>
+          {canWrite ? (
+            <div className="mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
+              <NoteForm
+                action={addCustomerNote}
+                hiddenFieldName="hcp_customer_id"
+                hiddenFieldValue={id}
+                placeholder="Internal note about this customer (not customer-facing)…"
+                label="Add note"
+              />
+            </div>
+          ) : (
+            <div className="mb-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-500">
+              Manager view — read-only. Notes can be added by Danny or a tech.
+            </div>
+          )}
           {notes.length > 0 ? (
             <ul className="space-y-2">
               {notes.map((n) => (

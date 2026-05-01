@@ -38,7 +38,9 @@ export default async function RootLayout({
   // redirected). Nav is only rendered when a session exists.
   const user = await getSessionUser().catch(() => null);
   const me = user ? await getCurrentTech().catch(() => null) : null;
-  const isTech = !!me?.tech;
+  const isTech = !!me?.tech && me?.dashboardRole === "tech";
+  const isAdmin = !!me?.isAdmin;
+  const isManager = !!me?.isManager;
 
   return (
     <html
@@ -46,7 +48,14 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-neutral-50 text-neutral-900">
-        {user && <Nav userEmail={user.email} isTech={isTech} />}
+        {user && (
+          <Nav
+            userEmail={user.email}
+            isTech={isTech}
+            isAdmin={isAdmin}
+            isManager={isManager}
+          />
+        )}
         <div className="flex-1">{children}</div>
         <RegisterServiceWorker />
       </body>

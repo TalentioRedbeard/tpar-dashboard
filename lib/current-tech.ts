@@ -5,9 +5,14 @@ import { db } from "./supabase";
 import { getSessionUser } from "./supabase-server";
 import { isAdmin } from "./admin";
 
+export type DashboardRole = "admin" | "manager" | "tech" | null;
+
 export type CurrentTech = {
   email: string;
-  isAdmin: boolean;
+  isAdmin: boolean;          // env-fallback OR dashboardRole === 'admin'
+  isManager: boolean;        // dashboardRole === 'manager'
+  canWrite: boolean;         // 'admin' or 'tech'; manager and unknown blocked
+  dashboardRole: DashboardRole;
   tech: {
     tech_id: string;
     tech_short_name: string;
@@ -28,14 +33,25 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
   const lowerEmail = user.email.toLowerCase();
   const { data } = await supa
     .from("tech_directory")
-    .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, slack_user_id, notes, email, secondary_emails")
+    .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, slack_user_id, notes, email, secondary_emails, dashboard_role")
     .or(`email.ilike.${lowerEmail},secondary_emails.cs.{${lowerEmail}}`)
     .eq("is_active", true)
     .maybeSingle();
 
+  const dashboardRole = ((data?.dashboard_role as string | null) ?? null) as DashboardRole;
+  const envAdmin = isAdmin(user.email);
+  const isAdminFinal = envAdmin || dashboardRole === "admin";
+  const isManagerFinal = dashboardRole === "manager";
+  // Writers can mutate state. Managers are read-only by design (see
+  // 2026-05-01 from Danny). Unknown role = no writes either.
+  const canWrite = isAdminFinal || dashboardRole === "tech";
+
   return {
     email: user.email,
-    isAdmin: isAdmin(user.email),
+    isAdmin: isAdminFinal,
+    isManager: isManagerFinal,
+    canWrite,
+    dashboardRole,
     tech: data ? {
       tech_id: data.tech_id as string,
       tech_short_name: data.tech_short_name as string,
@@ -49,17 +65,44 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
 }
 
 // Role label for nav rendering decisions.
-//   "admin"   — DASHBOARD_ADMIN_EMAILS (full access)
-//   "tech"    — has a tech_directory row matching email
-//   "office"  — signed-in tulsapar.com but no tech row (Madisson, future hires)
+//   "admin"   — full read+write
+//   "manager" — full read, no writes
+//   "tech"    — scoped to own work
+//   "office"  — signed-in tulsapar.com but no tech row + no role
 //   null      — not signed in
-export type Role = "admin" | "tech" | "office" | null;
+export type Role = "admin" | "manager" | "tech" | "office" | null;
 
 export function roleFor(c: CurrentTech | null): Role {
   if (!c) return null;
   if (c.isAdmin) return "admin";
+  if (c.isManager) return "manager";
   if (c.tech) return "tech";
   return "office";
+}
+
+/**
+ * Server-action gate. Returns the email of the writer if allowed, or an
+ * error string if blocked. Use at the top of every mutating server action:
+ *
+ *   const writer = await requireWriter();
+ *   if (!writer.ok) return { ok: false, error: writer.error };
+ *   // now use writer.email as the author
+ *
+ * Managers are explicitly blocked. Office (signed-in but unlabeled) is also
+ * blocked — they should be assigned a dashboard_role before mutating.
+ */
+export async function requireWriter(): Promise<
+  | { ok: true; email: string; role: "admin" | "tech" }
+  | { ok: false; error: string }
+> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  if (me.isAdmin) return { ok: true, email: me.email, role: "admin" };
+  if (me.dashboardRole === "tech") return { ok: true, email: me.email, role: "tech" };
+  if (me.isManager) {
+    return { ok: false, error: "Managers are read-only on this dashboard. Ask Danny to take this action." };
+  }
+  return { ok: false, error: "Your account has no dashboard role assigned." };
 }
 
 // Shared helper: given the signed-in user and optional `?as=` override,

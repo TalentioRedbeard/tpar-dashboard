@@ -8,6 +8,7 @@ import { PageShell } from "../components/PageShell";
 import { Section } from "../components/ui/Section";
 import { Pill } from "../components/ui/Pill";
 import { EmptyState } from "../components/ui/EmptyState";
+import { getCurrentTech } from "../lib/current-tech";
 
 export const dynamic = "force-dynamic";
 
@@ -166,6 +167,8 @@ function fmtMoney(n: unknown): string {
 
 export default async function Today() {
   const { followups, leaders, recentJobs, patterns, arTop, todayAppts, error } = await loadData();
+  const me = await getCurrentTech().catch(() => null);
+  const canWrite = !!me?.canWrite;
   const apptCount = todayAppts.length;
   const techCount = new Set(todayAppts.map((a) => a.tech_primary_name).filter(Boolean)).size;
   const firstAppt = todayAppts[0]?.scheduled_start ? fmtTime(todayAppts[0].scheduled_start) : null;
@@ -330,7 +333,7 @@ export default async function Today() {
                     <span className="ml-auto text-xs text-neutral-500">
                       {new Date(f.occurred_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
                     </span>
-                    <AckButton commId={f.id} acked={!!f.acked_at} />
+                    <AckButton commId={f.id} acked={!!f.acked_at} canWrite={canWrite} />
                   </div>
                   <div className="text-sm">
                     {f.hcp_customer_id ? (

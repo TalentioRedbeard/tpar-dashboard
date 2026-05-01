@@ -8,12 +8,17 @@ import { db } from "../../../../../lib/supabase";
 import { PageShell } from "../../../../../components/PageShell";
 import { EstimateBuilder } from "../../../../../components/EstimateBuilder";
 import { getSessionUser } from "../../../../../lib/supabase-server";
+import { getCurrentTech } from "../../../../../lib/current-tech";
+import { EmptyState } from "../../../../../components/ui/EmptyState";
 
 export const metadata = { title: "New estimate · TPAR-DB" };
 
 export default async function NewEstimatePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) redirect(`/login?from=/job`);
+
+  const me = await getCurrentTech().catch(() => null);
+  const canWrite = !!me?.canWrite;
 
   const { id } = await params;
   const supa = db();
@@ -45,11 +50,18 @@ export default async function NewEstimatePage({ params }: { params: Promise<{ id
         <Link href={`/job/${id}`} className="text-xs text-neutral-500 hover:underline">← Back to job</Link>
       </div>
 
-      <EstimateBuilder
-        hcpJobId={id}
-        customerName={customerName}
-        defaultProjectName={defaultProjectName}
-      />
+      {canWrite ? (
+        <EstimateBuilder
+          hcpJobId={id}
+          customerName={customerName}
+          defaultProjectName={defaultProjectName}
+        />
+      ) : (
+        <EmptyState
+          title="Manager view — read-only."
+          description="Estimates are pushed to HCP by Danny or a tech. You're seeing the same context they would; the builder UI is hidden because submissions would be blocked server-side."
+        />
+      )}
     </PageShell>
   );
 }

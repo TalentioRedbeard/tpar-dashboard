@@ -9,6 +9,7 @@ import { StatCard } from "../../../components/ui/StatCard";
 import { Pill } from "../../../components/ui/Pill";
 import { EmptyState } from "../../../components/ui/EmptyState";
 import { LinkButton } from "../../../components/ui/Button";
+import { getCurrentTech } from "../../../lib/current-tech";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,8 @@ function fmtMoney(n: unknown): string {
 
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const me = await getCurrentTech().catch(() => null);
+  const canWrite = !!me?.canWrite;
   const supabase = db();
 
   const { data: jobRow } = await supabase
@@ -94,9 +97,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       backHref="/jobs"
       backLabel="All jobs"
       actions={
-        <LinkButton href={`/job/${id}/estimate/new`} variant="primary">
-          + Multi-option estimate
-        </LinkButton>
+        canWrite ? (
+          <LinkButton href={`/job/${id}/estimate/new`} variant="primary">
+            + Multi-option estimate
+          </LinkButton>
+        ) : null
       }
     >
       <div className="space-y-10">
@@ -200,15 +205,21 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         })()}
 
         <Section title="Operator notes">
-          <div className="mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
-            <NoteForm
-              action={addJobNote}
-              hiddenFieldName="hcp_job_id"
-              hiddenFieldValue={id}
-              placeholder="Internal note about this job (not customer-facing)…"
-              label="Add note"
-            />
-          </div>
+          {canWrite ? (
+            <div className="mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
+              <NoteForm
+                action={addJobNote}
+                hiddenFieldName="hcp_job_id"
+                hiddenFieldValue={id}
+                placeholder="Internal note about this job (not customer-facing)…"
+                label="Add note"
+              />
+            </div>
+          ) : (
+            <div className="mb-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-500">
+              Manager view — read-only. Notes can be added by Danny or a tech.
+            </div>
+          )}
           {notes.length > 0 ? (
             <ul className="space-y-2">
               {notes.map((n) => (

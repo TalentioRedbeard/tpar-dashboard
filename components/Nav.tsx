@@ -3,7 +3,6 @@
 // admin highlighted in amber, signed-in email + sign-out on the right.
 
 import Link from "next/link";
-import { isAdmin } from "../lib/admin";
 import { Wordmark } from "./ui/Brand";
 
 const NAV_ITEMS = [
@@ -16,8 +15,17 @@ const NAV_ITEMS = [
   { href: "/reports",   label: "Reports" },
 ];
 
-export function Nav({ userEmail, isTech }: { userEmail: string | null; isTech?: boolean }) {
-  const showAdmin = isAdmin(userEmail);
+export function Nav({
+  userEmail,
+  isTech,
+  isAdmin: showAdmin = false,
+  isManager = false,
+}: {
+  userEmail: string | null;
+  isTech?: boolean;
+  isAdmin?: boolean;
+  isManager?: boolean;
+}) {
   return (
     <nav className="sticky top-0 z-30 border-b border-neutral-200 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70">
       <div className="mx-auto flex w-full max-w-7xl items-center gap-4 px-4 py-3 md:px-6">
@@ -53,6 +61,14 @@ export function Nav({ userEmail, isTech }: { userEmail: string | null; isTech?: 
               >
                 Admin
               </Link>
+            </li>
+          ) : null}
+          {isManager ? (
+            <li
+              title="Manager — full read access; writes are admin-only."
+              className="inline-block whitespace-nowrap rounded-md bg-brand-50 px-3 py-1.5 font-medium text-brand-700 ring-1 ring-inset ring-brand-200"
+            >
+              Manager · read-only
             </li>
           ) : null}
         </ul>

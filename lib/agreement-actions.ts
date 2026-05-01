@@ -8,7 +8,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./supabase";
-import { getSessionUser } from "./supabase-server";
+import { requireWriter } from "./current-tech";
 
 export type AgreementResult =
   | { ok: true; id?: number }
@@ -54,8 +54,8 @@ export async function createAgreement(formData: FormData): Promise<AgreementResu
   const priceCents = parsePriceCents(formData.get("base_price"));
   if (priceCents === "invalid") return { ok: false, error: "base_price must be a non-negative number" };
 
-  const user = await getSessionUser();
-  if (!user?.email) return { ok: false, error: "not signed in" };
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
 
   const supa = db();
   const insertRow: Record<string, unknown> = {
@@ -65,7 +65,7 @@ export async function createAgreement(formData: FormData): Promise<AgreementResu
     base_price_cents: priceCents,
     status: "active",
     origin_pattern: origin,
-    author_email: user.email,
+    author_email: writer.email,
   };
   if (startsOn) insertRow.starts_on = startsOn;
   if (endsOn)   insertRow.ends_on   = endsOn;
@@ -85,7 +85,7 @@ export async function createAgreement(formData: FormData): Promise<AgreementResu
       action: "create",
       agreement_id: data?.id,
       hcp_customer_id: customerId,
-      author_email: user.email,
+      author_email: writer.email,
       scope_text: scopeText.slice(0, 200),
       cadence_days: cadence,
       base_price_cents: priceCents,
@@ -104,8 +104,8 @@ export async function updateAgreementStatus(formData: FormData): Promise<Agreeme
   if (!id || Number.isNaN(id)) return { ok: false, error: "missing agreement_id" };
   if (!STATUSES.has(status))   return { ok: false, error: "invalid status" };
 
-  const user = await getSessionUser();
-  if (!user?.email) return { ok: false, error: "not signed in" };
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
 
   const supa = db();
   const { data: prior, error: priorErr } = await supa
@@ -130,7 +130,7 @@ export async function updateAgreementStatus(formData: FormData): Promise<Agreeme
       action: "status_change",
       agreement_id: id,
       hcp_customer_id: prior.hcp_customer_id,
-      author_email: user.email,
+      author_email: writer.email,
       before: prior.status,
       after: status,
     },

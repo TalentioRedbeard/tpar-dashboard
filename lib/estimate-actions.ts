@@ -8,7 +8,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getSessionUser } from "./supabase-server";
+import { requireWriter } from "./current-tech";
 import { db } from "./supabase";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "";
@@ -29,8 +29,8 @@ export type EstimateResult =
   | { ok: false; error: string };
 
 export async function createEstimateForJob(formData: FormData): Promise<EstimateResult> {
-  const user = await getSessionUser();
-  if (!user?.email) return { ok: false, error: "not signed in" };
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
   if (!SUPABASE_URL || !SECRET) return { ok: false, error: "server config missing" };
 
   const hcpJobId = String(formData.get("hcp_job_id") ?? "").trim();
@@ -124,7 +124,7 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
     context: {
       hcp_job_id: hcpJobId,
       hcp_customer_id: hcpCustomerId,
-      author_email: user.email,
+      author_email: writer.email,
       estimate_id: parsed.estimate_id,
       estimate_number: parsed.estimate_number,
       option_count: options.length,
@@ -147,8 +147,8 @@ export type SendResult =
   | { ok: false; error: string };
 
 export async function sendEstimateToClient(formData: FormData): Promise<SendResult> {
-  const user = await getSessionUser();
-  if (!user?.email) return { ok: false, error: "not signed in" };
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
   if (!SUPABASE_URL || !SECRET) return { ok: false, error: "server config missing" };
 
   const estimateId = String(formData.get("estimate_id") ?? "").trim();
@@ -179,7 +179,7 @@ export async function sendEstimateToClient(formData: FormData): Promise<SendResu
     message: `estimate sent to customer from dashboard`,
     context: {
       estimate_id: estimateId,
-      author_email: user.email,
+      author_email: writer.email,
       sent_at: parsed.sent_at ?? null,
       sent_to: parsed.sent_to ?? null,
       sent_method: parsed.sent_method ?? null,

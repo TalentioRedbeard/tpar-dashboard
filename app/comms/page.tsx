@@ -8,7 +8,7 @@ import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, fmtDateShort, type Column } from "../../components/Table";
 import { AckButton } from "../../components/AckButton";
-import { getEffectiveTechName } from "../../lib/current-tech";
+import { getEffectiveTechName, getCurrentTech } from "../../lib/current-tech";
 
 export const metadata = { title: "Comms · TPAR-DB" };
 
@@ -50,6 +50,9 @@ export default async function CommsPage({
   // so we filter on shortName here.
   const effective = mineOnly ? await getEffectiveTechName(asOverride) : null;
   const effectiveTechName = effective?.shortName ?? null;
+
+  const me = await getCurrentTech().catch(() => null);
+  const canWrite = !!me?.canWrite;
 
   const supa = db();
   let query = supa
@@ -114,7 +117,7 @@ export default async function CommsPage({
               <span className="text-[10px] uppercase tracking-wide text-amber-700">
                 {r.flags.filter((f) => ["needs_followup", "unresolved", "escalation_needed"].includes(f)).join(", ")}
               </span>
-              <AckButton commId={r.id} acked={!!r.acked_at} />
+              <AckButton commId={r.id} acked={!!r.acked_at} canWrite={canWrite} />
             </div>
           )}
         </div>
