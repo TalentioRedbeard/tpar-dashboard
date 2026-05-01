@@ -19,7 +19,7 @@ export default async function NewEstimatePage({ params }: { params: Promise<{ id
   const supa = db();
   const { data: job } = await supa
     .from("job_360")
-    .select("hcp_job_id, hcp_customer_id, customer_name, address_id, street, city, zip, invoice_number, hcp_notes, scheduled_start")
+    .select("hcp_job_id, hcp_customer_id, customer_name, street, city, zip, invoice_number")
     .eq("hcp_job_id", id)
     .maybeSingle();
 

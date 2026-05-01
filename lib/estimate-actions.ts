@@ -38,11 +38,13 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
   const message  = String(formData.get("message") ?? "").trim();
   if (!hcpJobId) return { ok: false, error: "hcp_job_id required" };
 
-  // Pull customer + address from job_360 → required by create-estimate-direct
+  // Pull customer from job_360. address_id isn't on job_360 (HCP picks the
+  // default customer address); pass it through only if a future caller
+  // ever provides it on the form.
   const supa = db();
   const { data: job, error: jobErr } = await supa
     .from("job_360")
-    .select("hcp_customer_id, address_id")
+    .select("hcp_customer_id")
     .eq("hcp_job_id", hcpJobId)
     .maybeSingle();
   if (jobErr || !job) return { ok: false, error: `job lookup: ${jobErr?.message ?? "not found"}` };
@@ -99,7 +101,6 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
     hcp_customer_id: hcpCustomerId,
     options,
   };
-  if (job.address_id) body.address_id = job.address_id;
   if (note) body.note = note.slice(0, 8000);
   if (message) body.message = message.slice(0, 8000);
 
