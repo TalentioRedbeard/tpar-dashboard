@@ -24,17 +24,27 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
   if (!user?.email) return null;
 
   const supa = db();
+  // Match on primary email OR any secondary email. Lowercase compare on both sides.
+  const lowerEmail = user.email.toLowerCase();
   const { data } = await supa
     .from("tech_directory")
-    .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, slack_user_id, notes")
-    .ilike("email", user.email)
+    .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, slack_user_id, notes, email, secondary_emails")
+    .or(`email.ilike.${lowerEmail},secondary_emails.cs.{${lowerEmail}}`)
     .eq("is_active", true)
     .maybeSingle();
 
   return {
     email: user.email,
     isAdmin: isAdmin(user.email),
-    tech: data ?? null,
+    tech: data ? {
+      tech_id: data.tech_id as string,
+      tech_short_name: data.tech_short_name as string,
+      hcp_full_name: data.hcp_full_name as string | null,
+      hcp_employee_id: data.hcp_employee_id as string | null,
+      is_active: data.is_active as boolean,
+      slack_user_id: data.slack_user_id as string | null,
+      notes: data.notes as string | null,
+    } : null,
   };
 }
 
