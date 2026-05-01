@@ -19,7 +19,7 @@ export default async function NewEstimatePage({ params }: { params: Promise<{ id
   const supa = db();
   const { data: job } = await supa
     .from("job_360")
-    .select("hcp_job_id, hcp_customer_id, customer_name, street, city, zip, invoice_number")
+    .select("hcp_job_id, hcp_customer_id, customer_name, street, city, invoice_number")
     .eq("hcp_job_id", id)
     .maybeSingle();
 
@@ -39,7 +39,7 @@ export default async function NewEstimatePage({ params }: { params: Promise<{ id
   return (
     <PageShell
       title="Build a multi-option estimate"
-      description={`${customerName}${job.street ? ` · ${job.street}, ${job.city ?? ""}` : ""}${job.zip ? ` ${job.zip}` : ""} — pushes to HCP after review.`}
+      description={`${customerName}${job.street ? ` · ${job.street}${job.city ? ", " + job.city : ""}` : ""} — pushes to HCP after review.`}
     >
       <div className="mb-4">
         <Link href={`/job/${id}`} className="text-xs text-neutral-500 hover:underline">← Back to job</Link>
