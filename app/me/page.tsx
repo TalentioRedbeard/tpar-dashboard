@@ -25,17 +25,48 @@ function fmtDate(s: string | null): string {
   return s.slice(0, 10);
 }
 
-export default async function MyPage() {
+export default async function MyPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/me");
-  // If signed-in but not a tech, gently redirect to /
-  if (!me.tech) redirect("/?msg=not_a_tech");
 
-  const techName = me.tech.tech_short_name;
+  // Admin "view-as" override: ?as=<tech_short_name> renders that tech's lane.
+  // Useful for QA + admin impersonation without changing identity.
+  const sp = await searchParams;
+  const asOverride = sp?.as?.trim() ?? "";
+  let techName: string | null = null;
+  let viewingAs: string | null = null;
+
+  if (asOverride && me.isAdmin) {
+    // Confirm the requested tech exists in the directory
+    const supaCheck = db();
+    const { data } = await supaCheck
+      .from("tech_directory")
+      .select("tech_short_name")
+      .ilike("tech_short_name", asOverride)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (data?.tech_short_name) {
+      techName = data.tech_short_name as string;
+      viewingAs = techName;
+    } else {
+      // Fall back to admin's own tech identity if override doesn't resolve
+      techName = me.tech?.tech_short_name ?? null;
+    }
+  } else {
+    techName = me.tech?.tech_short_name ?? null;
+  }
+
+  if (!techName) redirect("/?msg=not_a_tech");
+
   const supa = db();
   const today = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [apptsRes, commsRes, vehicleRes, kpiRes] = await Promise.all([
+  // For admin "view-as" picker, also fetch the active tech list
+  const techListRes = me.isAdmin
+    ? supa.from("tech_directory").select("tech_short_name").eq("is_active", true).order("tech_short_name")
+    : Promise.resolve({ data: null });
+
+  const [apptsRes, commsRes, vehicleRes, kpiRes, techListResolved] = await Promise.all([
     // Today's appointments where this tech is primary
     supa
       .from("appointment_location_v")
@@ -64,18 +95,44 @@ export default async function MyPage() {
       .select("*")
       .eq("tech_name", techName)
       .maybeSingle(),
+    techListRes,
   ]);
 
   const appts = (apptsRes.data ?? []) as Array<Record<string, unknown>>;
   const comms = (commsRes.data ?? []) as Array<Record<string, unknown>>;
   const vehicle = vehicleRes.data as Record<string, unknown> | null;
   const kpi = kpiRes.data as Record<string, unknown> | null;
+  const techList = ((techListResolved as { data: Array<{ tech_short_name: string }> | null }).data ?? []).map((t) => t.tech_short_name);
 
   return (
     <PageShell
       title={`Hi, ${techName}`}
-      description={`Your day. ${appts.length} appointment${appts.length === 1 ? "" : "s"} today.`}
+      description={`${viewingAs ? `(viewing as ${viewingAs}) ` : ""}Your day. ${appts.length} appointment${appts.length === 1 ? "" : "s"} today.`}
     >
+      {viewingAs ? (
+        <div className="mb-4 flex items-center justify-between rounded-2xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm">
+          <span className="text-amber-900">
+            🎭 <strong>Admin view-as</strong> — rendering as <code className="rounded bg-white px-1 py-0.5">{viewingAs}</code>. They see this same data when they sign in.
+          </span>
+          <a href="/me" className="rounded-md bg-amber-200 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-300">
+            Exit view-as
+          </a>
+        </div>
+      ) : me.isAdmin && techList.length > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-4 py-2 text-xs">
+          <span className="font-medium text-neutral-600">Admin view-as:</span>
+          {techList.filter((n) => n !== techName).map((n) => (
+            <a
+              key={n}
+              href={`/me?as=${encodeURIComponent(n)}`}
+              className="rounded-md border border-neutral-300 bg-white px-2 py-0.5 text-neutral-700 hover:bg-neutral-50"
+            >
+              {n}
+            </a>
+          ))}
+        </div>
+      ) : null}
+
       {/* Today's appointments */}
       <section className="mb-8">
         <h2 className="mb-3 text-base font-semibold text-neutral-800">Today&apos;s appointments</h2>
