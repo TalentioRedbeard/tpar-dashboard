@@ -15,6 +15,11 @@ const NAV_ITEMS = [
   { href: "/reports",   label: "Reports" },
 ];
 
+const TOOL_ITEMS = [
+  { href: "/price", label: "Price" },
+  { href: "/ask",   label: "Ask" },
+];
+
 export function Nav({
   userEmail,
   isTech,
@@ -48,6 +53,18 @@ export function Nav({
               <Link
                 href={item.href}
                 className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 text-neutral-600 transition hover:bg-neutral-100 hover:text-neutral-900"
+              >
+                {item.label}
+              </Link>
+            </li>
+          ))}
+          {/* Subtle visual separator before tools */}
+          <li className="mx-1 h-5 w-px bg-neutral-200" aria-hidden="true" />
+          {TOOL_ITEMS.map((item) => (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 text-neutral-600 transition hover:bg-brand-50 hover:text-brand-700"
               >
                 {item.label}
               </Link>
