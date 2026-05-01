@@ -8,6 +8,8 @@ import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, fmtMoney, fmtPct, fmtDateShort, type Column } from "../../components/Table";
 import { getEffectiveTechName } from "../../lib/current-tech";
+import { getFormerTechNames } from "../../lib/former-techs";
+import { TechName } from "../../components/ui/TechName";
 
 export const metadata = { title: "Jobs · TPAR-DB" };
 
@@ -82,6 +84,8 @@ export default async function JobsListPage({
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   const rows = (data ?? []) as JobRow[];
 
+  const formerSet = await getFormerTechNames();
+
   // Tech list from tech_directory — authoritative, no scan-and-distinct hack.
   const { data: techData } = await supa
     .from("tech_directory")
@@ -96,7 +100,7 @@ export default async function JobsListPage({
     { header: "Date", cell: (r) => fmtDateShort(r.job_date), className: "text-neutral-600" },
     { header: "Invoice", cell: (r) => r.invoice_number ?? "—", className: "font-mono text-xs" },
     { header: "Customer", cell: (r) => r.customer_name ?? "—", className: "font-medium text-neutral-900" },
-    { header: "Tech", cell: (r) => r.tech_primary_name ?? "—" },
+    { header: "Tech", cell: (r) => <TechName name={r.tech_primary_name} formerSet={formerSet} /> },
     { header: "Status", cell: (r) => r.appointment_status ?? "—", className: "text-neutral-600" },
     { header: "Revenue", cell: (r) => fmtMoney(r.revenue), align: "right" },
     {

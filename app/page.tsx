@@ -8,7 +8,9 @@ import { PageShell } from "../components/PageShell";
 import { Section } from "../components/ui/Section";
 import { Pill } from "../components/ui/Pill";
 import { EmptyState } from "../components/ui/EmptyState";
+import { TechName } from "../components/ui/TechName";
 import { getCurrentTech } from "../lib/current-tech";
+import { getFormerTechNames } from "../lib/former-techs";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +118,10 @@ async function loadData() {
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, tech_primary_name, status, street, city")
       .gte("scheduled_start", todayStart)
       .lte("scheduled_start", todayEnd)
+      // Hide cancelled — they aren't on the books
+      .not("status", "in", '("pro canceled","user canceled","cancelled","canceled")')
+      // Hide internal "TPAR" jobs — same filter the /jobs and /customers list pages apply
+      .not("customer_name", "in", '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")')
       .order("scheduled_start", { ascending: true }),
   ]);
 
@@ -169,6 +175,7 @@ export default async function Today() {
   const { followups, leaders, recentJobs, patterns, arTop, todayAppts, error } = await loadData();
   const me = await getCurrentTech().catch(() => null);
   const canWrite = !!me?.canWrite;
+  const formerSet = await getFormerTechNames();
   const apptCount = todayAppts.length;
   const techCount = new Set(todayAppts.map((a) => a.tech_primary_name).filter(Boolean)).size;
   const firstAppt = todayAppts[0]?.scheduled_start ? fmtTime(todayAppts[0].scheduled_start) : null;
@@ -229,7 +236,7 @@ export default async function Today() {
                       ) : (
                         <span className="font-medium">{a.customer_name ?? "—"}</span>
                       )}
-                      <span className="text-brand-900/60"> · {a.tech_primary_name ?? "—"}</span>
+                      <span className="text-brand-900/60"> · <TechName name={a.tech_primary_name} formerSet={formerSet} /></span>
                     </span>
                   </li>
                 ))}
@@ -433,7 +440,7 @@ export default async function Today() {
                           {j.customer_name ?? "(no name)"}
                         </Link>
                       </td>
-                      <td className="px-4 py-2 text-neutral-700">{j.tech_primary_name ?? "—"}</td>
+                      <td className="px-4 py-2 text-neutral-700"><TechName name={j.tech_primary_name} formerSet={formerSet} /></td>
                       <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{fmtMoney(j.revenue)}</td>
                       <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}</td>
                       <td className="px-4 py-2">{j.gps_matched ? <Pill tone="green">yes</Pill> : <Pill tone="slate">no</Pill>}</td>
