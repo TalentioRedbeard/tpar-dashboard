@@ -63,13 +63,17 @@ export function roleFor(c: CurrentTech | null): Role {
 }
 
 // Shared helper: given the signed-in user and optional `?as=` override,
-// return the tech_short_name that "mine" filters should use. Admins can
-// impersonate any active tech via ?as=. Non-admin techs always see their
-// own. Returns null if the caller isn't a tech (or admin view-as didn't
-// resolve).
+// return both the short name (matches communication_events.tech_short_name)
+// and the full HCP name (matches job_360.tech_primary_name and
+// appointments_master.tech_primary_name). Different surfaces match on
+// different columns, so callers pick which one to use.
+//
+// Admins can impersonate any active tech via ?as=. Non-admin techs always
+// see their own. Returns null if the caller isn't a tech (or admin view-as
+// didn't resolve).
 export async function getEffectiveTechName(
   asOverride: string | null
-): Promise<{ techName: string; viewingAs: string | null } | null> {
+): Promise<{ shortName: string; fullName: string | null; viewingAs: string | null } | null> {
   const me = await getCurrentTech();
   if (!me) return null;
 
@@ -77,17 +81,25 @@ export async function getEffectiveTechName(
     const supa = db();
     const { data } = await supa
       .from("tech_directory")
-      .select("tech_short_name")
+      .select("tech_short_name, hcp_full_name")
       .ilike("tech_short_name", asOverride)
       .eq("is_active", true)
       .maybeSingle();
     if (data?.tech_short_name) {
-      return { techName: data.tech_short_name as string, viewingAs: data.tech_short_name as string };
+      return {
+        shortName: data.tech_short_name as string,
+        fullName: (data.hcp_full_name as string | null) ?? null,
+        viewingAs: data.tech_short_name as string,
+      };
     }
   }
 
   if (me.tech?.tech_short_name) {
-    return { techName: me.tech.tech_short_name, viewingAs: null };
+    return {
+      shortName: me.tech.tech_short_name,
+      fullName: me.tech.hcp_full_name,
+      viewingAs: null,
+    };
   }
   return null;
 }

@@ -45,8 +45,9 @@ export default async function JobsListPage({
   const page = Math.max(1, Number(params.page ?? "1"));
 
   // Resolve "mine" to the signed-in tech's name (admins can override via ?as=).
+  // job_360.tech_primary_name uses the HCP full name, so we filter on fullName.
   const effective = mineOnly ? await getEffectiveTechName(asOverride) : null;
-  const effectiveTechName = effective?.techName ?? null;
+  const effectiveTechName = effective?.fullName ?? null;
 
   const supa = db();
   let query = supa

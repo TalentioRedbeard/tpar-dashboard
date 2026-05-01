@@ -46,8 +46,10 @@ export default async function CommsPage({
   const asOverride = (params.as ?? "").trim() || null;
   const page = Math.max(1, Number(params.page ?? "1"));
 
+  // communication_events.tech_short_name uses the short name (e.g. "Danny"),
+  // so we filter on shortName here.
   const effective = mineOnly ? await getEffectiveTechName(asOverride) : null;
-  const effectiveTechName = effective?.techName ?? null;
+  const effectiveTechName = effective?.shortName ?? null;
 
   const supa = db();
   let query = supa
