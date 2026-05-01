@@ -5,6 +5,11 @@ import { NoteForm } from "../../../components/NoteForm";
 import { addCustomerNote } from "../../../lib/notes-actions";
 import { AgreementForm } from "../../../components/AgreementForm";
 import { AgreementStatusButton } from "../../../components/AgreementStatusButton";
+import { PageShell } from "../../../components/PageShell";
+import { Section } from "../../../components/ui/Section";
+import { StatCard } from "../../../components/ui/StatCard";
+import { Pill } from "../../../components/ui/Pill";
+import { EmptyState } from "../../../components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +20,12 @@ type CustomerNote = {
   body: string;
   created_at: string;
 };
+
+function fmtMoney(n: unknown): string {
+  if (n == null) return "—";
+  const v = Number(n);
+  return Number.isFinite(v) ? `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—";
+}
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -68,9 +79,6 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const defaultOrigin: "recurring_jobs" | "repeat_jobs" | "manual" =
     recurringJobsRow.data ? "recurring_jobs" : repeatRow.data ? "repeat_jobs" : "manual";
 
-  // Pre-fill the agreement scope when the customer shows a recurring signal
-  // and they don't already have an active agreement. This converts pattern
-  // detection into actionable suggestion at the form-fill layer.
   function buildPrefilledScope(): string {
     if (agreements.length > 0 && agreements.some((a) => a.status === "active")) return "";
     const r = recurringJobsRow.data as Record<string, unknown> | null;
@@ -101,265 +109,298 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
   if (!c.data) {
     return (
-      <main className="mx-auto max-w-4xl p-6">
-        <Link href="/" className="text-sm text-zinc-500 hover:underline">← Today</Link>
-        <h1 className="text-2xl font-bold mt-3">Customer not found</h1>
-        <p className="text-sm text-zinc-500 mt-2">No customer_360 row for <code className="px-1 py-0.5 bg-zinc-100 rounded">{id}</code></p>
-      </main>
+      <PageShell title="Customer not found" backHref="/" backLabel="Today">
+        <EmptyState
+          title="No customer_360 row for this id."
+          description={
+            <>
+              Looked up <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-xs">{id}</code>.
+            </>
+          }
+        />
+      </PageShell>
     );
   }
 
   const cust = c.data as Record<string, unknown>;
+
   return (
-    <main className="mx-auto max-w-5xl p-6 space-y-8">
-      <div>
-        <Link href="/" className="text-sm text-zinc-500 hover:underline">← Today</Link>
-        <h1 className="text-3xl font-bold mt-2">{cust.name as string ?? id}</h1>
-        <p className="text-sm text-zinc-500 mt-1 font-mono">{id}</p>
-      </div>
-
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat label="Lifetime jobs" value={cust.lifetime_job_count as number} />
-        <Stat label="Paid LTD" value={`$${Number(cust.lifetime_paid_revenue_dollars).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-        <Stat label="Outstanding" value={Number(cust.outstanding_due_dollars) > 0 ? `$${Number(cust.outstanding_due_dollars).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"} tone={Number(cust.outstanding_due_dollars) > 0 ? "red" : "neutral"} />
-        <Stat label="Open follow-ups" value={cust.open_followups as number} tone={Number(cust.open_followups) > 0 ? "amber" : "neutral"} />
-        <Stat label="Comms 90d" value={cust.comm_count_90d as number} />
-        <Stat label="Lifetime comms" value={cust.lifetime_comm_count as number} />
-        <Stat label="Negative 90d" value={cust.negative_comms_90d as number} tone={Number(cust.negative_comms_90d) > 0 ? "red" : "neutral"} />
-        <Stat label="Positive 90d" value={cust.positive_comms_90d as number} tone={Number(cust.positive_comms_90d) > 0 ? "green" : "neutral"} />
-      </section>
-
-      {Array.isArray(cust.topic_set) && cust.topic_set.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-500 mb-2">Topics seen</h2>
-          <div className="flex flex-wrap gap-1">
-            {(cust.topic_set as string[]).map((t) => (
-              <span key={t} className="inline-flex px-2 py-0.5 rounded-full text-xs bg-zinc-100 text-zinc-700 ring-1 ring-zinc-200">{t}</span>
-            ))}
+    <PageShell
+      kicker="Customer"
+      title={(cust.name as string) ?? id}
+      description={
+        <span className="font-mono text-xs text-neutral-500">{id}</span>
+      }
+      backHref="/customers"
+      backLabel="All customers"
+    >
+      <div className="space-y-10">
+        <Section title="Lifetime + signal">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatCard label="Lifetime jobs" value={(cust.lifetime_job_count as number) ?? 0} />
+            <StatCard label="Paid LTD" value={fmtMoney(cust.lifetime_paid_revenue_dollars)} tone="brand" />
+            <StatCard
+              label="Outstanding"
+              value={Number(cust.outstanding_due_dollars) > 0 ? fmtMoney(cust.outstanding_due_dollars) : "—"}
+              tone={Number(cust.outstanding_due_dollars) > 0 ? "red" : "neutral"}
+            />
+            <StatCard
+              label="Open follow-ups"
+              value={(cust.open_followups as number) ?? 0}
+              tone={Number(cust.open_followups) > 0 ? "amber" : "neutral"}
+            />
           </div>
-        </section>
-      )}
+          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatCard label="Comms 90d" value={(cust.comm_count_90d as number) ?? 0} />
+            <StatCard label="Lifetime comms" value={(cust.lifetime_comm_count as number) ?? 0} />
+            <StatCard
+              label="Negative 90d"
+              value={(cust.negative_comms_90d as number) ?? 0}
+              tone={Number(cust.negative_comms_90d) > 0 ? "red" : "neutral"}
+            />
+            <StatCard
+              label="Positive 90d"
+              value={(cust.positive_comms_90d as number) ?? 0}
+              tone={Number(cust.positive_comms_90d) > 0 ? "green" : "neutral"}
+            />
+          </div>
+        </Section>
 
-      {!!cust.ai_summary && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-500 mb-2">AI summary (existing customer card)</h2>
-          <p className="text-sm leading-relaxed">{cust.ai_summary as string}</p>
-        </section>
-      )}
+        {Array.isArray(cust.topic_set) && (cust.topic_set as string[]).length > 0 && (
+          <Section title="Topics seen">
+            <div className="flex flex-wrap gap-1.5">
+              {(cust.topic_set as string[]).map((t) => (
+                <Pill key={t} tone="slate">{t}</Pill>
+              ))}
+            </div>
+          </Section>
+        )}
 
-      {(repeatRow.data || recurringJobsRow.data) && (
-        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <h2 className="text-sm font-semibold text-amber-900 mb-2">Pattern signal — preventative-agreement candidate</h2>
-          <ul className="space-y-1 text-sm text-amber-900">
-            {repeatRow.data && (() => {
-              const r = repeatRow.data as Record<string, unknown>;
-              return (
-                <li>
-                  <strong>{r.job_count_12mo as number}</strong> jobs in {r.span_days as number}d
-                  {" · avg "}
-                  <strong>{r.avg_days_between as number}d</strong> between visits
-                  {" · "}
-                  ${Number(r.total_revenue_12mo).toLocaleString(undefined, { maximumFractionDigits: 0 })} revenue last 12mo
-                  {(r.preventative_candidate as boolean) && <span className="ml-2 inline-flex px-2 py-0.5 rounded bg-amber-200 text-amber-900 text-xs font-medium">flagged</span>}
-                </li>
-              );
-            })()}
-            {recurringJobsRow.data && (() => {
-              const r = recurringJobsRow.data as Record<string, unknown>;
-              return (
-                <li>
-                  <strong>{r.recurring_job_pairs as number}</strong> same-kind job pair{(r.recurring_job_pairs as number) === 1 ? "" : "s"}
-                  {" · max similarity "}
-                  <strong>{Number(r.max_similarity).toFixed(2)}</strong>
-                  {" · "}
-                  spans {r.earliest_job as string} → {r.most_recent_job as string}
-                </li>
-              );
-            })()}
-          </ul>
-        </section>
-      )}
+        {!!cust.ai_summary && (
+          <Section title="AI summary">
+            <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+              <p className="text-sm leading-relaxed text-neutral-800">{cust.ai_summary as string}</p>
+            </div>
+          </Section>
+        )}
 
-      {Array.isArray(similarRes.data) && (similarRes.data as Array<Record<string, unknown>>).length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-500 mb-2">Similar customers (cosine on richer 2026-04-30 embeddings)</h2>
-          <ul className="space-y-1">
-            {(similarRes.data as Array<Record<string, unknown>>).map((s) => {
-              const overlap = (s.topic_overlap as string[] | null) ?? [];
-              return (
-                <li key={s.hcp_customer_id as string} className="border border-zinc-200 rounded p-2 hover:bg-zinc-50">
-                  <Link href={`/customer/${s.hcp_customer_id}`} className="font-medium hover:underline">
-                    {s.customer_name as string}
-                  </Link>
-                  <span className="ml-2 text-xs text-zinc-500">
-                    sim {Number(s.similarity).toFixed(2)}
-                    {" · "}
-                    comms 90d: {(s.comm_count_90d as number) ?? 0}
-                    {Number(s.outstanding_due_dollars) > 0 && (
-                      <span className="ml-1 text-red-700">· ${Number(s.outstanding_due_dollars).toLocaleString(undefined, { maximumFractionDigits: 0 })} due</span>
+        {(repeatRow.data || recurringJobsRow.data) && (
+          <section>
+            <div className="rounded-2xl border border-accent-100 bg-accent-50 p-5">
+              <div className="mb-2 flex items-center gap-2">
+                <Pill tone="amber">Pattern signal</Pill>
+                <span className="text-sm font-semibold text-accent-700">Preventative-agreement candidate</span>
+              </div>
+              <ul className="space-y-1 text-sm text-accent-700/90">
+                {repeatRow.data && (() => {
+                  const r = repeatRow.data as Record<string, unknown>;
+                  return (
+                    <li>
+                      <strong>{r.job_count_12mo as number}</strong> jobs in {r.span_days as number}d
+                      {" · avg "}
+                      <strong>{r.avg_days_between as number}d</strong> between visits
+                      {" · "}
+                      {fmtMoney(r.total_revenue_12mo)} revenue last 12mo
+                      {(r.preventative_candidate as boolean) && (
+                        <span className="ml-2"><Pill tone="amber" size="sm">flagged</Pill></span>
+                      )}
+                    </li>
+                  );
+                })()}
+                {recurringJobsRow.data && (() => {
+                  const r = recurringJobsRow.data as Record<string, unknown>;
+                  return (
+                    <li>
+                      <strong>{r.recurring_job_pairs as number}</strong> same-kind job pair{(r.recurring_job_pairs as number) === 1 ? "" : "s"}
+                      {" · max similarity "}
+                      <strong>{Number(r.max_similarity).toFixed(2)}</strong>
+                      {" · "}
+                      spans {r.earliest_job as string} → {r.most_recent_job as string}
+                    </li>
+                  );
+                })()}
+              </ul>
+            </div>
+          </section>
+        )}
+
+        {Array.isArray(similarRes.data) && (similarRes.data as Array<Record<string, unknown>>).length > 0 && (
+          <Section
+            title="Similar customers"
+            description="Cosine similarity over richer 2026-04-30 embeddings."
+          >
+            <ul className="space-y-2">
+              {(similarRes.data as Array<Record<string, unknown>>).map((s) => {
+                const overlap = (s.topic_overlap as string[] | null) ?? [];
+                return (
+                  <li key={s.hcp_customer_id as string} className="rounded-2xl border border-neutral-200 bg-white p-3 transition hover:border-neutral-300 hover:shadow-sm">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <Link href={`/customer/${s.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">
+                        {s.customer_name as string}
+                      </Link>
+                      <div className="flex items-center gap-2 text-xs text-neutral-500">
+                        <Pill tone="brand" mono>sim {Number(s.similarity).toFixed(2)}</Pill>
+                        <span>comms 90d: {(s.comm_count_90d as number) ?? 0}</span>
+                        {Number(s.outstanding_due_dollars) > 0 ? (
+                          <span className="text-red-700">· {fmtMoney(s.outstanding_due_dollars)} due</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    {overlap.length > 0 && (
+                      <div className="mt-1 text-xs text-neutral-500">shared topics: {overlap.join(", ")}</div>
                     )}
-                  </span>
-                  {overlap.length > 0 && (
-                    <div className="text-xs text-zinc-500 mt-0.5">shared topics: {overlap.join(", ")}</div>
-                  )}
+                  </li>
+                );
+              })}
+            </ul>
+          </Section>
+        )}
+
+        <Section
+          id="agreement"
+          title="Maintenance agreements"
+          description="Decision capture today; auto-scheduling in v1."
+        >
+          {agreements.length > 0 ? (
+            <ul className="mb-3 space-y-2">
+              {agreements.map((a) => (
+                <li key={a.id} className="rounded-2xl border border-neutral-200 bg-white p-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-neutral-900">
+                      <Pill
+                        tone={
+                          a.status === "active" ? "green"
+                            : a.status === "paused" ? "amber"
+                            : "neutral"
+                        }
+                      >
+                        {a.status}
+                      </Pill>
+                      <span>{a.cadence_days ? `every ${a.cadence_days}d` : "no cadence"}</span>
+                      {a.base_price != null ? (
+                        <span className="text-neutral-600">· ${Number(a.base_price).toLocaleString()}/visit</span>
+                      ) : null}
+                    </div>
+                    <div className="text-xs text-neutral-500">
+                      {a.next_visit_eta ? `next ETA ${a.next_visit_eta}` : "—"}
+                      <span className="mx-1">·</span>
+                      started {a.starts_on}
+                      {a.origin_pattern && a.origin_pattern !== "manual" ? ` · from ${a.origin_pattern}` : ""}
+                    </div>
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-700">{a.scope_text}</p>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+                    <span>by {a.author_email}</span>
+                    <AgreementStatusButton agreementId={a.id} currentStatus={a.status} />
+                  </div>
                 </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      <section id="agreement" className="scroll-mt-20">
-        <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="text-xl font-semibold">Maintenance agreements</h2>
-          <span className="text-xs text-zinc-500">v0 — decision capture · execution coming in v1</span>
-        </div>
-        {agreements.length > 0 ? (
-          <ul className="mb-3 space-y-2">
-            {agreements.map((a) => (
-              <li key={a.id} className="rounded border border-zinc-200 bg-white p-3">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div className="text-sm font-medium text-zinc-900">
-                    <span
-                      className={`mr-2 rounded-full px-2 py-0.5 text-xs ${
-                        a.status === "active"
-                          ? "bg-emerald-50 text-emerald-800"
-                          : a.status === "paused"
-                          ? "bg-amber-50 text-amber-800"
-                          : "bg-zinc-100 text-zinc-600"
-                      }`}
-                    >
-                      {a.status}
-                    </span>
-                    {a.cadence_days ? `every ${a.cadence_days}d` : "no cadence"}
-                    {a.base_price != null ? ` · $${Number(a.base_price).toLocaleString()}/visit` : ""}
-                  </div>
-                  <div className="text-xs text-zinc-500">
-                    {a.next_visit_eta ? `next ETA ${a.next_visit_eta}` : "—"}
-                    {" · "}
-                    started {a.starts_on}
-                    {a.origin_pattern && a.origin_pattern !== "manual" ? ` · from ${a.origin_pattern}` : ""}
-                  </div>
-                </div>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">{a.scope_text}</p>
-                <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-                  <span>by {a.author_email}</span>
-                  <AgreementStatusButton agreementId={a.id} currentStatus={a.status} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mb-3 text-sm text-zinc-500">
-            No agreements yet
-            {hasRecurringSignal ? " — but this customer shows recurring patterns; consider one." : "."}
-          </p>
-        )}
-        <AgreementForm
-          hcpCustomerId={id}
-          defaultOrigin={defaultOrigin}
-          prefilledScope={prefilledScope}
-        />
-      </section>
-
-      <section>
-        <h2 className="text-xl font-semibold mb-3">Operator notes</h2>
-        <div className="rounded border border-zinc-200 bg-white p-3 mb-3">
-          <NoteForm
-            action={addCustomerNote}
-            hiddenFieldName="hcp_customer_id"
-            hiddenFieldValue={id}
-            placeholder="Internal note about this customer (not customer-facing)…"
-            label="Add note"
+              ))}
+            </ul>
+          ) : (
+            <p className="mb-3 text-sm text-neutral-500">
+              No agreements yet
+              {hasRecurringSignal ? " — but this customer shows recurring patterns; consider one." : "."}
+            </p>
+          )}
+          <AgreementForm
+            hcpCustomerId={id}
+            defaultOrigin={defaultOrigin}
+            prefilledScope={prefilledScope}
           />
-        </div>
-        {notes.length > 0 ? (
-          <ul className="space-y-2">
-            {notes.map((n) => (
-              <li key={n.id} className="rounded border border-zinc-200 bg-white p-3">
-                <div className="text-xs text-zinc-500 mb-1">
-                  {new Date(n.created_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
-                  {" · "}{n.author_email}
-                </div>
-                <p className="text-sm whitespace-pre-wrap">{n.body}</p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-zinc-500">No notes yet.</p>
-        )}
-      </section>
+        </Section>
 
-      <section>
-        <h2 className="text-xl font-semibold mb-3">Recent jobs</h2>
-        {recentJobs.data && recentJobs.data.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-zinc-500 border-b">
-                <tr>
-                  <th className="py-2">Date</th>
-                  <th className="py-2">Tech</th>
-                  <th className="py-2 text-right">Revenue</th>
-                  <th className="py-2 text-right">Margin</th>
-                  <th className="py-2">GPS</th>
-                  <th className="py-2">On-time</th>
-                  <th className="py-2 text-right">Min</th>
-                  <th className="py-2 text-right">Days out</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentJobs.data.map((j: Record<string, unknown>) => (
-                  <tr key={j.hcp_job_id as string} className="border-b last:border-0 hover:bg-zinc-50">
-                    <td className="py-2 whitespace-nowrap">{(j.job_date as string) ?? "—"}</td>
-                    <td className="py-2">{(j.tech_primary_name as string) ?? "—"}</td>
-                    <td className="py-2 text-right">{j.revenue != null ? `$${Number(j.revenue).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}</td>
-                    <td className="py-2 text-right">{j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}</td>
-                    <td className="py-2">{j.gps_matched ? "✓" : "—"}</td>
-                    <td className="py-2">{j.on_time === true ? "✓" : j.on_time === false ? "late" : "—"}</td>
-                    <td className="py-2 text-right">{j.time_on_site_minutes as number ?? "—"}</td>
-                    <td className="py-2 text-right">{Number(j.due_amount) > 0 ? <span className="text-red-700">{j.days_outstanding as number}d</span> : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <Section title="Operator notes">
+          <div className="mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
+            <NoteForm
+              action={addCustomerNote}
+              hiddenFieldName="hcp_customer_id"
+              hiddenFieldValue={id}
+              placeholder="Internal note about this customer (not customer-facing)…"
+              label="Add note"
+            />
           </div>
-        ) : <p className="text-sm text-zinc-500">No jobs.</p>}
-      </section>
+          {notes.length > 0 ? (
+            <ul className="space-y-2">
+              {notes.map((n) => (
+                <li key={n.id} className="rounded-2xl border border-neutral-200 bg-white p-4">
+                  <div className="mb-1 text-xs text-neutral-500">
+                    {new Date(n.created_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
+                    <span className="mx-1.5">·</span>
+                    {n.author_email}
+                  </div>
+                  <p className="whitespace-pre-wrap text-sm text-neutral-800">{n.body}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState title="No notes yet." description="Add one above to keep context across visits." />
+          )}
+        </Section>
 
-      <section>
-        <h2 className="text-xl font-semibold mb-3">Recent communications</h2>
-        {recentComms.data && recentComms.data.length > 0 ? (
-          <ul className="space-y-2">
-            {recentComms.data.map((m: Record<string, unknown>) => (
-              <li key={m.id as number} className="rounded border border-zinc-200 p-3">
-                <div className="flex items-center gap-2 text-xs text-zinc-500 mb-1">
-                  <span className="font-mono">{new Date(m.occurred_at as string).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}</span>
-                  <span>·</span>
-                  <span>{m.channel as string}</span>
-                  {!!m.direction && <><span>·</span><span>{m.direction as string}</span></>}
-                  {!!m.tech_short_name && <><span>·</span><span>{m.tech_short_name as string}</span></>}
-                  <span className="ml-auto">imp {m.importance as number ?? "—"}</span>
-                </div>
-                <p className="text-sm">{m.summary as string}</p>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="text-sm text-zinc-500">No communications.</p>}
-      </section>
-    </main>
-  );
-}
+        <Section title="Recent jobs">
+          {recentJobs.data && recentJobs.data.length > 0 ? (
+            <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="border-b border-neutral-200 bg-neutral-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">Date</th>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">Tech</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Revenue</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Margin</th>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">GPS</th>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">On-time</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Min</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Days out</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {recentJobs.data.map((j: Record<string, unknown>) => (
+                    <tr key={j.hcp_job_id as string} className="hover:bg-neutral-50">
+                      <td className="px-4 py-2 whitespace-nowrap text-neutral-700">
+                        <Link href={`/job/${j.hcp_job_id}`} className="hover:underline">{(j.job_date as string) ?? "—"}</Link>
+                      </td>
+                      <td className="px-4 py-2 text-neutral-700">{(j.tech_primary_name as string) ?? "—"}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{fmtMoney(j.revenue)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}</td>
+                      <td className="px-4 py-2">{j.gps_matched ? <Pill tone="green">yes</Pill> : <Pill tone="slate">no</Pill>}</td>
+                      <td className="px-4 py-2">{j.on_time === true ? <Pill tone="green">on</Pill> : j.on_time === false ? <Pill tone="amber">late</Pill> : <Pill>—</Pill>}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{(j.time_on_site_minutes as number) ?? "—"}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {Number(j.due_amount) > 0 ? <span className="text-red-700">{j.days_outstanding as number}d</span> : <span className="text-neutral-400">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="No jobs." />
+          )}
+        </Section>
 
-function Stat({ label, value, tone }: { label: string; value: string | number; tone?: "red" | "amber" | "green" | "neutral" }) {
-  const cls =
-    tone === "red"   ? "text-red-700" :
-    tone === "amber" ? "text-amber-700" :
-    tone === "green" ? "text-green-700" :
-                       "text-zinc-900";
-  return (
-    <div className="rounded border border-zinc-200 p-3 bg-white">
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div className={`text-xl font-semibold ${cls}`}>{value}</div>
-    </div>
+        <Section title="Recent communications">
+          {recentComms.data && recentComms.data.length > 0 ? (
+            <ul className="space-y-2">
+              {recentComms.data.map((m: Record<string, unknown>) => (
+                <li key={m.id as number} className="rounded-2xl border border-neutral-200 bg-white p-4">
+                  <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                    <span className="font-mono">
+                      {new Date(m.occurred_at as string).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                    <Pill tone="slate">{m.channel as string}</Pill>
+                    {m.direction ? <Pill tone="slate">{m.direction as string}</Pill> : null}
+                    {m.tech_short_name ? <span>· {m.tech_short_name as string}</span> : null}
+                    <span className="ml-auto">imp {(m.importance as number) ?? "—"}</span>
+                  </div>
+                  <p className="text-sm text-neutral-800">{m.summary as string}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState title="No communications." />
+          )}
+        </Section>
+      </div>
+    </PageShell>
   );
 }

@@ -103,7 +103,7 @@ export function EstimateBuilder({
         <p className="mt-2 text-sm text-emerald-800">Customer: {customerName}</p>
         <div className="mt-4 flex gap-2">
           {result.hcp_url ? (
-            <a href={result.hcp_url} target="_blank" rel="noreferrer" className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700">
+            <a href={result.hcp_url} target="_blank" rel="noreferrer" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">
               Open in HCP
             </a>
           ) : null}
@@ -147,7 +147,7 @@ export function EstimateBuilder({
               name={`options[${optIdx}][name]`}
               value={opt.name}
               onChange={(e) => setOptions((prev) => prev.map((o, i) => (i === optIdx ? { ...o, name: e.target.value } : o)))}
-              className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-semibold focus:border-neutral-900 focus:outline-none"
+              className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-semibold focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               placeholder={`Option ${optIdx + 1}`}
               disabled={isPending}
             />
@@ -171,7 +171,7 @@ export function EstimateBuilder({
                 onChange={(e) => setLineField(optIdx, lineIdx, "name", e.target.value)}
                 placeholder="Line item name"
                 disabled={isPending}
-                className="col-span-4 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-neutral-900 focus:outline-none"
+                className="col-span-4 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
               <input
                 type="number"
@@ -182,7 +182,7 @@ export function EstimateBuilder({
                 min="0"
                 placeholder="Qty"
                 disabled={isPending}
-                className="col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-neutral-900 focus:outline-none"
+                className="col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
               <input
                 type="number"
@@ -193,7 +193,7 @@ export function EstimateBuilder({
                 min="0"
                 placeholder="Unit price ($)"
                 disabled={isPending}
-                className="col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-neutral-900 focus:outline-none"
+                className="col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
               <input
                 type="number"
@@ -204,7 +204,7 @@ export function EstimateBuilder({
                 min="0"
                 placeholder="Unit cost ($) opt"
                 disabled={isPending}
-                className="col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-neutral-900 focus:outline-none"
+                className="col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
               <div className="col-span-2 flex items-center justify-end gap-1 text-xs text-neutral-500">
                 <span>${(Number(li.quantity) * Number(li.unit_price) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -219,7 +219,7 @@ export function EstimateBuilder({
                 placeholder="Description (multi-line OK; visible to customer)"
                 rows={2}
                 disabled={isPending}
-                className="col-span-12 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-neutral-900 focus:outline-none"
+                className="col-span-12 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
             </div>
           ))}
@@ -240,7 +240,7 @@ export function EstimateBuilder({
             onChange={(e) => setNote(e.target.value)}
             rows={3}
             disabled={isPending}
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             placeholder="Scope of work / internal context (not customer-facing)"
           />
         </label>
@@ -252,14 +252,14 @@ export function EstimateBuilder({
             onChange={(e) => setMessage(e.target.value)}
             rows={3}
             disabled={isPending}
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             placeholder="Free-form prose shown to customer above the line items"
           />
         </label>
       </div>
 
       <div className="flex items-center gap-3 pt-2">
-        <button type="submit" disabled={isPending} className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300">
+        <button type="submit" disabled={isPending} className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300">
           {isPending ? "Pushing to HCP…" : "Verify + push to HCP"}
         </button>
         <button type="button" onClick={() => router.back()} disabled={isPending} className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50">

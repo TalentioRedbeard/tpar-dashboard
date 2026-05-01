@@ -41,7 +41,7 @@ export function AgreementStatusButton({
           type="button"
           onClick={() => set(next)}
           disabled={isPending}
-          className="rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-xs hover:bg-zinc-50 disabled:opacity-50"
+          className="rounded-md border border-neutral-300 bg-white px-2 py-0.5 text-xs hover:bg-neutral-50 disabled:opacity-50"
         >
           {isPending ? "…" : `→ ${next}`}
         </button>
@@ -63,7 +63,7 @@ export function AgreementStatusButton({
           type="button"
           onClick={() => set("active")}
           disabled={isPending}
-          className="rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-xs hover:bg-zinc-50 disabled:opacity-50"
+          className="rounded-md border border-neutral-300 bg-white px-2 py-0.5 text-xs hover:bg-neutral-50 disabled:opacity-50"
         >
           Reactivate
         </button>

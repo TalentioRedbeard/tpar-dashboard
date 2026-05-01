@@ -1,9 +1,13 @@
-// Today — operations review surface.
-// Server component; reads communication_events + customer_360 + job_360 directly via service_role.
+// Today — operations review surface. Server component; reads
+// communication_events + customer_360 + job_360 directly via service_role.
 
 import { db } from "@/lib/supabase";
 import Link from "next/link";
 import { AckButton } from "../components/AckButton";
+import { PageShell } from "../components/PageShell";
+import { Section } from "../components/ui/Section";
+import { Pill } from "../components/ui/Pill";
+import { EmptyState } from "../components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +71,6 @@ async function loadData() {
   const since14d = new Date(Date.now() - 14 * 86400_000).toISOString();
   const sinceJobs = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
 
-  // Today (Chicago-local) appointment window
   const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
   const todayStart = new Date(`${todayKey}T00:00:00-05:00`).toISOString();
   const todayEnd   = new Date(`${todayKey}T23:59:59-05:00`).toISOString();
@@ -115,7 +118,6 @@ async function loadData() {
       .order("scheduled_start", { ascending: true }),
   ]);
 
-  // Build top-AR-customers from the open-invoice rows
   const arByCustomer = new Map<string, { name: string; total: number; oldest: number }>();
   for (const r of (arRes.data ?? []) as Array<Record<string, unknown>>) {
     const key = (r.hcp_customer_id as string) ?? `anon:${r.customer_name}`;
@@ -151,244 +153,302 @@ async function loadData() {
   };
 }
 
-function Pill({ children, tone }: { children: React.ReactNode; tone?: "red" | "amber" | "green" | "neutral" }) {
-  const cls =
-    tone === "red"   ? "bg-red-100 text-red-800 ring-red-200" :
-    tone === "amber" ? "bg-amber-100 text-amber-900 ring-amber-200" :
-    tone === "green" ? "bg-green-100 text-green-800 ring-green-200" :
-                       "bg-zinc-100 text-zinc-700 ring-zinc-200";
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ring-1 ring-inset ${cls}`}>{children}</span>;
+function fmtTime(s: string | null): string {
+  if (!s) return "—";
+  return new Date(s).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" });
+}
+
+function fmtMoney(n: unknown): string {
+  if (n == null) return "—";
+  const v = Number(n);
+  return Number.isFinite(v) ? `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—";
 }
 
 export default async function Today() {
   const { followups, leaders, recentJobs, patterns, arTop, todayAppts, error } = await loadData();
   const apptCount = todayAppts.length;
   const techCount = new Set(todayAppts.map((a) => a.tech_primary_name).filter(Boolean)).size;
-  const firstAppt = todayAppts[0]?.scheduled_start
-    ? new Date(todayAppts[0].scheduled_start).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" })
-    : null;
+  const firstAppt = todayAppts[0]?.scheduled_start ? fmtTime(todayAppts[0].scheduled_start) : null;
+  const nowLabel = new Date().toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
 
   return (
-    <main className="mx-auto max-w-6xl p-6 space-y-10">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">TPAR — Today</h1>
-        <div className="flex items-center gap-3">
-          <Link href="/search" className="text-sm text-zinc-700 hover:underline">Search →</Link>
-          <p className="text-sm text-zinc-500">{new Date().toLocaleString("en-US", { timeZone: "America/Chicago" })} CT</p>
-        </div>
-      </header>
-
+    <PageShell
+      kicker="Operations · Live"
+      title="Today at TPAR"
+      description={`${nowLabel} · Tulsa, OK · Central Time`}
+      actions={
+        <Link
+          href="/dispatch"
+          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+        >
+          Open dispatch →
+        </Link>
+      }
+    >
       {error && (
-        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-900">DB error: {error}</div>
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+          DB error: {error}
+        </div>
       )}
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="rounded border border-blue-200 bg-blue-50 p-4">
-          <div className="flex items-baseline justify-between mb-2">
-            <h2 className="text-sm font-semibold text-blue-900">Today on the books</h2>
-            <Link href="/dispatch" className="text-xs text-blue-900 hover:underline">all →</Link>
+      {/* Hero strip — three pulse cards */}
+      <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-3">
+        {/* Today on the books */}
+        <div className="rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5 shadow-sm">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-800">On the books</h2>
+            <Link href="/dispatch" className="text-xs font-medium text-brand-700 hover:underline">All →</Link>
           </div>
           {apptCount === 0 ? (
-            <p className="text-sm text-blue-900">No appointments today.</p>
+            <p className="text-sm text-brand-900/80">No appointments scheduled today.</p>
           ) : (
             <>
-              <p className="text-sm text-blue-900">
-                <strong>{apptCount}</strong> appt{apptCount === 1 ? "" : "s"} · <strong>{techCount}</strong> tech{techCount === 1 ? "" : "s"}
-                {firstAppt ? <> · first <strong>{firstAppt}</strong></> : null}
-              </p>
-              <ul className="mt-2 space-y-0.5 text-xs text-blue-900">
-                {todayAppts.slice(0, 5).map((a) => (
-                  <li key={a.appointment_id ?? a.hcp_job_id ?? a.scheduled_start}>
-                    <span className="font-mono">{new Date(a.scheduled_start).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" })}</span>
-                    {" · "}
-                    {a.hcp_job_id ? (
-                      <Link href={`/job/${a.hcp_job_id}`} className="font-medium hover:underline">{a.customer_name ?? "—"}</Link>
-                    ) : (
-                      <span className="font-medium">{a.customer_name ?? "—"}</span>
-                    )}
-                    {" · "}{a.tech_primary_name ?? "—"}
+              <div className="flex items-baseline gap-3">
+                <span className="text-3xl font-semibold tabular-nums text-brand-900">{apptCount}</span>
+                <span className="text-sm text-brand-900/70">appt{apptCount === 1 ? "" : "s"}</span>
+              </div>
+              <div className="mt-1 text-xs text-brand-900/70">
+                {techCount} tech{techCount === 1 ? "" : "s"}{firstAppt ? ` · first ${firstAppt}` : ""}
+              </div>
+              <ul className="mt-3 space-y-1 border-t border-brand-200/70 pt-3 text-xs text-brand-900">
+                {todayAppts.slice(0, 4).map((a) => (
+                  <li key={a.appointment_id ?? a.hcp_job_id ?? a.scheduled_start} className="flex gap-2">
+                    <span className="w-12 shrink-0 font-mono text-brand-700">{fmtTime(a.scheduled_start)}</span>
+                    <span className="flex-1 truncate">
+                      {a.hcp_job_id ? (
+                        <Link href={`/job/${a.hcp_job_id}`} className="font-medium hover:underline">{a.customer_name ?? "—"}</Link>
+                      ) : (
+                        <span className="font-medium">{a.customer_name ?? "—"}</span>
+                      )}
+                      <span className="text-brand-900/60"> · {a.tech_primary_name ?? "—"}</span>
+                    </span>
                   </li>
                 ))}
-                {apptCount > 5 ? <li className="text-blue-900/70">+{apptCount - 5} more →</li> : null}
+                {apptCount > 4 ? (
+                  <li className="text-brand-700/70">+{apptCount - 4} more →</li>
+                ) : null}
               </ul>
             </>
           )}
         </div>
-        <div className="rounded border border-amber-200 bg-amber-50 p-4">
-          <div className="flex items-baseline justify-between mb-2">
-            <h2 className="text-sm font-semibold text-amber-900">Preventative-agreement candidates</h2>
-            <Link href="/reports/patterns" className="text-xs text-amber-900 hover:underline">all →</Link>
+
+        {/* Pattern signals */}
+        <div className="rounded-2xl border border-accent-100 bg-gradient-to-br from-accent-50 to-white p-5 shadow-sm">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-accent-700">Preventative candidates</h2>
+            <Link href="/reports/patterns" className="text-xs font-medium text-accent-700 hover:underline">All →</Link>
           </div>
           {patterns.length === 0 ? (
-            <p className="text-sm text-amber-900">None flagged.</p>
+            <p className="text-sm text-accent-700/80">No patterns flagged today.</p>
           ) : (
-            <ul className="space-y-1 text-sm">
-              {patterns.map((p) => (
-                <li key={p.hcp_customer_id}>
-                  <Link href={`/customer/${p.hcp_customer_id}`} className="font-medium text-amber-900 hover:underline">
-                    {p.customer_name ?? "—"}
-                  </Link>
-                  <span className="ml-2 text-xs text-amber-900">
-                    {p.job_count_12mo} jobs / {p.span_days}d · ${Number(p.total_revenue_12mo).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <div className="flex items-baseline gap-3">
+                <span className="text-3xl font-semibold tabular-nums text-accent-700">{patterns.length}</span>
+                <span className="text-sm text-accent-700/80">customer{patterns.length === 1 ? "" : "s"}</span>
+              </div>
+              <ul className="mt-3 space-y-1 border-t border-accent-100 pt-3 text-xs">
+                {patterns.map((p) => (
+                  <li key={p.hcp_customer_id} className="flex flex-wrap items-baseline gap-x-2">
+                    <Link href={`/customer/${p.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">
+                      {p.customer_name ?? "—"}
+                    </Link>
+                    <span className="text-accent-700">
+                      {p.job_count_12mo} jobs / {p.span_days}d
+                    </span>
+                    <span className="text-neutral-500">·</span>
+                    <span className="text-neutral-600">{fmtMoney(p.total_revenue_12mo)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
-        <div className="rounded border border-red-200 bg-red-50 p-4">
-          <div className="flex items-baseline justify-between mb-2">
-            <h2 className="text-sm font-semibold text-red-900">Top open AR</h2>
-            <Link href="/reports/ar" className="text-xs text-red-900 hover:underline">all →</Link>
+
+        {/* Top open AR */}
+        <div className="rounded-2xl border border-red-200 bg-gradient-to-br from-red-50 to-white p-5 shadow-sm">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-red-700">Top open AR</h2>
+            <Link href="/reports/ar" className="text-xs font-medium text-red-700 hover:underline">All →</Link>
           </div>
           {arTop.length === 0 ? (
-            <p className="text-sm text-red-900">No open AR.</p>
+            <p className="text-sm text-red-800/80">No open AR.</p>
           ) : (
-            <ul className="space-y-1 text-sm">
-              {arTop.map((a) => (
-                <li key={a.hcp_customer_id ?? a.name}>
-                  {a.hcp_customer_id ? (
-                    <Link href={`/customer/${a.hcp_customer_id}`} className="font-medium text-red-900 hover:underline">{a.name}</Link>
-                  ) : (
-                    <span className="font-medium text-red-900">{a.name}</span>
-                  )}
-                  <span className="ml-2 text-xs text-red-900">
-                    ${a.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    {a.oldest > 0 && ` · oldest ${a.oldest}d`}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <div className="flex items-baseline gap-3">
+                <span className="text-3xl font-semibold tabular-nums text-red-700">
+                  {fmtMoney(arTop.reduce((s, a) => s + a.total, 0))}
+                </span>
+                <span className="text-sm text-red-700/80">across {arTop.length}</span>
+              </div>
+              <ul className="mt-3 space-y-1 border-t border-red-200 pt-3 text-xs">
+                {arTop.map((a) => (
+                  <li key={a.hcp_customer_id ?? a.name} className="flex flex-wrap items-baseline gap-x-2">
+                    {a.hcp_customer_id ? (
+                      <Link href={`/customer/${a.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">{a.name}</Link>
+                    ) : (
+                      <span className="font-medium text-neutral-900">{a.name}</span>
+                    )}
+                    <span className="text-red-700">{fmtMoney(a.total)}</span>
+                    {a.oldest > 0 ? (
+                      <span className="text-neutral-500">· {a.oldest}d</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       </section>
 
-      <section>
-        <h2 className="text-xl font-semibold mb-3">Open follow-ups (last 14d, importance ≥ 5)</h2>
-        {followups.length === 0 ? (
-          <p className="text-sm text-zinc-500">No open follow-ups in window.</p>
-        ) : (
-          <ul className="space-y-2">
-            {followups.map((f) => (
-              <li key={f.id} className="rounded border border-zinc-200 p-3 hover:bg-zinc-50">
-                <div className="flex items-start gap-2 mb-1 flex-wrap">
-                  <Pill tone={f.importance != null && f.importance >= 8 ? "red" : f.importance != null && f.importance >= 6 ? "amber" : "neutral"}>
-                    imp {f.importance ?? "—"}
-                  </Pill>
-                  <Pill>{f.channel}</Pill>
-                  {f.direction && <Pill>{f.direction}</Pill>}
-                  <Pill tone={f.sentiment === "negative" ? "red" : f.sentiment === "positive" ? "green" : "neutral"}>
-                    {f.sentiment ?? "—"}
-                  </Pill>
-                  <span className="text-xs text-zinc-500 ml-auto">
-                    {new Date(f.occurred_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
-                  </span>
-                  <AckButton commId={f.id} acked={!!f.acked_at} />
-                </div>
-                <div className="text-sm">
-                  <span className="font-medium">
+      <div className="space-y-10">
+        <Section
+          title="Open follow-ups"
+          description="Calls & texts in the last 14 days flagged for follow-up at importance ≥ 5."
+        >
+          {followups.length === 0 ? (
+            <EmptyState title="All caught up." description="No open follow-ups in window." />
+          ) : (
+            <ul className="space-y-2">
+              {followups.map((f) => (
+                <li key={f.id} className="rounded-2xl border border-neutral-200 bg-white p-4 transition hover:border-neutral-300 hover:shadow-sm">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Pill tone={f.importance != null && f.importance >= 8 ? "red" : f.importance != null && f.importance >= 6 ? "amber" : "neutral"}>
+                      imp {f.importance ?? "—"}
+                    </Pill>
+                    <Pill tone="slate">{f.channel}</Pill>
+                    {f.direction ? <Pill tone="slate">{f.direction}</Pill> : null}
+                    {f.sentiment ? (
+                      <Pill tone={f.sentiment === "negative" ? "red" : f.sentiment === "positive" ? "green" : "neutral"}>
+                        {f.sentiment}
+                      </Pill>
+                    ) : null}
+                    <span className="ml-auto text-xs text-neutral-500">
+                      {new Date(f.occurred_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                    <AckButton commId={f.id} acked={!!f.acked_at} />
+                  </div>
+                  <div className="text-sm">
                     {f.hcp_customer_id ? (
-                      <Link href={`/customer/${f.hcp_customer_id}`} className="hover:underline">
+                      <Link href={`/customer/${f.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">
                         {f.customer_name ?? "(no name)"}
                       </Link>
-                    ) : (f.customer_name ?? "(no name)")}
-                  </span>
-                  {f.tech_short_name && <span className="text-zinc-500"> · {f.tech_short_name}</span>}
-                </div>
-                <p className="text-sm text-zinc-700 mt-1">{f.summary}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                    ) : (
+                      <span className="font-medium text-neutral-900">{f.customer_name ?? "(no name)"}</span>
+                    )}
+                    {f.tech_short_name ? <span className="text-neutral-500"> · {f.tech_short_name}</span> : null}
+                  </div>
+                  <p className="mt-1 text-sm text-neutral-700">{f.summary}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
 
-      <section>
-        <h2 className="text-xl font-semibold mb-3">Customers by open follow-ups</h2>
-        {leaders.length === 0 ? (
-          <p className="text-sm text-zinc-500">No customer has open follow-ups.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-zinc-500 border-b">
-                <tr>
-                  <th className="py-2">Customer</th>
-                  <th className="py-2 text-right">Open</th>
-                  <th className="py-2 text-right">Comms 90d</th>
-                  <th className="py-2 text-right">Paid LTD</th>
-                  <th className="py-2 text-right">Outstanding</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leaders.map((c) => (
-                  <tr key={c.hcp_customer_id} className="border-b last:border-0 hover:bg-zinc-50">
-                    <td className="py-2">
-                      <Link href={`/customer/${c.hcp_customer_id}`} className="font-medium hover:underline">
-                        {c.name ?? c.hcp_customer_id}
-                      </Link>
-                    </td>
-                    <td className="py-2 text-right">
-                      <Pill tone={c.open_followups >= 5 ? "red" : c.open_followups >= 3 ? "amber" : "neutral"}>
-                        {c.open_followups}
-                      </Pill>
-                    </td>
-                    <td className="py-2 text-right">{c.comm_count_90d}</td>
-                    <td className="py-2 text-right">${Number(c.lifetime_paid_revenue_dollars).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                    <td className="py-2 text-right">
-                      {Number(c.outstanding_due_dollars) > 0 ? (
-                        <span className="text-red-700">${Number(c.outstanding_due_dollars).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                      ) : (
-                        <span className="text-zinc-400">—</span>
-                      )}
-                    </td>
+        <Section
+          title="Customers by open follow-ups"
+          description="Where the unresolved threads cluster. Click through to see the conversation history."
+        >
+          {leaders.length === 0 ? (
+            <EmptyState title="No customer has open follow-ups." />
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="border-b border-neutral-200 bg-neutral-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">Customer</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Open</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Comms 90d</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Paid LTD</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Outstanding</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {leaders.map((c) => (
+                    <tr key={c.hcp_customer_id} className="hover:bg-neutral-50">
+                      <td className="px-4 py-2">
+                        <Link href={`/customer/${c.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">
+                          {c.name ?? c.hcp_customer_id}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <Pill tone={c.open_followups >= 5 ? "red" : c.open_followups >= 3 ? "amber" : "neutral"}>
+                          {c.open_followups}
+                        </Pill>
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{c.comm_count_90d}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{fmtMoney(c.lifetime_paid_revenue_dollars)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {Number(c.outstanding_due_dollars) > 0 ? (
+                          <span className="font-medium text-red-700">{fmtMoney(c.outstanding_due_dollars)}</span>
+                        ) : (
+                          <span className="text-neutral-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
 
-      <section>
-        <h2 className="text-xl font-semibold mb-3">Recent jobs (last 7d)</h2>
-        {recentJobs.length === 0 ? (
-          <p className="text-sm text-zinc-500">No jobs in window.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-zinc-500 border-b">
-                <tr>
-                  <th className="py-2">Date</th>
-                  <th className="py-2">Customer</th>
-                  <th className="py-2">Tech</th>
-                  <th className="py-2 text-right">Revenue</th>
-                  <th className="py-2 text-right">Margin</th>
-                  <th className="py-2">GPS</th>
-                  <th className="py-2">On-time</th>
-                  <th className="py-2 text-right">Min on site</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentJobs.map((j) => (
-                  <tr key={j.hcp_job_id} className="border-b last:border-0 hover:bg-zinc-50">
-                    <td className="py-2 whitespace-nowrap">{j.job_date ?? "—"}</td>
-                    <td className="py-2"><Link href={`/job/${j.hcp_job_id}`} className="hover:underline">{j.customer_name ?? "(no name)"}</Link></td>
-                    <td className="py-2">{j.tech_primary_name ?? "—"}</td>
-                    <td className="py-2 text-right">{j.revenue != null ? `$${Number(j.revenue).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}</td>
-                    <td className="py-2 text-right">{j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}</td>
-                    <td className="py-2">{j.gps_matched ? <Pill tone="green">yes</Pill> : <Pill tone="neutral">no</Pill>}</td>
-                    <td className="py-2">{j.on_time === true ? <Pill tone="green">on</Pill> : j.on_time === false ? <Pill tone="amber">late</Pill> : <Pill>—</Pill>}</td>
-                    <td className="py-2 text-right">{j.time_on_site_minutes ?? "—"}</td>
+        <Section
+          title="Recent jobs"
+          description="The last seven days of completed and in-progress jobs."
+        >
+          {recentJobs.length === 0 ? (
+            <EmptyState title="No jobs in window." />
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="border-b border-neutral-200 bg-neutral-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">Date</th>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">Customer</th>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">Tech</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Revenue</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Margin</th>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">GPS</th>
+                    <th className="px-4 py-2 text-left font-medium text-neutral-600">On-time</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Min on site</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {recentJobs.map((j) => (
+                    <tr key={j.hcp_job_id} className="hover:bg-neutral-50">
+                      <td className="px-4 py-2 whitespace-nowrap text-neutral-600">{j.job_date ?? "—"}</td>
+                      <td className="px-4 py-2">
+                        <Link href={`/job/${j.hcp_job_id}`} className="font-medium text-neutral-900 hover:underline">
+                          {j.customer_name ?? "(no name)"}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-2 text-neutral-700">{j.tech_primary_name ?? "—"}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{fmtMoney(j.revenue)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}</td>
+                      <td className="px-4 py-2">{j.gps_matched ? <Pill tone="green">yes</Pill> : <Pill tone="slate">no</Pill>}</td>
+                      <td className="px-4 py-2">
+                        {j.on_time === true ? <Pill tone="green">on</Pill> : j.on_time === false ? <Pill tone="amber">late</Pill> : <Pill>—</Pill>}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{j.time_on_site_minutes ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+      </div>
 
-      <footer className="pt-6 border-t text-xs text-zinc-500">
-        TPAR-DB Dashboard · v0 · server-rendered from job_360 / customer_360 / communication_events
+      <footer className="mt-12 border-t border-neutral-200 pt-4 text-xs text-neutral-500">
+        Server-rendered from <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono">job_360</code> ·
+        <code className="ml-1 rounded bg-neutral-100 px-1 py-0.5 font-mono">customer_360</code> ·
+        <code className="ml-1 rounded bg-neutral-100 px-1 py-0.5 font-mono">communication_events</code>
       </footer>
-    </main>
+    </PageShell>
   );
 }

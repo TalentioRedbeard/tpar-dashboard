@@ -25,7 +25,7 @@ export function AckButton({ commId, acked }: { commId: number; acked: boolean })
       disabled={isPending}
       className={`rounded-md border px-2 py-0.5 text-xs font-medium ${
         acked
-          ? "border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
+          ? "border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50"
           : "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >

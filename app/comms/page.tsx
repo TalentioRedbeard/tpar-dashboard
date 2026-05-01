@@ -148,7 +148,7 @@ export default async function CommsPage({
             name="q"
             defaultValue={q}
             placeholder="customer name or text"
-            className="mt-1 w-64 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="mt-1 w-64 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </label>
         <label className="block">
@@ -167,7 +167,7 @@ export default async function CommsPage({
             name="tech"
             defaultValue={tech}
             placeholder="e.g. Madisson"
-            className="mt-1 w-32 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="mt-1 w-32 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </label>
         <label className="block">
@@ -191,7 +191,7 @@ export default async function CommsPage({
         </label>
         <button
           type="submit"
-          className="ml-auto rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800"
+          className="ml-auto rounded-md bg-brand-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-800"
         >
           Apply
         </button>

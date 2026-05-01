@@ -53,7 +53,7 @@ export function VehicleDriverPicker({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         disabled={isPending}
-        className="rounded-md border border-neutral-300 bg-white px-1.5 py-0.5 text-xs focus:border-neutral-900 focus:outline-none"
+        className="rounded-md border border-neutral-300 bg-white px-1.5 py-0.5 text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
       >
         <option value="">— unassigned —</option>
         {techShortNames.map((n) => (
@@ -64,7 +64,7 @@ export function VehicleDriverPicker({
         type="button"
         onClick={() => commit(value)}
         disabled={isPending}
-        className="rounded-md bg-zinc-900 px-2 py-0.5 text-xs text-white hover:bg-zinc-700 disabled:opacity-50"
+        className="rounded-md bg-brand-700 px-2 py-0.5 text-xs text-white hover:bg-brand-800 disabled:opacity-50"
       >
         {isPending ? "…" : "✓"}
       </button>

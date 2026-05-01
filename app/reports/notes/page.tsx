@@ -138,7 +138,7 @@ export default async function NotesFeedPage({
             ))}
           </select>
         </label>
-        <button type="submit" className="ml-auto rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800">
+        <button type="submit" className="ml-auto rounded-md bg-brand-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-800">
           Apply
         </button>
       </form>

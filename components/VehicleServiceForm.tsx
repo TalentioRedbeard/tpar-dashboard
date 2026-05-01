@@ -57,7 +57,7 @@ export function VehicleServiceForm({
             value={vehicleId}
             onChange={(e) => setVehicleId(e.target.value)}
             disabled={isPending}
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           >
             {vehicles.map((v) => (
               <option key={v.id} value={v.id}>{v.display_name}</option>
@@ -72,7 +72,7 @@ export function VehicleServiceForm({
             value={serviceType}
             onChange={(e) => setServiceType(e.target.value)}
             disabled={isPending}
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           >
             <option value="oil_change">Oil change</option>
             <option value="tire_rotation">Tire rotation</option>
@@ -93,7 +93,7 @@ export function VehicleServiceForm({
             value={serviceDate}
             onChange={(e) => setServiceDate(e.target.value)}
             disabled={isPending}
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </label>
 
@@ -109,7 +109,7 @@ export function VehicleServiceForm({
             onChange={(e) => setMileage(e.target.value)}
             disabled={isPending}
             placeholder={mileageHint != null ? String(mileageHint) : "e.g., 98355"}
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </label>
 
@@ -124,7 +124,7 @@ export function VehicleServiceForm({
             onChange={(e) => setCost(e.target.value)}
             disabled={isPending}
             placeholder="89.99"
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </label>
 
@@ -137,7 +137,7 @@ export function VehicleServiceForm({
             onChange={(e) => setVendor(e.target.value)}
             disabled={isPending}
             placeholder="Discount Tire / Jiffy Lube / in-house"
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </label>
 
@@ -150,7 +150,7 @@ export function VehicleServiceForm({
             onChange={(e) => setSubtype(e.target.value)}
             disabled={isPending}
             placeholder="e.g., front pads, all-season install, fluid + filter"
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </label>
 
@@ -163,7 +163,7 @@ export function VehicleServiceForm({
             onChange={(e) => setNotes(e.target.value)}
             disabled={isPending}
             placeholder="Any additional context for future reference."
-            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+            className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </label>
       </div>
@@ -172,7 +172,7 @@ export function VehicleServiceForm({
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+          className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
         >
           {isPending ? "Saving…" : "Log event"}
         </button>

@@ -38,13 +38,13 @@ export function RunCompactButton() {
         onChange={(e) => setDateInput(e.target.value)}
         placeholder="YYYY-MM-DD (blank = yesterday)"
         disabled={isPending}
-        className="w-48 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-mono focus:border-neutral-900 focus:outline-none"
+        className="w-48 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-mono focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
       />
       <button
         type="button"
         onClick={onClick}
         disabled={isPending}
-        className="rounded-md bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+        className="rounded-md bg-brand-700 px-3 py-1 text-xs font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
       >
         {isPending ? "Compacting…" : "Run compact"}
       </button>

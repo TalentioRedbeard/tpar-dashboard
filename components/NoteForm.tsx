@@ -52,18 +52,18 @@ export function NoteForm({
         rows={3}
         maxLength={10000}
         placeholder={placeholder}
-        className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none"
+        className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
         disabled={isPending}
       />
       <div className="flex items-center gap-3">
         <button
           type="submit"
           disabled={isPending || !text.trim()}
-          className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+          className="rounded-md bg-brand-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
         >
           {isPending ? "Saving…" : label}
         </button>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-neutral-500">
           {text.length}/10000
         </span>
         {error ? <span className="text-xs text-red-700">{error}</span> : null}
