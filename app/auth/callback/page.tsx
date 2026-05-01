@@ -37,24 +37,37 @@ function CallbackInner() {
 
     (async () => {
       try {
-        if (code) {
-          // PKCE flow
-          const { error } = await supa.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-        } else if (typeof window !== "undefined" && window.location.hash) {
-          // Implicit flow — parse hash fragment
-          const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
-          const fragmentParams = new URLSearchParams(hash);
-          const access_token = fragmentParams.get("access_token");
-          const refresh_token = fragmentParams.get("refresh_token");
-          if (!access_token || !refresh_token) {
-            const fragErr = fragmentParams.get("error_description") ?? fragmentParams.get("error") ?? "missing tokens in fragment";
-            throw new Error(fragErr);
-          }
+        // Prefer the fragment path. With flowType:'implicit' Supabase returns
+        // #access_token=... and we just setSession with no PKCE verifier needed.
+        // Fragment-first means a stale/cached PKCE-flow client falling back to
+        // this newer callback still works as long as Supabase ALSO returned a
+        // fragment, and avoids the broken-PKCE-cookie failure path entirely.
+        const hash = (typeof window !== "undefined" && window.location.hash)
+          ? (window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash)
+          : "";
+        const fragmentParams = new URLSearchParams(hash);
+        const access_token = fragmentParams.get("access_token");
+        const refresh_token = fragmentParams.get("refresh_token");
+
+        if (access_token && refresh_token) {
+          // Implicit flow — set session directly
           const { error } = await supa.auth.setSession({ access_token, refresh_token });
           if (error) throw error;
+        } else if (code) {
+          // Legacy PKCE flow fallback. Likely fails on cache-strict browsers;
+          // we attempt it but fall through to a clearer error if the verifier
+          // is missing.
+          const { error } = await supa.auth.exchangeCodeForSession(code);
+          if (error) {
+            const msg = error.message || "";
+            if (msg.toLowerCase().includes("pkce") || msg.toLowerCase().includes("code verifier")) {
+              throw new Error("Auth flow needs a fresh start — clear your dashboard tab cache and try again. (PKCE verifier was lost between redirects.)");
+            }
+            throw error;
+          }
         } else {
-          throw new Error("missing_code: no ?code= and no fragment tokens");
+          const fragErr = fragmentParams.get("error_description") ?? fragmentParams.get("error") ?? "no ?code= and no fragment tokens";
+          throw new Error(fragErr);
         }
 
         setStatus("ok");
