@@ -60,14 +60,22 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
   return (
     <main className="mx-auto max-w-5xl p-6 space-y-8">
-      <div>
-        <Link href="/" className="text-sm text-zinc-500 hover:underline">← Today</Link>
-        <h1 className="text-3xl font-bold mt-2">{j.customer_name as string ?? id}</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          {(j.street as string) ?? ""} {(j.city as string) ?? ""} ·
-          <span className="font-mono ml-1">{id}</span>
-          {customerId && (<> · <Link href={`/customer/${customerId}`} className="hover:underline">customer 360 →</Link></>)}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <Link href="/" className="text-sm text-zinc-500 hover:underline">← Today</Link>
+          <h1 className="text-3xl font-bold mt-2">{j.customer_name as string ?? id}</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            {(j.street as string) ?? ""} {(j.city as string) ?? ""} ·
+            <span className="font-mono ml-1">{id}</span>
+            {customerId && (<> · <Link href={`/customer/${customerId}`} className="hover:underline">customer 360 →</Link></>)}
+          </p>
+        </div>
+        <Link
+          href={`/job/${id}/estimate/new`}
+          className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
+        >
+          + Create multi-option estimate
+        </Link>
       </div>
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
