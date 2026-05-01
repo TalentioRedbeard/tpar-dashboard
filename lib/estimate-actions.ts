@@ -13,6 +13,7 @@ import { db } from "./supabase";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "";
 const SECRET = process.env.CREATE_ESTIMATE_DIRECT_SECRET ?? "";
+const GENERATE_DESCRIPTION_SECRET = process.env.GENERATE_DESCRIPTION_SECRET ?? "";
 
 type LineItemInput = {
   name: string;
@@ -192,4 +193,45 @@ export async function sendEstimateToClient(formData: FormData): Promise<SendResu
     sent_to: parsed.sent_to ?? null,
     sent_method: parsed.sent_method ?? null,
   };
+}
+
+export type GenerateDescriptionResult =
+  | { ok: true; description: string }
+  | { ok: false; error: string };
+
+/**
+ * Calls Claude Haiku via the generate-description edge function to produce
+ * a customer-facing line-item scope paragraph in Danny's voice. Used by
+ * the EstimateBuilder "✨ Generate" button next to each description.
+ */
+export async function generateLineDescription(formData: FormData): Promise<GenerateDescriptionResult> {
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
+  if (!SUPABASE_URL || !GENERATE_DESCRIPTION_SECRET) {
+    return { ok: false, error: "server config missing" };
+  }
+
+  const scope    = String(formData.get("scope") ?? "").trim();
+  const lineName = String(formData.get("line_item_name") ?? "").trim();
+  if (!scope) return { ok: false, error: "scope is required" };
+
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/generate-description`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Trigger-Secret": GENERATE_DESCRIPTION_SECRET,
+    },
+    body: JSON.stringify({
+      scope,
+      ...(lineName ? { line_item_name: lineName } : {}),
+    }),
+  });
+  const text = await r.text();
+  if (!r.ok) return { ok: false, error: `generate failed: ${r.status} ${text.slice(0, 200)}` };
+
+  let parsed: { ok?: boolean; error?: string; description?: string };
+  try { parsed = JSON.parse(text); } catch { return { ok: false, error: "non-JSON response" }; }
+  if (!parsed.ok) return { ok: false, error: parsed.error ?? "generate returned ok=false" };
+
+  return { ok: true, description: parsed.description ?? "" };
 }

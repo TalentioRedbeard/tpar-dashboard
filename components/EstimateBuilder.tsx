@@ -6,7 +6,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createEstimateForJob, sendEstimateToClient } from "../lib/estimate-actions";
+import { createEstimateForJob, sendEstimateToClient, generateLineDescription } from "../lib/estimate-actions";
 
 type LineItem = {
   name: string;
@@ -103,6 +103,35 @@ export function EstimateBuilder({
 
   function setLineField(optIdx: number, lineIdx: number, field: keyof LineItem, value: string) {
     updateOption(optIdx, (o) => { o.line_items[lineIdx][field] = value; });
+  }
+
+  // Per-line "generate description" state. Tracked as `${optIdx}-${lineIdx}` keys
+  // so multiple lines can request in parallel without collision.
+  const [generating, setGenerating] = useState<Record<string, boolean>>({});
+  const [generateError, setGenerateError] = useState<Record<string, string | null>>({});
+
+  async function handleGenerateDescription(optIdx: number, lineIdx: number) {
+    const li = options[optIdx]?.line_items[lineIdx];
+    if (!li) return;
+    // Use the existing description as the scope hint if present; else line name.
+    const scope = (li.description?.trim() || li.name?.trim() || "").trim();
+    if (!scope) {
+      setGenerateError((prev) => ({ ...prev, [`${optIdx}-${lineIdx}`]: "Add a line name or rough description first." }));
+      return;
+    }
+    const key = `${optIdx}-${lineIdx}`;
+    setGenerating((prev) => ({ ...prev, [key]: true }));
+    setGenerateError((prev) => ({ ...prev, [key]: null }));
+    const fd = new FormData();
+    fd.set("scope", scope);
+    if (li.name) fd.set("line_item_name", li.name);
+    const res = await generateLineDescription(fd);
+    setGenerating((prev) => ({ ...prev, [key]: false }));
+    if (res.ok) {
+      setLineField(optIdx, lineIdx, "description", res.description);
+    } else {
+      setGenerateError((prev) => ({ ...prev, [key]: res.error }));
+    }
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -277,15 +306,31 @@ export function EstimateBuilder({
                   <button type="button" onClick={() => removeLine(optIdx, lineIdx)} disabled={isPending} className="ml-2 text-red-700 hover:text-red-900">×</button>
                 ) : null}
               </div>
-              <textarea
-                name={`options[${optIdx}][line_items][${lineIdx}][description]`}
-                value={li.description}
-                onChange={(e) => setLineField(optIdx, lineIdx, "description", e.target.value)}
-                placeholder="Description (multi-line OK; visible to customer)"
-                rows={2}
-                disabled={isPending}
-                className="col-span-12 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              />
+              <div className="col-span-12">
+                <textarea
+                  name={`options[${optIdx}][line_items][${lineIdx}][description]`}
+                  value={li.description}
+                  onChange={(e) => setLineField(optIdx, lineIdx, "description", e.target.value)}
+                  placeholder="Description (multi-line OK; visible to customer). Click ✨ Generate to draft from line name + rough notes."
+                  rows={2}
+                  disabled={isPending}
+                  className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+                <div className="mt-1 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateDescription(optIdx, lineIdx)}
+                    disabled={isPending || generating[`${optIdx}-${lineIdx}`]}
+                    className="rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Generate a customer-facing description in Danny's voice using Claude Haiku."
+                  >
+                    {generating[`${optIdx}-${lineIdx}`] ? "Generating…" : "✨ Generate description"}
+                  </button>
+                  {generateError[`${optIdx}-${lineIdx}`] ? (
+                    <span className="text-xs text-red-700">{generateError[`${optIdx}-${lineIdx}`]}</span>
+                  ) : null}
+                </div>
+              </div>
             </div>
           ))}
         </div>
