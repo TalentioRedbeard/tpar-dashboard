@@ -140,3 +140,55 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
     hcp_url: parsed.hcp_url ?? null,
   };
 }
+
+export type SendResult =
+  | { ok: true; sent_at: string | null; sent_to: string | null; sent_method: string | null }
+  | { ok: false; error: string };
+
+export async function sendEstimateToClient(formData: FormData): Promise<SendResult> {
+  const user = await getSessionUser();
+  if (!user?.email) return { ok: false, error: "not signed in" };
+  if (!SUPABASE_URL || !SECRET) return { ok: false, error: "server config missing" };
+
+  const estimateId = String(formData.get("estimate_id") ?? "").trim();
+  const message    = String(formData.get("message") ?? "").trim();
+  if (!estimateId) return { ok: false, error: "estimate_id required" };
+
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/create-estimate-direct`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Trigger-Secret": SECRET },
+    body: JSON.stringify({
+      op: "send_to_customer",
+      estimate_id: estimateId,
+      ...(message ? { message } : {}),
+    }),
+  });
+  const text = await r.text();
+  if (!r.ok) return { ok: false, error: `HCP send failed: ${r.status} ${text.slice(0, 400)}` };
+
+  let parsed: { ok?: boolean; error?: string; sent_at?: string; sent_to?: string; sent_method?: string };
+  try { parsed = JSON.parse(text); } catch { return { ok: false, error: "non-JSON response" }; }
+  if (!parsed.ok) return { ok: false, error: parsed.error ?? "send returned ok=false" };
+
+  // Audit
+  const supa = db();
+  await supa.from("maintenance_logs").insert({
+    source: "dashboard-estimate-send",
+    level: "info",
+    message: `estimate sent to customer from dashboard`,
+    context: {
+      estimate_id: estimateId,
+      author_email: user.email,
+      sent_at: parsed.sent_at ?? null,
+      sent_to: parsed.sent_to ?? null,
+      sent_method: parsed.sent_method ?? null,
+    },
+  });
+
+  return {
+    ok: true,
+    sent_at: parsed.sent_at ?? null,
+    sent_to: parsed.sent_to ?? null,
+    sent_method: parsed.sent_method ?? null,
+  };
+}

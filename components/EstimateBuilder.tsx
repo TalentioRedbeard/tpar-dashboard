@@ -6,7 +6,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createEstimateForJob } from "../lib/estimate-actions";
+import { createEstimateForJob, sendEstimateToClient } from "../lib/estimate-actions";
 
 type LineItem = {
   name: string;
@@ -38,9 +38,34 @@ export function EstimateBuilder({
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ estimate_number: string; hcp_url: string | null } | null>(null);
+  const [result, setResult] = useState<{ estimate_id: string; estimate_number: string; hcp_url: string | null } | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Send-to-client state — separate from create state so the success card
+  // can show both "pushed" and "sent" independently.
+  const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sentAt, setSentAt] = useState<string | null>(null);
+  const [sendMessage, setSendMessage] = useState("");
+
+  function handleSendToClient(estimateId: string) {
+    setSendState("sending");
+    setSendError(null);
+    const fd = new FormData();
+    fd.set("estimate_id", estimateId);
+    if (sendMessage.trim()) fd.set("message", sendMessage.trim());
+    startTransition(async () => {
+      const res = await sendEstimateToClient(fd);
+      if (res.ok) {
+        setSentAt(res.sent_at);
+        setSendState("sent");
+      } else {
+        setSendError(res.error);
+        setSendState("error");
+      }
+    });
+  }
 
   const totalForOption = (o: Option): number =>
     o.line_items.reduce((n, li) => {
@@ -88,7 +113,7 @@ export function EstimateBuilder({
     startTransition(async () => {
       const res = await createEstimateForJob(fd);
       if (res.ok) {
-        setResult({ estimate_number: res.estimate_number, hcp_url: res.hcp_url });
+        setResult({ estimate_id: res.estimate_id, estimate_number: res.estimate_number, hcp_url: res.hcp_url });
         // Stay on the page so they can see the success + click through to HCP
       } else {
         setError(res.error);
@@ -98,29 +123,69 @@ export function EstimateBuilder({
 
   if (result) {
     return (
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-        <h2 className="text-lg font-semibold text-emerald-900">Estimate {result.estimate_number} pushed to HCP</h2>
-        <p className="mt-2 text-sm text-emerald-800">Customer: {customerName}</p>
-        <div className="mt-4 flex gap-2">
-          {result.hcp_url ? (
-            <a href={result.hcp_url} target="_blank" rel="noreferrer" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">
-              Open in HCP
-            </a>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => router.push(`/job/${hcpJobId}`)}
-            className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-100"
-          >
-            Back to job
-          </button>
-          <button
-            type="button"
-            onClick={() => { setResult(null); setOptions([{ name: "Option 1", line_items: [blankLine()] }]); setNote(""); setMessage(""); }}
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
-          >
-            Build another
-          </button>
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+          <h2 className="text-lg font-semibold text-emerald-900">Estimate {result.estimate_number} pushed to HCP</h2>
+          <p className="mt-1 text-sm text-emerald-800">Customer: {customerName}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {result.hcp_url ? (
+              <a href={result.hcp_url} target="_blank" rel="noreferrer" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">
+                Open in HCP
+              </a>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => router.push(`/job/${hcpJobId}`)}
+              className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-100"
+            >
+              Back to job
+            </button>
+            <button
+              type="button"
+              onClick={() => { setResult(null); setSendState("idle"); setSendError(null); setSentAt(null); setSendMessage(""); setOptions([{ name: "Option 1", line_items: [blankLine()] }]); setNote(""); setMessage(""); }}
+              className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+            >
+              Build another
+            </button>
+          </div>
+        </div>
+
+        {/* Send to client — separate card, only shown after the push succeeded */}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+          <h3 className="text-base font-semibold text-neutral-900">Send to client</h3>
+          <p className="mt-1 text-sm text-neutral-600">
+            Email the estimate to the customer via HCP. Optional: add a personal message shown above the line items.
+          </p>
+          {sendState !== "sent" ? (
+            <>
+              <textarea
+                value={sendMessage}
+                onChange={(e) => setSendMessage(e.target.value)}
+                rows={3}
+                maxLength={4000}
+                placeholder="Hi! Here's the estimate we discussed. Let me know if you have any questions."
+                disabled={sendState === "sending"}
+                className="mt-3 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSendToClient(result.estimate_id)}
+                  disabled={sendState === "sending"}
+                  className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+                >
+                  {sendState === "sending" ? "Sending…" : "Send estimate to customer"}
+                </button>
+                {sendState === "error" && sendError ? (
+                  <span className="text-sm text-red-700">{sendError}</span>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              ✓ Sent to customer{sentAt ? ` at ${new Date(sentAt).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}` : ""}.
+            </div>
+          )}
         </div>
       </div>
     );
