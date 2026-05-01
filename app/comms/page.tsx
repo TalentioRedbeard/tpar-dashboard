@@ -1,11 +1,14 @@
 // Unified comms inbox: every call/text/email landing in communication_events.
 // Filter by channel / direction / customer / tech / importance.
+//
+// "Mine only" = filter to the signed-in tech (admins can ?as=Anthony).
 
 import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, fmtDateShort, type Column } from "../../components/Table";
 import { AckButton } from "../../components/AckButton";
+import { getEffectiveTechName } from "../../lib/current-tech";
 
 export const metadata = { title: "Comms · TPAR-DB" };
 
@@ -29,7 +32,7 @@ type CommRow = {
 export default async function CommsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; channel?: string; tech?: string; min_importance?: string; include_noise?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; channel?: string; tech?: string; min_importance?: string; include_noise?: string; mine?: string; as?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
@@ -39,7 +42,12 @@ export default async function CommsPage({
   // Noise = importance=0 events. Per 04-30 observation, 28.8% of comms are
   // imp=0 (mostly HCP system notifications); default to hiding them.
   const includeNoise = params.include_noise === "1";
+  const mineOnly = params.mine === "1";
+  const asOverride = (params.as ?? "").trim() || null;
   const page = Math.max(1, Number(params.page ?? "1"));
+
+  const effective = mineOnly ? await getEffectiveTechName(asOverride) : null;
+  const effectiveTechName = effective?.techName ?? null;
 
   const supa = db();
   let query = supa
@@ -47,7 +55,8 @@ export default async function CommsPage({
     .select("id, occurred_at, channel, direction, hcp_customer_id, customer_name, tech_short_name, importance, sentiment, summary, flags, acked_at", { count: "exact" });
   if (q) query = query.or(`customer_name.ilike.%${q}%,summary.ilike.%${q}%`);
   if (channel) query = query.eq("channel", channel);
-  if (tech) query = query.eq("tech_short_name", tech);
+  if (effectiveTechName) query = query.eq("tech_short_name", effectiveTechName);
+  else if (tech) query = query.eq("tech_short_name", tech);
   if (minImp > 0) query = query.gte("importance", minImp);
   // Hide noise (importance=0) unless explicitly included.
   if (!includeNoise && minImp === 0) query = query.gt("importance", 0);
@@ -111,26 +120,22 @@ export default async function CommsPage({
     },
   ];
 
-  const baseHref = `/comms?${new URLSearchParams({
+  const sharedFilters = {
     ...(q ? { q } : {}),
     ...(channel ? { channel } : {}),
-    ...(tech ? { tech } : {}),
+    ...(tech && !mineOnly ? { tech } : {}),
     ...(minImp ? { min_importance: String(minImp) } : {}),
     ...(includeNoise ? { include_noise: "1" } : {}),
-  }).toString()}`;
-
-  const csvHref = `/comms/export.csv?${new URLSearchParams({
-    ...(q ? { q } : {}),
-    ...(channel ? { channel } : {}),
-    ...(tech ? { tech } : {}),
-    ...(minImp ? { min_importance: String(minImp) } : {}),
-    ...(includeNoise ? { include_noise: "1" } : {}),
-  }).toString()}`;
+    ...(mineOnly ? { mine: "1" } : {}),
+    ...(asOverride ? { as: asOverride } : {}),
+  };
+  const baseHref = `/comms?${new URLSearchParams(sharedFilters).toString()}`;
+  const csvHref = `/comms/export.csv?${new URLSearchParams(sharedFilters).toString()}`;
 
   return (
     <PageShell
       title="Comms"
-      description="Unified inbox of every call, text, email across all channels."
+      description={effectiveTechName ? `Comms attributed to ${effectiveTechName}.` : "Unified inbox of every call, text, email across all channels."}
       actions={
         <a
           href={csvHref}
@@ -141,6 +146,14 @@ export default async function CommsPage({
       }
     >
       <FilterBar>
+        {effective ? <input type="hidden" name="mine" value="1" /> : null}
+        {asOverride ? <input type="hidden" name="as" value={asOverride} /> : null}
+        {effective ? (
+          <span className="inline-flex items-center gap-2 self-end pb-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200">
+            Mine only{effective.viewingAs ? ` · ${effective.viewingAs}` : ""}
+            <a href={`/comms?${new URLSearchParams({ ...(q ? { q } : {}), ...(channel ? { channel } : {}), ...(minImp ? { min_importance: String(minImp) } : {}), ...(includeNoise ? { include_noise: "1" } : {}) }).toString()}`} className="ml-1 text-emerald-700 hover:text-emerald-900" aria-label="Clear mine filter">×</a>
+          </span>
+        ) : null}
         <label className="block">
           <span className="block text-xs font-medium text-neutral-600">Search</span>
           <input

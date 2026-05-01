@@ -61,3 +61,33 @@ export function roleFor(c: CurrentTech | null): Role {
   if (c.tech) return "tech";
   return "office";
 }
+
+// Shared helper: given the signed-in user and optional `?as=` override,
+// return the tech_short_name that "mine" filters should use. Admins can
+// impersonate any active tech via ?as=. Non-admin techs always see their
+// own. Returns null if the caller isn't a tech (or admin view-as didn't
+// resolve).
+export async function getEffectiveTechName(
+  asOverride: string | null
+): Promise<{ techName: string; viewingAs: string | null } | null> {
+  const me = await getCurrentTech();
+  if (!me) return null;
+
+  if (asOverride && me.isAdmin) {
+    const supa = db();
+    const { data } = await supa
+      .from("tech_directory")
+      .select("tech_short_name")
+      .ilike("tech_short_name", asOverride)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (data?.tech_short_name) {
+      return { techName: data.tech_short_name as string, viewingAs: data.tech_short_name as string };
+    }
+  }
+
+  if (me.tech?.tech_short_name) {
+    return { techName: me.tech.tech_short_name, viewingAs: null };
+  }
+  return null;
+}

@@ -61,9 +61,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   const supa = db();
   const today = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  // For admin "view-as" picker, also fetch the active tech list
+  // For admin "view-as" picker, also fetch the active tech list. Filter
+  // is_test=true rows in JS (postgrest's neq excludes NULL rows too).
   const techListRes = me.isAdmin
-    ? supa.from("tech_directory").select("tech_short_name").eq("is_active", true).order("tech_short_name")
+    ? supa.from("tech_directory").select("tech_short_name, is_test").eq("is_active", true).order("tech_short_name")
     : Promise.resolve({ data: null });
 
   const [apptsRes, commsRes, vehicleRes, kpiRes, techListResolved] = await Promise.all([
@@ -102,12 +103,30 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   const comms = (commsRes.data ?? []) as Array<Record<string, unknown>>;
   const vehicle = vehicleRes.data as Record<string, unknown> | null;
   const kpi = kpiRes.data as Record<string, unknown> | null;
-  const techList = ((techListResolved as { data: Array<{ tech_short_name: string }> | null }).data ?? []).map((t) => t.tech_short_name);
+  const techList = ((techListResolved as { data: Array<{ tech_short_name: string; is_test?: boolean | null }> | null }).data ?? [])
+    .filter((t) => t.is_test !== true)
+    .map((t) => t.tech_short_name);
 
   return (
     <PageShell
       title={`Hi, ${techName}`}
       description={`${viewingAs ? `(viewing as ${viewingAs}) ` : ""}Your day. ${appts.length} appointment${appts.length === 1 ? "" : "s"} today.`}
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/jobs?mine=1${viewingAs ? `&as=${encodeURIComponent(viewingAs)}` : ""}`}
+            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            My jobs →
+          </Link>
+          <Link
+            href={`/comms?mine=1${viewingAs ? `&as=${encodeURIComponent(viewingAs)}` : ""}`}
+            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            My comms →
+          </Link>
+        </div>
+      }
     >
       {viewingAs ? (
         <div className="mb-4 flex items-center justify-between rounded-2xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm">

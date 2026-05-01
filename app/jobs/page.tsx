@@ -1,9 +1,13 @@
 // Jobs list. Sources from job_360. Filter by status / tech / outstanding /
 // date range. Pagination via ?page=N. Each row links to /job/[id].
+//
+// "Mine only" = filter to the signed-in tech (admins can ?as=Anthony to
+// view another tech's lane). Resolved via getEffectiveTechName.
 
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, fmtMoney, fmtPct, fmtDateShort, type Column } from "../../components/Table";
+import { getEffectiveTechName } from "../../lib/current-tech";
 
 export const metadata = { title: "Jobs · TPAR-DB" };
 
@@ -28,7 +32,7 @@ type JobRow = {
 export default async function JobsListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; include_internal?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; include_internal?: string; mine?: string; as?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
@@ -36,7 +40,13 @@ export default async function JobsListPage({
   const status = (params.status ?? "").trim();
   const outstandingOnly = params.outstanding === "1";
   const includeInternal = params.include_internal === "1";
+  const mineOnly = params.mine === "1";
+  const asOverride = (params.as ?? "").trim() || null;
   const page = Math.max(1, Number(params.page ?? "1"));
+
+  // Resolve "mine" to the signed-in tech's name (admins can override via ?as=).
+  const effective = mineOnly ? await getEffectiveTechName(asOverride) : null;
+  const effectiveTechName = effective?.techName ?? null;
 
   const supa = db();
   let query = supa
@@ -46,7 +56,9 @@ export default async function JobsListPage({
       { count: "exact" }
     );
   if (q)      query = query.or(`customer_name.ilike.%${q}%,invoice_number.ilike.%${q}%`);
-  if (tech)   query = query.eq("tech_primary_name", tech);
+  // "mine" filter takes precedence over the dropdown tech filter.
+  if (effectiveTechName) query = query.eq("tech_primary_name", effectiveTechName);
+  else if (tech) query = query.eq("tech_primary_name", tech);
   if (status) query = query.eq("appointment_status", status);
   if (outstandingOnly) query = query.gt("due_amount", 0);
   // Hide internal "TPAR" jobs by default — these are estimate-drafts, not
@@ -107,27 +119,26 @@ export default async function JobsListPage({
     },
   ];
 
-  const baseHref = `/jobs?${new URLSearchParams({
+  const sharedFilters = {
     ...(q ? { q } : {}),
-    ...(tech ? { tech } : {}),
+    ...(tech && !mineOnly ? { tech } : {}),
     ...(status ? { status } : {}),
     ...(outstandingOnly ? { outstanding: "1" } : {}),
     ...(includeInternal ? { include_internal: "1" } : {}),
-  }).toString()}`;
+    ...(mineOnly ? { mine: "1" } : {}),
+    ...(asOverride ? { as: asOverride } : {}),
+  };
+  const baseHref = `/jobs?${new URLSearchParams(sharedFilters).toString()}`;
+  const csvHref = `/jobs/export.csv?${new URLSearchParams(sharedFilters).toString()}`;
 
-  // Build CSV download URL preserving current filters
-  const csvHref = `/jobs/export.csv?${new URLSearchParams({
-    ...(q ? { q } : {}),
-    ...(tech ? { tech } : {}),
-    ...(status ? { status } : {}),
-    ...(outstandingOnly ? { outstanding: "1" } : {}),
-    ...(includeInternal ? { include_internal: "1" } : {}),
-  }).toString()}`;
+  const description = effectiveTechName
+    ? `Jobs where ${effectiveTechName} is the primary tech.`
+    : "Active and recent jobs across the team.";
 
   return (
     <PageShell
       title="Jobs"
-      description="Active and recent jobs across the team."
+      description={description}
       actions={
         <a
           href={csvHref}
@@ -138,6 +149,8 @@ export default async function JobsListPage({
       }
     >
       <FilterBar>
+        {effective ? <input type="hidden" name="mine" value="1" /> : null}
+        {asOverride ? <input type="hidden" name="as" value={asOverride} /> : null}
         <label className="block">
           <span className="block text-xs font-medium text-neutral-600">Search</span>
           <input
@@ -168,6 +181,12 @@ export default async function JobsListPage({
             <option value="canceled">canceled</option>
           </select>
         </label>
+        {effective ? (
+          <span className="inline-flex items-center gap-2 self-end pb-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200">
+            Mine only{effective.viewingAs ? ` · ${effective.viewingAs}` : ""}
+            <a href={`/jobs?${new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}), ...(outstandingOnly ? { outstanding: "1" } : {}), ...(includeInternal ? { include_internal: "1" } : {}) }).toString()}`} className="ml-1 text-emerald-700 hover:text-emerald-900" aria-label="Clear mine filter">×</a>
+          </span>
+        ) : null}
         <label className="inline-flex items-center gap-2 pb-1.5">
           <input type="checkbox" name="outstanding" value="1" defaultChecked={outstandingOnly} />
           <span className="text-sm text-neutral-600">Outstanding only</span>
