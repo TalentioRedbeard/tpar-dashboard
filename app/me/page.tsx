@@ -12,6 +12,8 @@ import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { getCurrentTech } from "../../lib/current-tech";
 import { PageShell } from "../../components/PageShell";
+import { ClockButton } from "../../components/ClockButton";
+import { getCurrentState as getClockState } from "../time/actions";
 
 export const metadata = { title: "My day · TPAR-DB" };
 
@@ -150,6 +152,16 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
             </a>
           ))}
         </div>
+      ) : null}
+
+      {/* Clock button — primary action when a tech opens their day */}
+      {!viewingAs && me.tech ? (
+        <section className="mb-8">
+          <ClockButton
+            initial={await getClockState()}
+            techShortName={me.tech.tech_short_name}
+          />
+        </section>
       ) : null}
 
       {/* Today's appointments */}
