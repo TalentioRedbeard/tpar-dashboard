@@ -23,6 +23,7 @@ const TOOL_ITEMS = [
 
 const ADMIN_ITEMS = [
   { href: "/alarms", label: "Alarms" },
+  { href: "/snap",   label: "Snap" },
 ];
 
 export function Nav({
