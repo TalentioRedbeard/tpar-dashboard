@@ -4,6 +4,7 @@
 import { db } from "@/lib/supabase";
 import Link from "next/link";
 import { AckButton } from "../components/AckButton";
+import { ClockButton } from "../components/ClockButton";
 import { PageShell } from "../components/PageShell";
 import { Section } from "../components/ui/Section";
 import { Pill } from "../components/ui/Pill";
@@ -11,6 +12,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { TechName } from "../components/ui/TechName";
 import { getCurrentTech } from "../lib/current-tech";
 import { getFormerTechNames } from "../lib/former-techs";
+import { getCurrentState as getClockState } from "./time/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -176,6 +178,7 @@ export default async function Today() {
   const me = await getCurrentTech().catch(() => null);
   const canWrite = !!me?.canWrite;
   const formerSet = await getFormerTechNames();
+  const clockState = me?.tech ? await getClockState().catch(() => null) : null;
   const apptCount = todayAppts.length;
   const techCount = new Set(todayAppts.map((a) => a.tech_primary_name).filter(Boolean)).size;
   const firstAppt = todayAppts[0]?.scheduled_start ? fmtTime(todayAppts[0].scheduled_start) : null;
@@ -204,6 +207,15 @@ export default async function Today() {
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
           DB error: {error}
         </div>
+      )}
+
+      {clockState && me?.tech && (
+        <section className="mb-6">
+          <ClockButton
+            initial={clockState}
+            techShortName={me.tech.tech_short_name}
+          />
+        </section>
       )}
 
       {/* Hero strip — three pulse cards */}

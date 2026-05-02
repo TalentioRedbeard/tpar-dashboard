@@ -7,6 +7,7 @@ import { Wordmark } from "./ui/Brand";
 
 const NAV_ITEMS = [
   { href: "/",          label: "Today" },
+  { href: "/time",      label: "Time" },
   { href: "/customers", label: "Customers" },
   { href: "/jobs",      label: "Jobs" },
   { href: "/estimates", label: "Estimates" },
