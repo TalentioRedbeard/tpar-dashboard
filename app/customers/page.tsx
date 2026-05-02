@@ -4,6 +4,7 @@
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, fmtMoney, fmtDateShort, type Column } from "../../components/Table";
+import { StatCard } from "../../components/ui/StatCard";
 
 export const metadata = { title: "Customers · TPAR-DB" };
 
@@ -53,6 +54,24 @@ export default async function CustomersListPage({
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   const rows = (data ?? []) as CustomerRow[];
 
+  // Stat strip — same filter window, capped at 500.
+  let statsQuery = supa
+    .from("customer_360")
+    .select("lifetime_paid_revenue_dollars, outstanding_due_dollars, open_followups, lifetime_job_count")
+    .order("most_recent_comm", { ascending: false, nullsFirst: false })
+    .limit(500);
+  if (q) statsQuery = statsQuery.ilike("name", `%${q}%`);
+  if (outstandingOnly) statsQuery = statsQuery.gt("outstanding_due_dollars", 0);
+  if (!includeInternal) {
+    statsQuery = statsQuery.not("name", "in", '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")');
+  }
+  const { data: statsRows } = await statsQuery;
+  const stats = (statsRows ?? []) as Array<{ lifetime_paid_revenue_dollars: number | null; outstanding_due_dollars: number | null; open_followups: number | null; lifetime_job_count: number | null }>;
+  const totalLifetime = stats.reduce((s, r) => s + (Number(r.lifetime_paid_revenue_dollars) || 0), 0);
+  const totalOutstanding = stats.reduce((s, r) => s + (Number(r.outstanding_due_dollars) || 0), 0);
+  const customersWithOpenFollowups = stats.filter((r) => Number(r.open_followups) > 0).length;
+  const avgLifetime = stats.length > 0 ? totalLifetime / stats.length : 0;
+
   const columns: Column<CustomerRow>[] = [
     { header: "Name", cell: (r) => r.name ?? "—", className: "font-medium text-neutral-900" },
     { header: "Jobs", cell: (r) => r.lifetime_job_count ?? 0, align: "right" },
@@ -92,6 +111,13 @@ export default async function CustomersListPage({
       title="Customers"
       description="Search, filter, and pivot the full customer roster."
     >
+      <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard label="Customers (window)" value={(count ?? 0).toLocaleString()} hint={stats.length === 500 ? "stats: top 500" : `stats: all ${stats.length}`} />
+        <StatCard label="Avg lifetime" value={fmtMoney(avgLifetime)} tone={avgLifetime > 5000 ? "brand" : "neutral"} />
+        <StatCard label="Total outstanding" value={fmtMoney(totalOutstanding)} tone={totalOutstanding > 0 ? "red" : "neutral"} />
+        <StatCard label="Open follow-ups" value={customersWithOpenFollowups.toLocaleString()} tone={customersWithOpenFollowups > 0 ? "amber" : "neutral"} hint="customers with ≥1 open" />
+      </section>
+
       <FilterBar>
         <label className="block">
           <span className="block text-xs font-medium text-neutral-600">Search by name</span>

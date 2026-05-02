@@ -6,7 +6,8 @@
 
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
-import { Table, Pagination, FilterBar, fmtMoney, fmtPct, fmtDateShort, type Column } from "../../components/Table";
+import { Table, Pagination, FilterBar, StatusPill, fmtMoney, fmtPct, fmtDateShort, type Column } from "../../components/Table";
+import { StatCard } from "../../components/ui/StatCard";
 import { getEffectiveTechName } from "../../lib/current-tech";
 import { getFormerTechNames } from "../../lib/former-techs";
 import { TechName } from "../../components/ui/TechName";
@@ -86,6 +87,32 @@ export default async function JobsListPage({
 
   const formerSet = await getFormerTechNames();
 
+  // Stat strip aggregates over the same filter window (capped at 500).
+  let statsQuery = supa
+    .from("job_360")
+    .select("revenue, due_amount, gross_margin_pct, on_time")
+    .order("job_date", { ascending: false, nullsFirst: false })
+    .limit(500);
+  if (q)      statsQuery = statsQuery.or(`customer_name.ilike.%${q}%,invoice_number.ilike.%${q}%`);
+  if (effectiveTechName) {
+    statsQuery = statsQuery.or(`tech_primary_name.eq."${effectiveTechName}",tech_all_names.cs.{"${effectiveTechName}"}`);
+  } else if (tech) {
+    statsQuery = statsQuery.eq("tech_primary_name", tech);
+  }
+  if (status) statsQuery = statsQuery.eq("appointment_status", status);
+  if (outstandingOnly) statsQuery = statsQuery.gt("due_amount", 0);
+  if (!includeInternal) {
+    statsQuery = statsQuery.not("customer_name", "in", '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")');
+  }
+  const { data: statsRows } = await statsQuery;
+  const stats = (statsRows ?? []) as Array<{ revenue: number | null; due_amount: number | null; gross_margin_pct: number | null; on_time: boolean | null }>;
+  const totalRevenue = stats.reduce((s, r) => s + (Number(r.revenue) || 0), 0);
+  const totalDue = stats.reduce((s, r) => s + (Number(r.due_amount) || 0), 0);
+  const marginValues = stats.map((r) => Number(r.gross_margin_pct)).filter((v) => Number.isFinite(v) && v < 100);
+  const avgMargin = marginValues.length > 0 ? marginValues.reduce((s, v) => s + v, 0) / marginValues.length : null;
+  const onTimeStats = stats.filter((r) => r.on_time !== null);
+  const onTimePct = onTimeStats.length > 0 ? (onTimeStats.filter((r) => r.on_time === true).length / onTimeStats.length) * 100 : null;
+
   // Tech list from tech_directory — authoritative, no scan-and-distinct hack.
   const { data: techData } = await supa
     .from("tech_directory")
@@ -101,7 +128,7 @@ export default async function JobsListPage({
     { header: "Invoice", cell: (r) => r.invoice_number ?? "—", className: "font-mono text-xs" },
     { header: "Customer", cell: (r) => r.customer_name ?? "—", className: "font-medium text-neutral-900" },
     { header: "Tech", cell: (r) => <TechName name={r.tech_primary_name} formerSet={formerSet} /> },
-    { header: "Status", cell: (r) => r.appointment_status ?? "—", className: "text-neutral-600" },
+    { header: "Status", cell: (r) => r.appointment_status ? <StatusPill status={r.appointment_status} /> : <span className="text-neutral-400">—</span> },
     { header: "Revenue", cell: (r) => fmtMoney(r.revenue), align: "right" },
     {
       header: "Margin",
@@ -162,6 +189,13 @@ export default async function JobsListPage({
         </a>
       }
     >
+      <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard label="Jobs (window)" value={(count ?? 0).toLocaleString()} hint={stats.length === 500 ? "stats: top 500" : `stats: all ${stats.length}`} />
+        <StatCard label="Revenue (window)" value={fmtMoney(totalRevenue)} tone={totalRevenue > 0 ? "brand" : "neutral"} />
+        <StatCard label="Outstanding" value={fmtMoney(totalDue)} tone={totalDue > 0 ? "red" : "neutral"} />
+        <StatCard label="Avg margin" value={avgMargin != null ? fmtPct(avgMargin) : "—"} tone={avgMargin != null && avgMargin >= 30 ? "green" : avgMargin != null && avgMargin >= 15 ? "amber" : "neutral"} hint={onTimePct != null ? `${fmtPct(onTimePct)} on-time` : undefined} />
+      </section>
+
       <FilterBar>
         {effective ? <input type="hidden" name="mine" value="1" /> : null}
         {asOverride ? <input type="hidden" name="as" value={asOverride} /> : null}
