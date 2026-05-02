@@ -4,7 +4,8 @@
 import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
-import { Table, fmtMoney, fmtDateShort, type Column } from "../../components/Table";
+import { Table, StatusPill, fmtMoney, fmtDateShort, type Column } from "../../components/Table";
+import { StatCard } from "../../components/ui/StatCard";
 
 export const metadata = { title: "Estimates · TPAR-DB" };
 
@@ -45,7 +46,13 @@ export default async function EstimatesPage() {
 
   const columns: Column<EstRow>[] = [
     { header: "Created", cell: (r) => fmtDateShort(r.created_at), className: "text-neutral-600" },
-    { header: "Status", cell: (r) => <span className="text-xs uppercase">{r.status}</span>, className: "text-neutral-600" },
+    { header: "Status", cell: (r) => r.status ? <StatusPill status={r.status} tone={
+      r.status === "approved" || r.status === "pushed" ? "green" :
+      r.status === "draft" ? "neutral" :
+      r.status === "preview" ? "brand" :
+      r.status === "archived" ? "slate" :
+      "neutral"
+    } /> : <span className="text-neutral-400">—</span> },
     {
       header: "Customer",
       cell: (r) =>
@@ -85,12 +92,15 @@ export default async function EstimatesPage() {
       description="Drafts, previewed, approved, pushed-to-HCP, and archived estimates from Tool 3."
     >
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-        {STATUSES.map((s) => (
-          <div key={s} className="rounded-2xl border border-neutral-200 bg-white p-4">
-            <div className="text-xs uppercase tracking-wide text-neutral-500">{s}</div>
-            <div className="mt-1 text-2xl font-semibold text-neutral-900">{byStatus.get(s) ?? 0}</div>
-          </div>
-        ))}
+        {STATUSES.map((s) => {
+          const count = byStatus.get(s) ?? 0;
+          const tone =
+            s === "approved" || s === "pushed" ? "green" :
+            s === "preview" ? "brand" :
+            s === "archived" ? "neutral" :
+            "neutral";
+          return <StatCard key={s} label={s} value={count} tone={tone as "green" | "brand" | "neutral"} />;
+        })}
       </section>
 
       <Table

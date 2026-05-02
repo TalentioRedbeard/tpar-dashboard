@@ -6,7 +6,8 @@
 import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
-import { Table, Pagination, FilterBar, fmtDateShort, type Column } from "../../components/Table";
+import { Table, Pagination, FilterBar, StatusPill, fmtDateShort, type Column } from "../../components/Table";
+import { StatCard } from "../../components/ui/StatCard";
 import { AckButton } from "../../components/AckButton";
 import { TechName } from "../../components/ui/TechName";
 import { getEffectiveTechName, getCurrentTech } from "../../lib/current-tech";
@@ -74,10 +75,39 @@ export default async function CommsPage({
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   const rows = (data ?? []) as CommRow[];
 
+  // Stat strip — same filter window, capped at 500.
+  let statsQuery = supa
+    .from("communication_events")
+    .select("channel, importance, sentiment, flags, acked_at")
+    .order("occurred_at", { ascending: false })
+    .limit(500);
+  if (q) statsQuery = statsQuery.or(`customer_name.ilike.%${q}%,summary.ilike.%${q}%`);
+  if (channel) statsQuery = statsQuery.eq("channel", channel);
+  if (effectiveTechName) statsQuery = statsQuery.eq("tech_short_name", effectiveTechName);
+  else if (tech) statsQuery = statsQuery.eq("tech_short_name", tech);
+  if (minImp > 0) statsQuery = statsQuery.gte("importance", minImp);
+  if (!includeNoise && minImp === 0) statsQuery = statsQuery.gt("importance", 0);
+  const { data: statsRows } = await statsQuery;
+  const stats = (statsRows ?? []) as Array<{ channel: string; importance: number | null; sentiment: string | null; flags: string[] | null; acked_at: string | null }>;
+  const calls = stats.filter((r) => r.channel === "call").length;
+  const texts = stats.filter((r) => r.channel === "text").length;
+  const flagged = stats.filter((r) => r.flags?.some((f) => ["needs_followup","unresolved","escalation_needed"].includes(f))).length;
+  const unacked = stats.filter((r) => r.flags?.some((f) => ["needs_followup","unresolved","escalation_needed"].includes(f)) && !r.acked_at).length;
+
   const columns: Column<CommRow>[] = [
     { header: "When", cell: (r) => fmtDateShort(r.occurred_at), className: "text-neutral-600" },
-    { header: "Channel", cell: (r) => r.channel, className: "text-xs uppercase text-neutral-500" },
-    { header: "Dir", cell: (r) => r.direction ?? "—", className: "text-xs text-neutral-500" },
+    {
+      header: "Channel",
+      cell: (r) => {
+        const tone =
+          r.channel === "call" ? "brand" :
+          r.channel === "text" ? "green" :
+          r.channel === "email" ? "slate" :
+          "neutral";
+        return <StatusPill status={r.channel} tone={tone as "brand" | "green" | "slate" | "neutral"} />;
+      },
+    },
+    { header: "Dir", cell: (r) => r.direction ?? "—", className: "text-xs uppercase text-neutral-500" },
     {
       header: "Customer",
       cell: (r) =>
@@ -153,6 +183,13 @@ export default async function CommsPage({
         </a>
       }
     >
+      <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard label="Events (window)" value={(count ?? 0).toLocaleString()} hint={stats.length === 500 ? "stats: top 500" : `stats: all ${stats.length}`} />
+        <StatCard label="Calls" value={calls.toLocaleString()} tone={calls > 0 ? "brand" : "neutral"} />
+        <StatCard label="Texts" value={texts.toLocaleString()} tone={texts > 0 ? "green" : "neutral"} />
+        <StatCard label="Needs follow-up" value={unacked.toLocaleString()} tone={unacked > 0 ? "amber" : "neutral"} hint={flagged > 0 ? `${flagged} flagged total` : undefined} />
+      </section>
+
       <FilterBar>
         {effective ? <input type="hidden" name="mine" value="1" /> : null}
         {asOverride ? <input type="hidden" name="as" value={asOverride} /> : null}
