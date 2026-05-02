@@ -12,7 +12,9 @@ import { PageShell } from "@/components/PageShell";
 import { Section } from "@/components/ui/Section";
 import { Pill } from "@/components/ui/Pill";
 import { SnapButton } from "@/components/SnapButton";
+import { Numpad } from "@/components/Numpad";
 import { getRecentRequests } from "./actions";
+import { getRecentKeys } from "./keys-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,7 @@ export default async function SnapPage() {
   }
 
   const recent = await getRecentRequests();
+  const recentKeys = await getRecentKeys();
 
   return (
     <PageShell
@@ -57,7 +60,38 @@ export default async function SnapPage() {
         <SnapButton />
       </section>
 
-      <Section title="Recent requests (10)">
+      <Section title="Send a key to your laptop">
+        <div className="mb-3 text-xs text-neutral-600">
+          <strong>Phase 2:</strong> tap a digit / Enter / Esc on your phone — the poller delivers the keystroke
+          to whatever window has focus on your laptop. Click your laptop&apos;s Claude Code window first
+          so the keystroke goes to the right place.
+        </div>
+        <Numpad />
+        {recentKeys.length > 0 && (
+          <div className="mx-auto mt-4 max-w-sm text-xs text-neutral-500">
+            <div className="mb-1 font-medium text-neutral-600">Recent keystrokes:</div>
+            <ul className="space-y-1">
+              {recentKeys.slice(0, 5).map((k) => (
+                <li key={k.id} className="flex flex-wrap items-center gap-2">
+                  <span className={
+                    k.status === "sent"    ? "rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800" :
+                    k.status === "pending" ? "rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" :
+                                              "rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800"
+                  }>{k.status}</span>
+                  <span className="font-mono">{k.key_input}</span>
+                  <span className="text-neutral-400">·</span>
+                  <span>{fmtRel(k.requested_at)}</span>
+                  {k.failure_reason && <span className="text-red-700">· {k.failure_reason}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Section>
+
+      <div className="my-8" />
+
+      <Section title="Recent screenshots (10)">
         {recent.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 p-6 text-center text-sm text-neutral-500">
             No screenshot requests yet.
