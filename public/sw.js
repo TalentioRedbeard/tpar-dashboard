@@ -12,14 +12,19 @@
 // background sync. The point is "the page Danny loaded yesterday is
 // still readable when his iPhone has 1 bar."
 
-const CACHE = "tpar-db-v1";
-const ROUTE_CACHE = "tpar-db-routes-v1";
+const CACHE = "tpar-db-v2";
+const ROUTE_CACHE = "tpar-db-routes-v2";
 
-// Pages to pre-warm on install. Static + likely-revisited.
+// Pages to pre-warm on install. Static + likely-revisited tech-day surfaces.
 const PRECACHE_ROUTES = [
   "/",
+  "/me",
+  "/time",
+  "/price",
   "/manifest.webmanifest",
   "/icon",
+  "/icon1",
+  "/icon2",
   "/apple-icon",
 ];
 
@@ -50,6 +55,8 @@ function isStaticAsset(url) {
     url.pathname.startsWith("/_next/static") ||
     url.pathname === "/manifest.webmanifest" ||
     url.pathname === "/icon" ||
+    url.pathname === "/icon1" ||
+    url.pathname === "/icon2" ||
     url.pathname === "/apple-icon" ||
     url.pathname === "/favicon.ico"
   );

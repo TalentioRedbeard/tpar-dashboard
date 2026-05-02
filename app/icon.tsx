@@ -1,5 +1,5 @@
-// Browser favicon (32x32). Generated at request time via Next.js ImageResponse —
-// no static asset to maintain.
+// Browser favicon (32x32). Brand-mark — deep blue square, white T,
+// amber accent dot. Generated at request time via Next.js ImageResponse.
 
 import { ImageResponse } from "next/og";
 
@@ -12,20 +12,33 @@ export default function Icon() {
     (
       <div
         style={{
-          fontSize: 18,
-          background: "#171717",
+          background: "#1e40af",            // brand-700
           width: "100%",
           height: "100%",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#fafafa",
-          fontWeight: 700,
+          color: "#ffffff",
+          fontWeight: 800,
+          fontSize: 22,
           letterSpacing: -1,
           fontFamily: "system-ui",
+          borderRadius: 6,
+          position: "relative",
         }}
       >
         T
+        <div
+          style={{
+            position: "absolute",
+            bottom: 4,
+            right: 5,
+            width: 5,
+            height: 5,
+            borderRadius: 5,
+            background: "#f59e0b",          // accent-500
+          }}
+        />
       </div>
     ),
     { ...size },

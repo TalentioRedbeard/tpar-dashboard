@@ -5,6 +5,7 @@ import { getSessionUser } from "../lib/supabase-server";
 import { getCurrentTech } from "../lib/current-tech";
 import { Nav } from "../components/Nav";
 import { RegisterServiceWorker } from "../components/RegisterServiceWorker";
+import { InstallPrompt } from "../components/InstallPrompt";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,6 +28,8 @@ export const viewport = {
   themeColor: "#1e40af",
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: true as const,
 };
 
 export default async function RootLayout({
@@ -58,6 +61,7 @@ export default async function RootLayout({
         )}
         <div className="flex-1">{children}</div>
         <RegisterServiceWorker />
+        {user && <InstallPrompt />}
       </body>
     </html>
   );
