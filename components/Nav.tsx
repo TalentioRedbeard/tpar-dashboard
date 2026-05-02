@@ -21,6 +21,10 @@ const TOOL_ITEMS = [
   { href: "/ask",   label: "Ask" },
 ];
 
+const ADMIN_ITEMS = [
+  { href: "/alarms", label: "Alarms" },
+];
+
 export function Nav({
   userEmail,
   isTech,
@@ -72,14 +76,26 @@ export function Nav({
             </li>
           ))}
           {showAdmin ? (
-            <li>
-              <Link
-                href="/admin"
-                className="inline-block whitespace-nowrap rounded-md bg-accent-50 px-3 py-1.5 font-medium text-accent-700 ring-1 ring-inset ring-accent-100 transition hover:bg-accent-100"
-              >
-                Admin
-              </Link>
-            </li>
+            <>
+              {ADMIN_ITEMS.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 text-accent-700 transition hover:bg-accent-50"
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+              <li>
+                <Link
+                  href="/admin"
+                  className="inline-block whitespace-nowrap rounded-md bg-accent-50 px-3 py-1.5 font-medium text-accent-700 ring-1 ring-inset ring-accent-100 transition hover:bg-accent-100"
+                >
+                  Admin
+                </Link>
+              </li>
+            </>
           ) : null}
           {isManager ? (
             <li
