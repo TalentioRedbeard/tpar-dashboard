@@ -179,6 +179,22 @@ export default async function Today() {
   const canWrite = !!me?.canWrite;
   const formerSet = await getFormerTechNames();
   const clockState = me?.tech ? await getClockState().catch(() => null) : null;
+
+  // Next upcoming wake-up alarm (admin/manager view only — techs don't manage alarms)
+  let nextAlarm: { name: string; fire_at: string; tier: string } | null = null;
+  if (me?.isAdmin || me?.isManager) {
+    const supaA = db();
+    const { data: na } = await supaA
+      .from("wake_up_alarms")
+      .select("name, fire_at, requirement_level")
+      .eq("active", true)
+      .in("status", ["pending", "firing"])
+      .gte("fire_at", new Date().toISOString())
+      .order("fire_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (na) nextAlarm = { name: na.name as string, fire_at: na.fire_at as string, tier: na.requirement_level as string };
+  }
   const apptCount = todayAppts.length;
   const techCount = new Set(todayAppts.map((a) => a.tech_primary_name).filter(Boolean)).size;
   const firstAppt = todayAppts[0]?.scheduled_start ? fmtTime(todayAppts[0].scheduled_start) : null;
@@ -217,6 +233,26 @@ export default async function Today() {
           />
         </section>
       )}
+
+      {nextAlarm && (() => {
+        const ms = new Date(nextAlarm.fire_at).getTime() - Date.now();
+        const abs = Math.abs(ms);
+        const hr = Math.floor(abs / 3_600_000);
+        const min = Math.floor((abs % 3_600_000) / 60_000);
+        const inLabel = hr > 0 ? `${hr}h ${min}m` : `${min}m`;
+        const fireFmt = new Date(nextAlarm.fire_at).toLocaleString("en-US", {
+          timeZone: "America/Chicago", weekday: "short", hour: "numeric", minute: "2-digit", hour12: true,
+        });
+        return (
+          <Link href="/alarms" className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/50 px-4 py-3 text-sm transition hover:bg-amber-50">
+            <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-amber-500" aria-hidden />
+            <span className="font-medium text-amber-900">Next wake-up alarm</span>
+            <span className="text-amber-800">{nextAlarm.name}</span>
+            <span className="text-xs text-amber-700">tier {nextAlarm.tier}</span>
+            <span className="ml-auto text-xs text-amber-800">fires {fireFmt} <span className="text-amber-600">(in {inLabel})</span></span>
+          </Link>
+        );
+      })()}
 
       {/* Hero strip — three pulse cards */}
       <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-3">
