@@ -13,6 +13,7 @@ import { db } from "../../lib/supabase";
 import { getCurrentTech } from "../../lib/current-tech";
 import { PageShell } from "../../components/PageShell";
 import { ClockButton } from "../../components/ClockButton";
+import { StartAppointmentButton } from "../../components/StartAppointmentButton";
 import { getCurrentState as getClockState } from "../time/actions";
 
 export const metadata = { title: "My day · TPAR-DB" };
@@ -59,6 +60,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   }
 
   if (!techName) redirect("/?msg=not_a_tech");
+
+  // Load clock state once and reuse — both for ClockButton and per-appointment
+  // "Start" buttons. Cheaper than calling getClockState() twice.
+  const clockState = !viewingAs && me.tech ? await getClockState() : null;
 
   const supa = db();
   const today = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -155,10 +160,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       ) : null}
 
       {/* Clock button — primary action when a tech opens their day */}
-      {!viewingAs && me.tech ? (
+      {!viewingAs && me.tech && clockState ? (
         <section className="mb-8">
           <ClockButton
-            initial={await getClockState()}
+            initial={clockState}
             techShortName={me.tech.tech_short_name}
           />
         </section>
@@ -173,26 +178,46 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           </div>
         ) : (
           <ul className="space-y-2">
-            {appts.map((a) => (
-              <li key={a.appointment_id as string} className="rounded-2xl border border-neutral-200 bg-white p-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <Link href={`/job/${a.hcp_job_id}`} className="font-medium text-neutral-900 hover:underline">
-                    {(a.customer_name as string) ?? "(no name)"}
-                  </Link>
-                  <span className="text-xs text-neutral-500">
-                    {fmtTime(a.scheduled_start as string)} · {(a.status as string) ?? "?"}
-                  </span>
-                </div>
-                <div className="mt-1 text-xs text-neutral-600">
-                  {[a.street, a.city, a.zip].filter(Boolean).join(", ")}
-                </div>
-                {a.total_amount && Number(a.total_amount) > 0 ? (
-                  <div className="mt-1 text-xs text-emerald-700">
-                    Quoted: ${Number(a.total_amount).toLocaleString()}
+            {appts.map((a) => {
+              const apptId = a.appointment_id as string | null;
+              const jobId = (a.hcp_job_id as string | null) ?? null;
+              const isHere =
+                !!clockState &&
+                clockState.state === "clocked-in" &&
+                clockState.hcp_appointment_id === apptId;
+              const isElsewhere =
+                !!clockState && clockState.state === "clocked-in" && !isHere;
+              return (
+                <li key={apptId ?? "(no-id)"} className={"rounded-2xl border bg-white p-4 " + (isHere ? "border-emerald-300" : "border-neutral-200")}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <Link href={`/job/${a.hcp_job_id}`} className="font-medium text-neutral-900 hover:underline">
+                      {(a.customer_name as string) ?? "(no name)"}
+                    </Link>
+                    <span className="text-xs text-neutral-500">
+                      {fmtTime(a.scheduled_start as string)} · {(a.status as string) ?? "?"}
+                    </span>
                   </div>
-                ) : null}
-              </li>
-            ))}
+                  <div className="mt-1 text-xs text-neutral-600">
+                    {[a.street, a.city, a.zip].filter(Boolean).join(", ")}
+                  </div>
+                  {a.total_amount && Number(a.total_amount) > 0 ? (
+                    <div className="mt-1 text-xs text-emerald-700">
+                      Quoted: ${Number(a.total_amount).toLocaleString()}
+                    </div>
+                  ) : null}
+                  {!viewingAs && me.tech && (
+                    <div className="mt-2.5">
+                      <StartAppointmentButton
+                        appointmentId={apptId}
+                        jobId={jobId}
+                        isClockedInHere={isHere}
+                        isClockedInElsewhere={isElsewhere}
+                      />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

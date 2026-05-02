@@ -101,6 +101,25 @@ export async function getCurrentState(): Promise<CurrentClockState> {
   };
 }
 
+/**
+ * Convenience wrapper: clock in for a specific scheduled appointment.
+ * Used by the /me per-appointment "Start" buttons.
+ */
+export async function clockInForAppointment(input: {
+  hcp_appointment_id: string;
+  hcp_job_id?: string;
+  location?: Location;
+  notes?: string;
+}): Promise<ClockResult> {
+  return clockIn({
+    hcp_appointment_id: input.hcp_appointment_id,
+    hcp_job_id: input.hcp_job_id,
+    location: input.location,
+    notes: input.notes,
+    client_reported_at: new Date().toISOString(),
+  });
+}
+
 export async function clockIn(input: {
   hcp_appointment_id?: string;
   hcp_job_id?: string;
