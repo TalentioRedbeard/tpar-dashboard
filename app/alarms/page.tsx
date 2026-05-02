@@ -12,6 +12,7 @@ import { Section } from "@/components/ui/Section";
 import { Pill } from "@/components/ui/Pill";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AlarmCancelButton } from "@/components/AlarmCancelButton";
+import { AlarmCreateForm } from "@/components/AlarmCreateForm";
 
 export const dynamic = "force-dynamic";
 
@@ -136,6 +137,12 @@ export default async function AlarmsPage() {
       title="Alarms"
       description={`${ups.length} upcoming · ${past.length} recent`}
     >
+      {me.isAdmin && (
+        <div className="mb-6">
+          <AlarmCreateForm />
+        </div>
+      )}
+
       <Section title="Upcoming + active">
         {ups.length === 0 ? (
           <EmptyState
@@ -242,27 +249,7 @@ export default async function AlarmsPage() {
         </Section>
       </div>
 
-      <div className="mt-10 rounded-2xl border border-neutral-200 bg-neutral-50/60 p-4 text-xs text-neutral-600">
-        <div className="font-medium text-neutral-700">How to schedule a new alarm</div>
-        <p className="mt-1">
-          New-alarm UI is queued for a future polish pass. Until then, insert via SQL:
-        </p>
-        <pre className="mt-2 overflow-x-auto rounded-md bg-white px-3 py-2 text-[11px] text-neutral-800">
-{`INSERT INTO public.wake_up_alarms
-  (name, fire_at, requirement_level)
-VALUES
-  ('My alarm',
-   '2026-05-03 12:00:00+00'::timestamptz,  -- 7:00 AM CDT
-   'critical');`}
-        </pre>
-        <p className="mt-2">
-          Defaults applied: <code>concurrent_channels={'{twilio-call,pushover-emergency}'}</code>{" "}
-          <code>ring_interval_seconds=90</code> <code>hard_cap_minutes=30</code>{" "}
-          <code>escalate_after_attempts=5</code>. Override any column inline.
-        </p>
-      </div>
-
-      <div className="mt-6 text-xs text-neutral-500">
+      <div className="mt-10 text-xs text-neutral-500">
         <Link href="/admin" className="hover:underline">← Admin home</Link>
       </div>
     </PageShell>
