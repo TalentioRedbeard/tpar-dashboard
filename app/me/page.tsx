@@ -14,7 +14,9 @@ import { getCurrentTech } from "../../lib/current-tech";
 import { PageShell } from "../../components/PageShell";
 import { ClockButton } from "../../components/ClockButton";
 import { StartAppointmentButton } from "../../components/StartAppointmentButton";
+import { ClockSuggestionBanner } from "../../components/ClockSuggestionBanner";
 import { getCurrentState as getClockState } from "../time/actions";
+import { getPendingSuggestions } from "../time/suggestions";
 
 export const metadata = { title: "My day · TPAR-DB" };
 
@@ -64,6 +66,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   // Load clock state once and reuse — both for ClockButton and per-appointment
   // "Start" buttons. Cheaper than calling getClockState() twice.
   const clockState = !viewingAs && me.tech ? await getClockState() : null;
+  const suggestions = !viewingAs && me.tech ? await getPendingSuggestions() : [];
 
   const supa = db();
   const today = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -168,6 +171,15 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           />
         </section>
       ) : null}
+
+      {/* Geofence-driven clock-in suggestions */}
+      {suggestions.length > 0 && (
+        <section className="mb-8 space-y-2">
+          {suggestions.map((s) => (
+            <ClockSuggestionBanner key={s.id} suggestion={s} />
+          ))}
+        </section>
+      )}
 
       {/* Today's appointments */}
       <section className="mb-8">
