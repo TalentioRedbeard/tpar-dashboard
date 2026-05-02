@@ -15,6 +15,16 @@ const SECTIONS = [
     desc: "Edit slack_user_id, active flag, and notes per tech. Affects Slack routing across the system.",
   },
   {
+    href: "/alarms",
+    title: "Wake-up alarms",
+    desc: "Schedule + cancel orchestrated phone-call alarms with N-step DTMF authentication. Use for hard-to-wake mornings, deadline-critical reminders, or tethering to a program function.",
+  },
+  {
+    href: "/time",
+    title: "Time card",
+    desc: "Live who's-on-the-clock + per-day rollups across all techs. TPAR is the source of truth for hours; HCP mirror is queued.",
+  },
+  {
     href: "/admin/dev-log",
     title: "Dev log",
     desc: "Nightly narrative of TPAR development — what shipped, what's open, what we decided. Compaction of last 24h maintenance_logs via Haiku.",
