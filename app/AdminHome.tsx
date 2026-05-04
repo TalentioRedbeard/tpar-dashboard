@@ -20,6 +20,7 @@ import { ClockButton } from "../components/ClockButton";
 import { PageShell } from "../components/PageShell";
 import { Section } from "../components/ui/Section";
 import { Pill } from "../components/ui/Pill";
+import { FreshnessStrip } from "../components/FreshnessStrip";
 
 function fmtTime(s: string | null): string {
   if (!s) return "—";
@@ -196,6 +197,11 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
           </div>
           <span className="text-xs text-neutral-500">→ dispatch</span>
         </Link>
+      </section>
+
+      {/* Freshness strip — when was each upstream data source last synced */}
+      <section className="mb-6">
+        <FreshnessStrip />
       </section>
 
       {/* Operations details — collapsed by default */}

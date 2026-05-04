@@ -1,7 +1,10 @@
-"use server";
-
 // Feature catalog data sources. Mix of auto-discovery (DB queries) + a small
 // manually-maintained list for things that don't live in the DB.
+//
+// NOTE: this file is NOT marked "use server" — it exports both async helpers
+// and constant arrays (DASHBOARD_PAGES, MCP_TOOLS), and Next.js disallows
+// non-function exports from a "use server" module. Imported by a server
+// component (page.tsx), so the helpers run server-side regardless.
 
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
@@ -123,6 +126,7 @@ export const DASHBOARD_PAGES: CatalogPage[] = [
   { path: "/admin/view-as",            surface: "manager", description: "View-as-tech impersonation — preview the scope-limited tech dashboard." },
   { path: "/admin/salesask",           surface: "manager", description: "SalesAsk recording binding review — confirm / re-link / unbind." },
   { path: "/admin/catalog",            surface: "manager", description: "This page — feature catalog of every system surface." },
+  { path: "/admin/usage",              surface: "manager", description: "Dashboard usage analytics — who hits which pages, how often." },
   { path: "/reports/ar",               surface: "all",     description: "Accounts receivable detail." },
   { path: "/reports/patterns",         surface: "all",     description: "Customer recurring-pattern detection (preventative candidates)." },
   { path: "/price",                    surface: "all",     description: "Pricebook lookup — items + sell prices + categories." },

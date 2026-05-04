@@ -1,12 +1,17 @@
 // Protects every page except /login and /auth/* routes. Requires a valid
 // Supabase session AND that the user's email is on the allow list. Without
 // the allow list, anyone with a Google account could sign in.
+//
+// Also records a page-view row in dashboard_page_views on each authenticated
+// real (non-prefetch, non-API) request — fire-and-forget so it never adds
+// latency to the response.
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 // Domain allow list (lowercased). Anyone whose email ends in @tulsapar.com gets
 // in. Add specific personal addresses as comma-separated list in
@@ -33,6 +38,51 @@ function isAllowed(email: string | null | undefined): boolean {
   const e = email.toLowerCase();
   if (e.endsWith(`@${ALLOWED_DOMAIN}`)) return true;
   return ALLOWED_EXTRA.includes(e);
+}
+
+// Decide whether a request is worth logging as a page view. Skip:
+//  - API routes — these are app-internal calls, not user navigations
+//  - Next.js prefetches — the user hasn't actually navigated yet
+//  - Internal Next dev/build assets the matcher already excludes (defensive)
+function shouldLogPageView(req: NextRequest, path: string): boolean {
+  if (path.startsWith("/api/")) return false;
+  if (path.startsWith("/_next")) return false;
+  // Next App Router prefetches set this header on background fetches.
+  if (req.headers.get("next-router-prefetch") === "1") return false;
+  // Server actions land on the original page path with this header. They
+  // already happened from a real navigation we logged, so skip the duplicate.
+  if (req.headers.get("next-action")) return false;
+  return true;
+}
+
+// Fire-and-forget POST to PostgREST. We don't await — the response continues
+// in parallel. `keepalive: true` asks the runtime to hold the connection
+// open even after the response is sent.
+function recordPageView(req: NextRequest, path: string, email: string): void {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+  const search = req.nextUrl.search ? req.nextUrl.search.slice(0, 500) : null;
+  const ua = req.headers.get("user-agent")?.slice(0, 500) ?? null;
+  const ref = req.headers.get("referer")?.slice(0, 500) ?? null;
+  const body = JSON.stringify({
+    user_email: email,
+    path,
+    search,
+    user_agent: ua,
+    referer: ref,
+  });
+  // Don't await; .catch swallows network/DNS issues so we never disturb
+  // the actual user response.
+  fetch(`${SUPABASE_URL}/rest/v1/dashboard_page_views`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "content-type": "application/json",
+      prefer: "return=minimal",
+    },
+    body,
+    keepalive: true,
+  }).catch(() => {});
 }
 
 export async function middleware(req: NextRequest) {
@@ -74,6 +124,11 @@ export async function middleware(req: NextRequest) {
     url.pathname = "/login";
     url.searchParams.set("error", "not_allowed");
     return NextResponse.redirect(url);
+  }
+
+  // Authenticated, allow-listed request — record a page view if appropriate.
+  if (user.email && shouldLogPageView(req, path)) {
+    recordPageView(req, path, user.email);
   }
 
   return res;
