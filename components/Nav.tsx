@@ -24,11 +24,17 @@ const TOOL_ITEMS = [
   { href: "/ask",   label: "Ask" },
 ];
 
+// Visible to admin + manager + production_manager — leadership review surfaces.
+// View-as: leadership previews tech dashboard. SalesAsk: binding review.
+const LEADERSHIP_ITEMS = [
+  { href: "/admin/view-as",   label: "View as" },
+  { href: "/admin/salesask",  label: "SalesAsk" },
+];
+
+// Admin-only — Danny tools (alarms / laptop snap / admin index page).
 const ADMIN_ITEMS = [
   { href: "/alarms",          label: "Alarms" },
   { href: "/snap",            label: "Snap" },
-  { href: "/admin/view-as",   label: "View as" },
-  { href: "/admin/salesask",  label: "SalesAsk" },
   { href: "/admin",           label: "Admin home" },
 ];
 
@@ -56,6 +62,12 @@ export function Nav({
       title: "Tools",
       items: TOOL_ITEMS.map((i) => ({ ...i, tone: "default" as const })),
     },
+    ...(showAdmin || isManager
+      ? [{
+          title: "Leadership",
+          items: LEADERSHIP_ITEMS.map((i) => ({ ...i, tone: "admin" as const })),
+        }]
+      : []),
     ...(showAdmin
       ? [{
           title: "Admin",
@@ -114,9 +126,24 @@ export function Nav({
               </Link>
             </li>
           ))}
+          {/* Leadership items visible to admin OR manager (View as / SalesAsk) */}
+          {(showAdmin || isManager) ? (
+            <>
+              {LEADERSHIP_ITEMS.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 text-accent-700 transition hover:bg-accent-50"
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </>
+          ) : null}
           {showAdmin ? (
             <>
-              {ADMIN_ITEMS.slice(0, 3).map((item) => (
+              {ADMIN_ITEMS.slice(0, 2).map((item) => (
                 <li key={item.href}>
                   <Link
                     href={item.href}
