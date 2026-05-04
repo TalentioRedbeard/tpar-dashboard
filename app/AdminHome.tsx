@@ -96,7 +96,8 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
     { label: "Photos / videos", emoji: "📸", href: "/photos", subtitle: "For a job" },
     { label: "Request parts", emoji: "🔧", href: "/shopping", subtitle: "Add a need" },
     { label: "Membership", emoji: "🎟️", href: "/customers", subtitle: "Enroll a customer" },
-    { label: "Snap", emoji: "💻", href: "/snap", subtitle: "Screenshot bridge" },
+    { label: "Snap server", emoji: "💻", href: "/snap", subtitle: "Screenshot the laptop" },
+    { label: "Push key", emoji: "⌨️", href: "/snap", subtitle: "Send keystroke to laptop" },
     { label: "SalesAsk", emoji: "🎙️", href: "https://app.salesask.com", subtitle: "Open the recording app" },
   ];
 
