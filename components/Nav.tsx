@@ -25,10 +25,11 @@ const TOOL_ITEMS = [
 ];
 
 const ADMIN_ITEMS = [
-  { href: "/alarms",        label: "Alarms" },
-  { href: "/snap",          label: "Snap" },
-  { href: "/admin/view-as", label: "View as" },
-  { href: "/admin",         label: "Admin home" },
+  { href: "/alarms",          label: "Alarms" },
+  { href: "/snap",            label: "Snap" },
+  { href: "/admin/view-as",   label: "View as" },
+  { href: "/admin/salesask",  label: "SalesAsk" },
+  { href: "/admin",           label: "Admin home" },
 ];
 
 export function Nav({
