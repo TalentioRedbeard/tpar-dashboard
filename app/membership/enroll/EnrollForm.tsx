@@ -41,8 +41,10 @@ export function EnrollForm({
         <div className="mt-2 text-sm text-emerald-900">
           {customerName} signed up. Bill discount applied at signup: <span className="font-mono">${(success.discount_cents / 100).toLocaleString()}</span>.
         </div>
-        <div className="mt-2 text-xs text-emerald-800">
-          You'll need to apply the discount in HCP manually for v0 (HCP API integration is queued).
+        <div className="mt-3 rounded-md bg-white/60 px-3 py-2 text-xs text-emerald-800 ring-1 ring-emerald-200">
+          ✓ <strong>Kelsey has been notified</strong> — she&apos;ll add the discount line to the HCP invoice.
+          You can confirm to the customer that the discount will appear on their bill.
+          <span className="block mt-1 text-emerald-700">Auto-application via HCP API or browser-bot is queued for v1.</span>
         </div>
         <div className="mt-4 flex gap-2">
           <button

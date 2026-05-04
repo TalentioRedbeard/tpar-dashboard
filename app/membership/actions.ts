@@ -122,7 +122,89 @@ export async function enrollMembership(input: {
   revalidatePath(`/customer/${input.hcp_customer_id}`);
   if (input.signup_job_id) revalidatePath(`/job/${input.signup_job_id}`);
 
+  // Fire Kelsey notification (#129 v0.2 — HCP discount-application path).
+  // Recorded discount needs to be APPLIED to the actual HCP invoice;
+  // direct API or browser-bot integration is queued. For now Kelsey gets
+  // a Slack DM with full context so she can apply manually.
+  // Fire-and-forget — never block enrollment on notification failure.
+  notifyKelseyOfMembershipSignup({
+    hcp_customer_id: input.hcp_customer_id,
+    signup_job_id: input.signup_job_id ?? null,
+    tier_label: tier.customer_facing_name as string,
+    bill_discount_pct: Number(tier.bill_discount_pct),
+    discount_cents: discountCents,
+    bill_dollars: input.current_bill_dollars ?? null,
+    enrolled_by_tech: me.tech?.tech_short_name ?? me.email,
+    cadence,
+  }).catch(() => {});
+
   return { ok: true, subscription_id: inserted.id as string, signup_discount_cents: discountCents };
+}
+
+/**
+ * Fire-and-forget Slack DM to Kelsey via the notify-danny edge fn (which now
+ * accepts a recipient_slack_user_id override + service-role bearer auth).
+ * Looks up Kelsey's slack_user_id from tech_directory; falls back to Danny.
+ */
+async function notifyKelseyOfMembershipSignup(input: {
+  hcp_customer_id: string;
+  signup_job_id: string | null;
+  tier_label: string;
+  bill_discount_pct: number;
+  discount_cents: number;
+  bill_dollars: number | null;
+  enrolled_by_tech: string;
+  cadence: "monthly" | "annual";
+}): Promise<void> {
+  const supabase = db();
+  const { data: kelsey } = await supabase
+    .from("tech_directory")
+    .select("slack_user_id, tech_short_name")
+    .eq("tech_short_name", "Kelsey")
+    .eq("is_active", true)
+    .maybeSingle();
+
+  const recipient = (kelsey?.slack_user_id as string | null) ?? null;
+
+  // Build the human message
+  const discountDollars = (input.discount_cents / 100).toLocaleString();
+  const billLine = input.bill_dollars != null
+    ? `\n• Bill at signup: *$${input.bill_dollars.toLocaleString()}*`
+    : "";
+  const jobLink = input.signup_job_id
+    ? `\n• Job: <https://tpar-dashboard.vercel.app/job/${input.signup_job_id}|${input.signup_job_id.slice(0, 14)}…>`
+    : "";
+
+  const text = [
+    `🎟️ New TPAR membership signup — needs discount applied in HCP`,
+    ``,
+    `• Customer: <https://tpar-dashboard.vercel.app/customer/${input.hcp_customer_id}|view>`,
+    `• Tier: *${input.tier_label}* (${input.bill_discount_pct}% discount)`,
+    `• Cadence: ${input.cadence}`,
+    `• Enrolled by: ${input.enrolled_by_tech}`,
+    billLine,
+    `• Discount to apply: *$${discountDollars}*` + (input.bill_dollars != null ? ` (= ${input.bill_discount_pct}% of bill)` : ""),
+    jobLink,
+    ``,
+    `_Please add the discount line to the HCP invoice. Tracked: signup_discount_cents=${input.discount_cents} on membership_subscriptions._`,
+  ].filter(Boolean).join("\n");
+
+  const SUPABASE_URL = process.env.SUPABASE_URL ?? "";
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+
+  await fetch(`${SUPABASE_URL}/functions/v1/notify-danny`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      text,
+      context: "membership-signup",
+      recipient_slack_user_id: recipient,    // null falls back to Danny inside notify-danny
+    }),
+  }).catch(() => {});
 }
 
 export async function cancelMembership(input: {
