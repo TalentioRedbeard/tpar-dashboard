@@ -230,42 +230,78 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   ]);
 
   // ── "Next step" derivation (uses todayAppts + upcomingAppts above) ─────
-  // Looks at bid_estimates + appointment state to suggest what the tech
-  // should do next, based on the 7 lifecycle triggers:
-  //   1 procuring · 2 on-my-way · 3 start · 4 estimate · 5 present · 6 finish · 7 collect
+  // Source-of-truth order: job_lifecycle_events (what was fired) →
+  // bid_estimates (state derived from data) → fallback heuristics.
+  // Once the tech fires a trigger via the forms on /job/[id], the Next-step
+  // card immediately reflects the next-applicable trigger.
   let nextStep: { label: string; href: string; subtitle: string; emoji: string; tone: "brand" | "amber" | "emerald" | "neutral" } | null = null;
   if (clockedJobId) {
-    const { data: estimates } = await supabase
-      .from("bid_estimates")
-      .select("id, customer_approved_at, tech_authorized_at")
+    // 1. Look up triggers already fired for this job (registry source-of-truth)
+    const { data: firedEvents } = await supabase
+      .from("job_lifecycle_events")
+      .select("trigger_number")
       .eq("hcp_job_id", clockedJobId);
-    const estCount = estimates?.length ?? 0;
-    const anyApproved = (estimates ?? []).some((e: any) => e.customer_approved_at);
+    const fired = new Set((firedEvents ?? []).map((e: any) => e.trigger_number as number));
 
-    if (estCount === 0) {
+    // 2. Map current state to next-action based on what's fired
+    if (fired.has(7)) {
       nextStep = {
-        label: "Build the estimate",
-        href: `/job/${clockedJobId}/estimate/new`,
-        subtitle: "No estimate yet for this job — Trigger #4. Open Tool 3 with options.",
-        emoji: "✏️",
-        tone: "brand",
+        label: "Job closed — clock out",
+        href: "/me",
+        subtitle: "All 7 triggers fired. Wrap up + clock out + clean van.",
+        emoji: "🏁",
+        tone: "emerald",
       };
-    } else if (!anyApproved) {
+    } else if (fired.has(6)) {
       nextStep = {
-        label: "Present the estimate",
+        label: "Collect + Done",
         href: `/job/${clockedJobId}`,
-        subtitle: "Estimate written. Trigger #5 — present + capture customer disposition.",
-        emoji: "🎯",
+        subtitle: "Work finished — Trigger #7. Capture payment + ask for review.",
+        emoji: "💵",
+        tone: "emerald",
+      };
+    } else if (fired.has(5)) {
+      nextStep = {
+        label: "Finish work",
+        href: `/job/${clockedJobId}`,
+        subtitle: "Estimate presented — Trigger #6. Complete the work cleanly.",
+        emoji: "✅",
         tone: "amber",
       };
     } else {
-      nextStep = {
-        label: "Finish work + collect",
-        href: `/job/${clockedJobId}`,
-        subtitle: "Customer approved — Triggers #6/#7. Mark complete + collect payment.",
-        emoji: "✅",
-        tone: "emerald",
-      };
+      // No #5/#6/#7 fired yet — fall through to bid_estimates-derived state
+      const { data: estimates } = await supabase
+        .from("bid_estimates")
+        .select("id, customer_approved_at, tech_authorized_at")
+        .eq("hcp_job_id", clockedJobId);
+      const estCount = estimates?.length ?? 0;
+      const anyApproved = (estimates ?? []).some((e: any) => e.customer_approved_at);
+
+      if (estCount === 0) {
+        nextStep = {
+          label: "Build the estimate",
+          href: `/job/${clockedJobId}/estimate/new`,
+          subtitle: "No estimate yet — Trigger #4. Open Tool 3 with options.",
+          emoji: "✏️",
+          tone: "brand",
+        };
+      } else if (!anyApproved) {
+        nextStep = {
+          label: "Present the estimate",
+          href: `/job/${clockedJobId}`,
+          subtitle: "Estimate written — Trigger #5. Present + capture customer disposition via the trigger button.",
+          emoji: "🎯",
+          tone: "amber",
+        };
+      } else {
+        nextStep = {
+          label: "Mark Present + finish work",
+          href: `/job/${clockedJobId}`,
+          subtitle: "Customer approved in HCP. Fire Trigger #5 to log the presentation, then finish work.",
+          emoji: "🎯",
+          tone: "amber",
+        };
+      }
     }
   } else if (todayAppts.length > 0) {
     const next = todayAppts.find((a) => new Date(a.scheduled_start).getTime() >= Date.now())
