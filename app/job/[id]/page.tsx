@@ -4,6 +4,8 @@ import Link from "next/link";
 import { NoteForm } from "../../../components/NoteForm";
 import { addJobNote } from "../../../lib/notes-actions";
 import { getNeedsForJob } from "../../shopping/actions";
+import { getFiredTriggersForJob } from "./trigger-actions";
+import { TriggerForms } from "./TriggerForms";
 import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
 import { StatCard } from "../../../components/ui/StatCard";
@@ -86,7 +88,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     }
   }
 
-  const [{ data: comms }, similarRes, notesRes, jobNeeds] = await Promise.all([
+  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers] = await Promise.all([
     customerId
       ? supabase
           .from("communication_events")
@@ -103,6 +105,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       .order("created_at", { ascending: false })
       .limit(50),
     getNeedsForJob(id),
+    getFiredTriggersForJob(id),
   ]);
   const notes = (notesRes.data ?? []) as JobNote[];
   const openJobNeeds = jobNeeds.filter((n) => n.status !== "fulfilled" && n.status !== "cancelled");
@@ -319,6 +322,38 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </Section>
           );
         })()}
+
+        <Section
+          title="Lifecycle triggers"
+          description="Fire a trigger as you progress through the job. Records timestamp + form data + your attribution."
+        >
+          <TriggerForms
+            hcpJobId={id}
+            hcpCustomerId={customerId}
+            appointmentId={null}
+            firedTriggers={firedTriggers}
+            canWrite={canWrite}
+          />
+          {firedTriggers.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50/50 p-3">
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">Fired so far</div>
+              <ul className="space-y-1 text-xs text-neutral-700">
+                {firedTriggers.map((t) => (
+                  <li key={t.id} className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono">#{t.trigger_number}</span>
+                    <span className="font-medium">{t.trigger_name}</span>
+                    <span className="text-neutral-500">·</span>
+                    <span>{t.fired_by ?? "—"}</span>
+                    <span className="text-neutral-400">·</span>
+                    <span className="text-neutral-500">
+                      {new Date(t.fired_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Section>
 
         <Section
           title="Procurement needs for this job"
