@@ -184,7 +184,8 @@ export default async function DispatchPage() {
         <div className="space-y-6">
           {groupKeys.map((key) => {
             const dayRows = grouped.get(key)!;
-            const dayTotal = dayRows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0);
+            // appointments_master.total_amount is stored in CENTS (HCP native) — divide for display
+            const dayTotal = dayRows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0) / 100;
             const dayTechs = new Set(dayRows.map((r) => r.tech_primary_name).filter(Boolean));
             return (
               <section key={key}>
@@ -251,7 +252,7 @@ export default async function DispatchPage() {
                               </span>
                             </td>
                             <td className="px-4 py-2 align-top text-right font-medium text-neutral-700">
-                              {(Number(r.total_amount) || 0) > 0 ? fmtMoney(r.total_amount) : ""}
+                              {(Number(r.total_amount) || 0) > 0 ? fmtMoney((Number(r.total_amount) || 0) / 100) : ""}
                             </td>
                           </>
                         );
