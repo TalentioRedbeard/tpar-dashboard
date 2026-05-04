@@ -75,7 +75,9 @@ export async function getRecentJobs(opts: { mine?: boolean; limit?: number } = {
     .limit(limit);
 
   if (me.dashboardRole === "tech" && me.tech) {
-    query = query.or(`tech_primary_name.eq.${me.tech.tech_short_name},tech_all_names.cs.{${me.tech.tech_short_name}}`);
+    // job_360 stores FULL names ("Omar Fernandez"), not short names.
+    const techFullName = me.tech.hcp_full_name ?? me.tech.tech_short_name;
+    query = query.or(`tech_primary_name.eq.${techFullName},tech_all_names.cs.{${techFullName}}`);
   }
 
   const { data } = await query;

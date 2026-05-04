@@ -63,10 +63,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
   // Tech scope auth: techs only see jobs they were on (#130, per Danny 2026-05-04).
   // Admin/manager/production_manager bypass.
+  // Note: job_360.tech_primary_name + tech_all_names store FULL names
+  // (e.g., "Omar Fernandez"), not the short name.
   if (me && me.dashboardRole === "tech" && me.tech) {
-    const techName = me.tech.tech_short_name;
-    const onPrimary = j.tech_primary_name === techName;
-    const onCrew = Array.isArray(j.tech_all_names) && (j.tech_all_names as string[]).includes(techName);
+    const techFullName = me.tech.hcp_full_name ?? me.tech.tech_short_name;
+    const onPrimary = j.tech_primary_name === techFullName;
+    const onCrew = Array.isArray(j.tech_all_names) && (j.tech_all_names as string[]).includes(techFullName);
     if (!onPrimary && !onCrew) {
       return (
         <PageShell kicker="Job" title="Outside your scope" backHref="/" backLabel="Today">

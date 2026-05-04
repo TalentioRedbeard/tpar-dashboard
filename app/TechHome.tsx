@@ -70,7 +70,11 @@ interface TechComm {
 export default async function TechHome({ me }: { me: CurrentTech }) {
   const supabase = db();
   const techName = me.tech?.tech_short_name;
-  if (!techName) {
+  // appointments_master + job_360 store FULL names ("Omar Fernandez") in
+  // tech_primary_name + tech_all_names. communication_events.tech_short_name
+  // uses short names. Filter accordingly.
+  const techFullName = me.tech?.hcp_full_name ?? me.tech?.tech_short_name ?? null;
+  if (!techName || !techFullName) {
     return (
       <PageShell title="No tech profile" description="You're signed in but not linked to a tech_directory record.">
         <EmptyState title="Ask Danny to link your account." />
@@ -113,14 +117,14 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   const [todayPrimaryRes, todayHelperRes] = await Promise.all([
     supabase.from("appointments_master")
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, street, city, status, tech_primary_name")
-      .eq("tech_primary_name", techName)
+      .eq("tech_primary_name", techFullName)
       .gte("scheduled_start", todayStart)
       .lte("scheduled_start", todayEnd)
       .not("status", "in", '("pro canceled","user canceled","cancelled","canceled")')
       .order("scheduled_start", { ascending: true }),
     supabase.from("appointments_master")
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, street, city, status, tech_primary_name")
-      .contains("tech_all_names", [techName])
+      .contains("tech_all_names", [techFullName])
       .gte("scheduled_start", todayStart)
       .lte("scheduled_start", todayEnd)
       .not("status", "in", '("pro canceled","user canceled","cancelled","canceled")')
@@ -144,7 +148,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   const [upcomingPrimaryRes, upcomingHelperRes] = await Promise.all([
     supabase.from("appointments_master")
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, street, city, status, tech_primary_name")
-      .eq("tech_primary_name", techName)
+      .eq("tech_primary_name", techFullName)
       .gt("scheduled_start", todayEnd)
       .lte("scheduled_start", upcomingEnd)
       .not("status", "in", '("pro canceled","user canceled","cancelled","canceled")')
@@ -152,7 +156,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       .limit(15),
     supabase.from("appointments_master")
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, street, city, status, tech_primary_name")
-      .contains("tech_all_names", [techName])
+      .contains("tech_all_names", [techFullName])
       .gt("scheduled_start", todayEnd)
       .lte("scheduled_start", upcomingEnd)
       .not("status", "in", '("pro canceled","user canceled","cancelled","canceled")')
@@ -179,13 +183,13 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   const [recentPrimaryRes, recentHelperRes, myCommsRes] = await Promise.all([
     supabase.from("job_360")
       .select("hcp_job_id, customer_name, job_date, revenue, appointment_status")
-      .eq("tech_primary_name", techName)
+      .eq("tech_primary_name", techFullName)
       .gte("job_date", recentStart)
       .order("job_date", { ascending: false })
       .limit(10),
     supabase.from("job_360")
       .select("hcp_job_id, customer_name, job_date, revenue, appointment_status, tech_all_names")
-      .contains("tech_all_names", [techName])
+      .contains("tech_all_names", [techFullName])
       .gte("job_date", recentStart)
       .order("job_date", { ascending: false })
       .limit(10),

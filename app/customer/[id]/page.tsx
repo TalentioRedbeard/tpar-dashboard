@@ -41,13 +41,15 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
   // Tech scope auth: techs only see customers they've worked for (#130).
   // Admin/manager/production_manager bypass.
+  // Note: job_360.tech_primary_name + tech_all_names store FULL names
+  // (e.g., "Omar Fernandez"), not the short name.
   if (me && me.dashboardRole === "tech" && me.tech) {
-    const techName = me.tech.tech_short_name;
+    const techFullName = me.tech.hcp_full_name ?? me.tech.tech_short_name;
     const { data: scope } = await supabase
       .from("job_360")
       .select("hcp_job_id")
       .eq("hcp_customer_id", id)
-      .or(`tech_primary_name.eq.${techName},tech_all_names.cs.{${techName}}`)
+      .or(`tech_primary_name.eq.${techFullName},tech_all_names.cs.{${techFullName}}`)
       .limit(1);
     if (!scope || scope.length === 0) {
       return (
