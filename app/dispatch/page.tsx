@@ -95,6 +95,11 @@ export default async function DispatchPage() {
       .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags")
       .gte("scheduled_start", startUtc)
       .lt("scheduled_start", endDate)
+      // Hide cancelled — they shouldn't appear on the dispatch view (per Danny 2026-05-04
+      // catching clint booker's cancelled jobs showing up on Today)
+      .not("status", "in", '("pro canceled","user canceled","cancelled","canceled","Pro Canceled","User Canceled","Cancelled","Canceled")')
+      // Hide internal "TPAR" jobs to match the rest of the dashboard's filtering
+      .not("customer_name", "in", '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")')
       .order("scheduled_start", { ascending: true }),
     supa
       .from("appointments_master")
