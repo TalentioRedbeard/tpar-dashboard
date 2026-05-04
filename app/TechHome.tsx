@@ -95,9 +95,22 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
     ? (clockState as Extract<CurrentClockState, { state: "clocked-in" }>).hcp_job_id
     : null;
 
+  // If clocked in, look up the current job's customer for membership + next-step
+  let clockedJobCustomerId: string | null = null;
+  let clockedJobCustomerName: string | null = null;
+  if (clockedJobId) {
+    const { data: j } = await supabase
+      .from("job_360")
+      .select("hcp_customer_id, customer_name")
+      .eq("hcp_job_id", clockedJobId)
+      .maybeSingle();
+    clockedJobCustomerId = (j?.hcp_customer_id as string | null) ?? null;
+    clockedJobCustomerName = (j?.customer_name as string | null) ?? null;
+  }
+
   // Mode-aware action tiles
   const tiles: Array<{
-    label: string; emoji: string; href: string; primary?: boolean; subtitle?: string; disabled?: boolean;
+    label: string; emoji: string; href: string; primary?: boolean; subtitle?: string; disabled?: boolean; external?: boolean;
   }> = [
     { label: "Receipt", emoji: "🧾", href: "/receipt", subtitle: "Snap a receipt" },
     clockedJobId
@@ -108,7 +121,22 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       ? { label: "Photos", emoji: "📸", href: `/photos?job=${clockedJobId}`, primary: true, subtitle: "For your current job" }
       : { label: "Photos", emoji: "📸", href: "/photos", subtitle: "Pick the job" },
     { label: "Request parts", emoji: "🔧", href: "/shopping", subtitle: "Add a need" },
+    clockedJobCustomerId
+      ? { label: "Membership", emoji: "🎟️", href: `/membership/enroll?customer=${clockedJobCustomerId}&job=${clockedJobId}`, subtitle: `Enroll ${clockedJobCustomerName ?? "current customer"}` }
+      : { label: "Membership", emoji: "🎟️", href: "#", disabled: true, subtitle: "Clock into a job first" },
   ];
+
+  // Lead techs (Omar/Keane/Chaunce) get the SalesAsk tile so they can jump
+  // straight from the dashboard into the recording app.
+  if (me.tech?.is_lead) {
+    tiles.push({
+      label: "SalesAsk",
+      emoji: "🎙️",
+      href: "https://app.salesask.com",
+      subtitle: "Open recording app",
+      external: true,
+    });
+  }
 
   // My appointments today
   // Filter: tech_primary_name = me OR me in tech_all_names
@@ -200,6 +228,83 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       .order("occurred_at", { ascending: false })
       .limit(15),
   ]);
+
+  // ── "Next step" derivation (uses todayAppts + upcomingAppts above) ─────
+  // Looks at bid_estimates + appointment state to suggest what the tech
+  // should do next, based on the 7 lifecycle triggers:
+  //   1 procuring · 2 on-my-way · 3 start · 4 estimate · 5 present · 6 finish · 7 collect
+  let nextStep: { label: string; href: string; subtitle: string; emoji: string; tone: "brand" | "amber" | "emerald" | "neutral" } | null = null;
+  if (clockedJobId) {
+    const { data: estimates } = await supabase
+      .from("bid_estimates")
+      .select("id, customer_approved_at, tech_authorized_at")
+      .eq("hcp_job_id", clockedJobId);
+    const estCount = estimates?.length ?? 0;
+    const anyApproved = (estimates ?? []).some((e: any) => e.customer_approved_at);
+
+    if (estCount === 0) {
+      nextStep = {
+        label: "Build the estimate",
+        href: `/job/${clockedJobId}/estimate/new`,
+        subtitle: "No estimate yet for this job — Trigger #4. Open Tool 3 with options.",
+        emoji: "✏️",
+        tone: "brand",
+      };
+    } else if (!anyApproved) {
+      nextStep = {
+        label: "Present the estimate",
+        href: `/job/${clockedJobId}`,
+        subtitle: "Estimate written. Trigger #5 — present + capture customer disposition.",
+        emoji: "🎯",
+        tone: "amber",
+      };
+    } else {
+      nextStep = {
+        label: "Finish work + collect",
+        href: `/job/${clockedJobId}`,
+        subtitle: "Customer approved — Triggers #6/#7. Mark complete + collect payment.",
+        emoji: "✅",
+        tone: "emerald",
+      };
+    }
+  } else if (todayAppts.length > 0) {
+    const next = todayAppts.find((a) => new Date(a.scheduled_start).getTime() >= Date.now())
+      ?? todayAppts[0];
+    if (next) {
+      const minutesAway = Math.round((new Date(next.scheduled_start).getTime() - Date.now()) / 60_000);
+      const label = minutesAway > 0 && minutesAway < 90
+        ? `Heading to ${next.customer_name ?? "next customer"}`
+        : `Next: ${next.customer_name ?? "—"}`;
+      nextStep = {
+        label,
+        href: next.hcp_job_id ? `/job/${next.hcp_job_id}` : "/me",
+        subtitle: minutesAway > 0
+          ? `In ${minutesAway} min · Trigger #2 — call customer + on-my-way`
+          : "Now · Press Start when you arrive — Trigger #3",
+        emoji: minutesAway > 0 ? "🚐" : "📍",
+        tone: "brand",
+      };
+    }
+  }
+
+  if (!nextStep && upcomingAppts.length > 0) {
+    nextStep = {
+      label: "Plan ahead",
+      href: "/me",
+      subtitle: `${upcomingAppts.length} upcoming this week — review your queue`,
+      emoji: "📅",
+      tone: "neutral",
+    };
+  }
+  if (!nextStep) {
+    nextStep = {
+      label: "Quiet — clean up estimates / follow-ups",
+      href: "/comms?mine=1",
+      subtitle: "No active job + nothing on the books. Use the time well.",
+      emoji: "🧹",
+      tone: "neutral",
+    };
+  }
   const myComms = (myCommsRes.data ?? []) as TechComm[];
   const recentMap = new Map<string, TechJob>();
   for (const j of (recentPrimaryRes.data ?? []) as TechJob[]) recentMap.set(j.hcp_job_id, j);
@@ -226,6 +331,32 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       {clockState && (
         <section className="mb-5">
           <ClockButton initial={clockState} techShortName={techName} />
+        </section>
+      )}
+
+      {/* Next step card — derived from current job + estimate state */}
+      {nextStep && (
+        <section className="mb-5">
+          <Link
+            href={nextStep.href}
+            className={
+              "flex w-full items-center justify-between rounded-2xl border p-4 shadow-sm transition " +
+              (nextStep.tone === "brand"   ? "border-brand-300 bg-gradient-to-r from-brand-50 to-white hover:border-brand-400" :
+               nextStep.tone === "amber"   ? "border-amber-300 bg-gradient-to-r from-amber-50 to-white hover:border-amber-400" :
+               nextStep.tone === "emerald" ? "border-emerald-300 bg-gradient-to-r from-emerald-50 to-white hover:border-emerald-400" :
+                                              "border-neutral-200 bg-white hover:border-neutral-300")
+            }
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-2xl shrink-0" aria-hidden>{nextStep.emoji}</span>
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Next step</div>
+                <div className="font-semibold text-neutral-900 truncate">{nextStep.label}</div>
+                <div className="text-xs text-neutral-600 truncate">{nextStep.subtitle}</div>
+              </div>
+            </div>
+            <span className="ml-2 shrink-0 text-neutral-500">→</span>
+          </Link>
         </section>
       )}
 
@@ -268,6 +399,13 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
               </>
             );
             if (t.disabled) return <div key={t.label} className={cls}>{inner}</div>;
+            if (t.external) {
+              return (
+                <a key={t.label} href={t.href} target="_blank" rel="noopener" className={cls}>
+                  {inner}
+                </a>
+              );
+            }
             return <Link key={t.label} href={t.href} className={cls}>{inner}</Link>;
           })}
         </div>

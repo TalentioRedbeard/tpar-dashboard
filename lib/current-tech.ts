@@ -23,6 +23,7 @@ export type CurrentTech = {
     hcp_full_name: string | null;
     hcp_employee_id: string | null;
     is_active: boolean;
+    is_lead: boolean;
     slack_user_id: string | null;
     notes: string | null;
   } | null;
@@ -39,7 +40,7 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
   const lowerEmail = user.email.toLowerCase();
   const { data } = await supa
     .from("tech_directory")
-    .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, slack_user_id, notes, email, secondary_emails, dashboard_role")
+    .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, secondary_emails, dashboard_role")
     .or(`email.ilike.${lowerEmail},secondary_emails.cs.{${lowerEmail}}`)
     .eq("is_active", true)
     .maybeSingle();
@@ -62,7 +63,7 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
     if (viewAsName && viewAsName.trim()) {
       const { data: targetTech } = await supa
         .from("tech_directory")
-        .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, slack_user_id, notes")
+        .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes")
         .ilike("tech_short_name", viewAsName.trim())
         .eq("is_active", true)
         .maybeSingle();
@@ -85,6 +86,7 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
             hcp_full_name: targetTech.hcp_full_name as string | null,
             hcp_employee_id: targetTech.hcp_employee_id as string | null,
             is_active: targetTech.is_active as boolean,
+            is_lead: !!(targetTech.is_lead as boolean | null),
             slack_user_id: targetTech.slack_user_id as string | null,
             notes: targetTech.notes as string | null,
           },
@@ -108,6 +110,7 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
       hcp_full_name: data.hcp_full_name as string | null,
       hcp_employee_id: data.hcp_employee_id as string | null,
       is_active: data.is_active as boolean,
+      is_lead: !!(data.is_lead as boolean | null),
       slack_user_id: data.slack_user_id as string | null,
       notes: data.notes as string | null,
     } : null,

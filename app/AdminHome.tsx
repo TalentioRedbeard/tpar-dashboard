@@ -95,7 +95,9 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
     { label: "Estimate for job", emoji: "📝", href: "/jobs", subtitle: "Pick the job" },
     { label: "Photos / videos", emoji: "📸", href: "/photos", subtitle: "For a job" },
     { label: "Request parts", emoji: "🔧", href: "/shopping", subtitle: "Add a need" },
-    { label: "Snap", emoji: "📸", href: "/snap", subtitle: "Screenshot bridge" },
+    { label: "Membership", emoji: "🎟️", href: "/customers", subtitle: "Enroll a customer" },
+    { label: "Snap", emoji: "💻", href: "/snap", subtitle: "Screenshot bridge" },
+    { label: "SalesAsk", emoji: "🎙️", href: "https://app.salesask.com", subtitle: "Open the recording app" },
   ];
 
   const nowLabel = new Date().toLocaleString("en-US", {
