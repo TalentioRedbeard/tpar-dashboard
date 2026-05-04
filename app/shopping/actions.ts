@@ -146,3 +146,64 @@ export async function getRecentlyCompletedNeeds(limit = 20): Promise<NeedRow[]> 
     .limit(limit);
   return (data ?? []) as NeedRow[];
 }
+
+// ─── Research layer — slice 2 of #127 ───────────────────────────────────
+export type ResearchResult = {
+  id: string;
+  vendor: string;
+  product_name: string;
+  sku: string | null;
+  unit_price_cents: number | null;
+  total_price_cents: number | null;
+  in_stock: boolean | null;
+  url: string | null;
+  source: string;
+  notes: string | null;
+  found_at: string;
+};
+
+export async function getResearchForNeed(need_id: string): Promise<ResearchResult[]> {
+  const me = await getCurrentTech();
+  if (!me) return [];
+  const supabase = db();
+  const { data } = await supabase
+    .from("need_research_results")
+    .select("id, vendor, product_name, sku, unit_price_cents, total_price_cents, in_stock, url, source, notes, found_at")
+    .eq("need_id", need_id)
+    .order("found_at", { ascending: false });
+  return (data ?? []) as ResearchResult[];
+}
+
+export type ResearchInvokeResult =
+  | { ok: true; candidates: number }
+  | { ok: false; error: string };
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+export async function researchNeed(need_id: string): Promise<ResearchInvokeResult> {
+  const me = await getCurrentTech();
+  if (!me?.canWrite) return { ok: false, error: "No write access." };
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { ok: false, error: "Server missing SUPABASE env." };
+  }
+
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/procurement-research`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ need_id }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j?.ok) {
+      return { ok: false, error: j?.error ?? `Research failed (${r.status})` };
+    }
+    revalidatePath("/shopping");
+    return { ok: true, candidates: Number(j?.candidates ?? 0) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}

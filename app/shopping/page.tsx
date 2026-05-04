@@ -8,9 +8,10 @@ import { PageShell } from "@/components/PageShell";
 import { Section } from "@/components/ui/Section";
 import { Pill } from "@/components/ui/Pill";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { getOpenNeeds, getRecentlyCompletedNeeds, type NeedRow, type Urgency } from "./actions";
+import { getOpenNeeds, getRecentlyCompletedNeeds, getResearchForNeed, type NeedRow, type Urgency, type ResearchResult } from "./actions";
 import { LogNeedForm } from "./LogNeedForm";
 import { NeedActions } from "./NeedActions";
+import { ResearchButton } from "./ResearchButton";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ function fmtRel(iso: string): string {
   return `${Math.round(ms / 86_400_000)}d ago`;
 }
 
-function NeedCard({ need, canWrite }: { need: NeedRow; canWrite: boolean }) {
+function NeedCard({ need, canWrite, research }: { need: NeedRow; canWrite: boolean; research: ResearchResult[] }) {
   const urg = need.urgency as Urgency;
   return (
     <li className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -77,6 +78,9 @@ function NeedCard({ need, canWrite }: { need: NeedRow; canWrite: boolean }) {
           {need.notes ? (
             <div className="mt-2 text-sm text-neutral-700 whitespace-pre-line">{need.notes}</div>
           ) : null}
+          {canWrite ? (
+            <ResearchButton needId={need.id} initialResults={research} />
+          ) : null}
         </div>
         {canWrite ? <NeedActions needId={need.id} /> : null}
       </div>
@@ -99,6 +103,13 @@ export default async function ShoppingPage({
     getOpenNeeds({ limit: 100 }),
     getRecentlyCompletedNeeds(10),
   ]);
+
+  // Load any existing research results for the open needs (parallel)
+  const researchByNeedId = new Map<string, ResearchResult[]>();
+  await Promise.all(open.map(async (n) => {
+    const r = await getResearchForNeed(n.id);
+    researchByNeedId.set(n.id, r);
+  }));
 
   // Sort open by urgency rank then by created_at
   const sortedOpen = [...open].sort((a, b) => {
@@ -143,7 +154,7 @@ export default async function ShoppingPage({
                     {URGENCY_LABEL[urg]} ({items.length})
                   </div>
                   <ul className="space-y-2">
-                    {items.map((n) => <NeedCard key={n.id} need={n} canWrite={me.canWrite} />)}
+                    {items.map((n) => <NeedCard key={n.id} need={n} canWrite={me.canWrite} research={researchByNeedId.get(n.id) ?? []} />)}
                   </ul>
                 </div>
               );
