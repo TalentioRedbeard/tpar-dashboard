@@ -1,9 +1,11 @@
-// Top nav for the unified TPAR app. Server component (no client state).
-// Visual identity: brand wordmark on the left, slim pill-shaped links,
-// admin highlighted in amber, signed-in email + sign-out on the right.
+// Top nav for the unified TPAR app.
+// Desktop (md+): full horizontal nav with all links pill-styled.
+// Mobile (< md): logo + hamburger drawer (MobileNavMenu) — fixes the
+// horizontal-scroll cut-off Danny hit 2026-05-04.
 
 import Link from "next/link";
 import { Wordmark } from "./ui/Brand";
+import { MobileNavMenu } from "./MobileNavMenu";
 
 const NAV_ITEMS = [
   { href: "/",          label: "Today" },
@@ -26,6 +28,7 @@ const ADMIN_ITEMS = [
   { href: "/alarms",        label: "Alarms" },
   { href: "/snap",          label: "Snap" },
   { href: "/admin/view-as", label: "View as" },
+  { href: "/admin",         label: "Admin home" },
 ];
 
 export function Nav({
@@ -39,13 +42,46 @@ export function Nav({
   isAdmin?: boolean;
   isManager?: boolean;
 }) {
+  // Build the section list once for the mobile drawer
+  const mobileSections = [
+    {
+      title: "Main",
+      items: [
+        ...(isTech ? [{ href: "/me", label: "My day", tone: "tech" as const }] : []),
+        ...NAV_ITEMS.map((i) => ({ ...i, tone: "default" as const })),
+      ],
+    },
+    {
+      title: "Tools",
+      items: TOOL_ITEMS.map((i) => ({ ...i, tone: "default" as const })),
+    },
+    ...(showAdmin
+      ? [{
+          title: "Admin",
+          items: ADMIN_ITEMS.map((i) => ({ ...i, tone: "admin" as const })),
+        }]
+      : []),
+    ...(isManager
+      ? [{
+          title: "Role",
+          items: [{ href: "/me", label: "Manager · read-only", tone: "manager" as const }],
+        }]
+      : []),
+    {
+      title: "Other",
+      items: [{ href: "/search", label: "Search", tone: "default" as const }],
+    },
+  ];
+
   return (
     <nav className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70">
-      <div className="mx-auto flex w-full max-w-7xl items-center gap-4 px-4 py-3 md:px-6">
+      <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-3 py-2.5 md:gap-4 md:px-6 md:py-3">
         <Link href="/" className="shrink-0" aria-label="TPAR-DB home">
           <Wordmark size="md" />
         </Link>
-        <ul className="ml-2 flex flex-1 items-center gap-1 overflow-x-auto text-sm">
+
+        {/* Desktop horizontal nav — hidden on phones */}
+        <ul className="ml-2 hidden flex-1 items-center gap-1 overflow-x-auto text-sm md:flex">
           {isTech ? (
             <li>
               <Link
@@ -66,7 +102,6 @@ export function Nav({
               </Link>
             </li>
           ))}
-          {/* Subtle visual separator before tools */}
           <li className="mx-1 h-5 w-px bg-neutral-200" aria-hidden="true" />
           {TOOL_ITEMS.map((item) => (
             <li key={item.href}>
@@ -80,7 +115,7 @@ export function Nav({
           ))}
           {showAdmin ? (
             <>
-              {ADMIN_ITEMS.map((item) => (
+              {ADMIN_ITEMS.slice(0, 3).map((item) => (
                 <li key={item.href}>
                   <Link
                     href={item.href}
@@ -109,6 +144,11 @@ export function Nav({
             </li>
           ) : null}
         </ul>
+
+        {/* Mobile spacer pushes hamburger + email to the right */}
+        <div className="ml-auto md:hidden" />
+
+        {/* Search button — hidden on the smallest mobile to save space */}
         <Link
           href="/search"
           className="hidden whitespace-nowrap rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:bg-neutral-50 sm:inline-flex sm:items-center sm:gap-1.5"
@@ -121,8 +161,10 @@ export function Nav({
           </svg>
           <span>Search</span>
         </Link>
+
+        {/* Desktop email + sign-out */}
         {userEmail ? (
-          <div className="flex items-center gap-3 text-sm text-neutral-600">
+          <div className="hidden items-center gap-3 text-sm text-neutral-600 md:flex">
             <span className="hidden truncate md:inline" title={userEmail}>
               {userEmail.replace("@tulsapar.com", "")}
             </span>
@@ -136,6 +178,9 @@ export function Nav({
             </form>
           </div>
         ) : null}
+
+        {/* Mobile hamburger — hidden on md+ */}
+        <MobileNavMenu sections={mobileSections} userEmail={userEmail} />
       </div>
     </nav>
   );
