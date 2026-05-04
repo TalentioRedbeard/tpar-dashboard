@@ -52,6 +52,18 @@ interface TechJob {
   appointment_status: string | null;
 }
 
+interface TechComm {
+  id: number;
+  occurred_at: string;
+  channel: string;
+  direction: string | null;
+  customer_name: string | null;
+  hcp_customer_id: string | null;
+  importance: number | null;
+  summary: string | null;
+  flags: string[] | null;
+}
+
 const QUICK_ACTIONS = [
   { href: "/snap", label: "Snap", emoji: "📸" },
   { href: "/ask", label: "Ask", emoji: "❓" },
@@ -148,7 +160,9 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   ).slice(0, 10);
 
   // My recent jobs (last 7 days, completed or in-progress)
-  const [recentPrimaryRes, recentHelperRes] = await Promise.all([
+  // My recent comms (last 14 days, just calls/texts attributed to this tech)
+  const recentCommsStart = new Date(Date.now() - 14 * 86400_000).toISOString();
+  const [recentPrimaryRes, recentHelperRes, myCommsRes] = await Promise.all([
     supabase.from("job_360")
       .select("hcp_job_id, customer_name, job_date, revenue, appointment_status")
       .eq("tech_primary_name", techName)
@@ -161,7 +175,14 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       .gte("job_date", recentStart)
       .order("job_date", { ascending: false })
       .limit(10),
+    supabase.from("communication_events")
+      .select("id, occurred_at, channel, direction, customer_name, hcp_customer_id, importance, summary, flags")
+      .eq("tech_short_name", techName)
+      .gte("occurred_at", recentCommsStart)
+      .order("occurred_at", { ascending: false })
+      .limit(15),
   ]);
+  const myComms = (myCommsRes.data ?? []) as TechComm[];
   const recentMap = new Map<string, TechJob>();
   for (const j of (recentPrimaryRes.data ?? []) as TechJob[]) recentMap.set(j.hcp_job_id, j);
   for (const j of (recentHelperRes.data ?? []) as TechJob[]) {
@@ -308,6 +329,48 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
                   </div>
                 </li>
               ))}
+            </ul>
+          )}
+        </Section>
+
+        <Section
+          title="Your recent comms (14 days)"
+          description={
+            myComms.length === 0
+              ? "Nothing recent."
+              : <>{myComms.length} {myComms.length === 1 ? "event" : "events"} attributed to you · <Link href="/comms?mine=1" className="text-brand-700 hover:underline">all yours →</Link></>
+          }
+        >
+          {myComms.length === 0 ? (
+            <EmptyState title="No calls or texts attributed to you yet." />
+          ) : (
+            <ul className="space-y-2">
+              {myComms.slice(0, 8).map((c) => {
+                const flagged = Array.isArray(c.flags) && c.flags.some((f) =>
+                  ["needs_followup", "unresolved", "escalation_needed"].includes(f)
+                );
+                return (
+                  <li key={c.id} className="rounded-2xl border border-neutral-200 bg-white p-3 text-sm">
+                    <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                      <Pill tone="slate">{c.channel}</Pill>
+                      {c.direction ? <Pill tone="slate">{c.direction}</Pill> : null}
+                      {flagged ? <Pill tone="amber">follow-up</Pill> : null}
+                      <span>imp {c.importance ?? "—"}</span>
+                      <span className="ml-auto font-mono">{fmtDate(c.occurred_at)}</span>
+                    </div>
+                    <div className="text-sm">
+                      {c.hcp_customer_id ? (
+                        <Link href={`/customer/${c.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">
+                          {c.customer_name ?? "(no name)"}
+                        </Link>
+                      ) : (
+                        <span className="font-medium text-neutral-900">{c.customer_name ?? "(no name)"}</span>
+                      )}
+                    </div>
+                    {c.summary ? <p className="mt-1 text-xs text-neutral-600">{c.summary}</p> : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Section>

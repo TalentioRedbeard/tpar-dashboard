@@ -94,7 +94,16 @@ export function InstallPrompt() {
             <div className="text-sm font-semibold text-neutral-900">Install TPAR</div>
             {iosMode ? (
               <div className="mt-1 text-xs leading-snug text-neutral-600">
-                Tap the Share <span className="inline-block translate-y-[1px]">⬆</span> icon, then <span className="font-medium">Add to Home Screen</span>. The dashboard launches like a native app.
+                <p>iOS doesn&apos;t let websites install themselves — Apple makes it two taps in Safari:</p>
+                <ol className="mt-1.5 list-decimal space-y-0.5 pl-4">
+                  <li>
+                    Tap Safari&apos;s <span className="font-semibold">Share</span> button — the square-with-arrow icon at the <span className="font-semibold">bottom of your screen</span> (middle of Safari&apos;s toolbar).
+                  </li>
+                  <li>
+                    Scroll down → tap <span className="font-semibold">&ldquo;Add to Home Screen.&rdquo;</span>
+                  </li>
+                </ol>
+                <p className="mt-1.5 text-neutral-500">After that, TPAR opens from your home screen like a real app — no Safari address bar.</p>
               </div>
             ) : (
               <div className="mt-1 text-xs leading-snug text-neutral-600">
