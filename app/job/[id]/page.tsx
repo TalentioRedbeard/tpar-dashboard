@@ -1,4 +1,7 @@
-// Per-job 360 view
+// Per-job 360 view — typed read via lib/typed-db (#120, 2026-05-04).
+// The single supabase.from("job_360") call is gone; the typed getJob360()
+// validates the row at the data boundary and surfaces compile-time
+// completion for column access.
 import { db } from "@/lib/supabase";
 import Link from "next/link";
 import { NoteForm } from "../../../components/NoteForm";
@@ -7,6 +10,8 @@ import { getNeedsForJob } from "../../shopping/actions";
 import { getFiredTriggersForJob } from "./trigger-actions";
 import { TriggerForms } from "./TriggerForms";
 import { PageShell } from "../../../components/PageShell";
+import { getJob360, jobRevenueDollars, jobDueDollars } from "@/lib/typed-db/job-360";
+import { fmtDollars } from "@/lib/typed-db/money";
 import { Section } from "../../../components/ui/Section";
 import { StatCard } from "../../../components/ui/StatCard";
 import { Pill } from "../../../components/ui/Pill";
@@ -39,11 +44,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const formerSet = await getFormerTechNames();
   const supabase = db();
 
-  const { data: jobRow } = await supabase
-    .from("job_360")
-    .select("*")
-    .eq("hcp_job_id", id)
-    .maybeSingle();
+  // Typed read — schema validation + compile-time column access (#120)
+  const jobRow = await getJob360(id);
 
   if (!jobRow) {
     return (
