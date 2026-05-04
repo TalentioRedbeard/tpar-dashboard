@@ -14,6 +14,7 @@ import { getCurrentTech } from "../lib/current-tech";
 import { getFormerTechNames } from "../lib/former-techs";
 import { getCurrentState as getClockState } from "./time/actions";
 import TechHome from "./TechHome";
+import AdminHome from "./AdminHome";
 
 export const dynamic = "force-dynamic";
 
@@ -177,11 +178,16 @@ function fmtMoney(n: unknown): string {
 export default async function Today() {
   const me = await getCurrentTech().catch(() => null);
 
-  // Role-aware home: techs (non-admin, non-manager, non-production_manager)
-  // get the scope-limited tech home view per Danny 2026-05-04.
-  // Admin / manager / production_manager / unauthenticated → existing operational view.
+  // Role-aware home per Danny 2026-05-04: front door is intent-first, not data-first.
+  //   tech            → TechHome (scope-limited; their day, their jobs, their comms)
+  //   admin/manager/pm → AdminHome (intent launcher: ask + 6 action tiles + today strip)
+  //   unauthenticated → fall through to legacy operational view (won't reach in practice;
+  //                     middleware redirects to /login)
   if (me && me.dashboardRole === "tech" && me.tech) {
     return <TechHome me={me} />;
+  }
+  if (me && (me.isAdmin || me.isManager)) {
+    return <AdminHome me={me} />;
   }
 
   const { followups, leaders, recentJobs, patterns, arTop, todayAppts, error } = await loadData();

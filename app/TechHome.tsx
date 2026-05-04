@@ -10,7 +10,7 @@
 import Link from "next/link";
 import type { CurrentTech } from "@/lib/current-tech";
 import { db } from "@/lib/supabase";
-import { getCurrentState as getClockState } from "./time/actions";
+import { getCurrentState as getClockState, type CurrentClockState } from "./time/actions";
 import { ClockButton } from "../components/ClockButton";
 import { PageShell } from "../components/PageShell";
 import { Section } from "../components/ui/Section";
@@ -64,12 +64,8 @@ interface TechComm {
   flags: string[] | null;
 }
 
-const QUICK_ACTIONS = [
-  { href: "/snap", label: "Snap", emoji: "📸" },
-  { href: "/ask", label: "Ask", emoji: "❓" },
-  { href: "/shopping", label: "Log need", emoji: "🛒" },
-  { href: "/me", label: "My week", emoji: "📊" },
-];
+// Action tiles for tech — mode-aware "Estimate current job" tile flips state
+// when clocked in vs. not. Same intent-first pattern as AdminHome.
 
 export default async function TechHome({ me }: { me: CurrentTech }) {
   const supabase = db();
@@ -91,6 +87,24 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
 
   // Clock state
   const clockState = await getClockState().catch(() => null);
+  const clockedJobId = clockState && clockState.state === "clocked-in"
+    ? (clockState as Extract<CurrentClockState, { state: "clocked-in" }>).hcp_job_id
+    : null;
+
+  // Mode-aware action tiles
+  const tiles: Array<{
+    label: string; emoji: string; href: string; primary?: boolean; subtitle?: string; disabled?: boolean;
+  }> = [
+    { label: "Receipt", emoji: "🧾", href: "/receipt", subtitle: "Snap a receipt" },
+    clockedJobId
+      ? { label: "Estimate current job", emoji: "✏️", href: `/job/${clockedJobId}/estimate/new`, primary: true, subtitle: "You're clocked in" }
+      : { label: "Estimate current job", emoji: "✏️", href: "#", disabled: true, subtitle: "Clock into a job first" },
+    { label: "Estimate for job", emoji: "📝", href: "/jobs", subtitle: "Pick the job" },
+    clockedJobId
+      ? { label: "Photos", emoji: "📸", href: `/photos?job=${clockedJobId}`, primary: true, subtitle: "For your current job" }
+      : { label: "Photos", emoji: "📸", href: "/photos", subtitle: "Pick the job" },
+    { label: "Request parts", emoji: "🔧", href: "/shopping", subtitle: "Add a need" },
+  ];
 
   // My appointments today
   // Filter: tech_primary_name = me OR me in tech_all_names
@@ -206,23 +220,53 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       description={`${nowLabel} · your day, your jobs`}
     >
       {clockState && (
-        <section className="mb-6">
+        <section className="mb-5">
           <ClockButton initial={clockState} techShortName={techName} />
         </section>
       )}
 
-      {/* Quick actions row */}
-      <section className="mb-8 grid grid-cols-4 gap-3">
-        {QUICK_ACTIONS.map((a) => (
-          <Link
-            key={a.href}
-            href={a.href}
-            className="flex flex-col items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-4 text-center text-sm font-medium text-neutral-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-50"
-          >
-            <span className="text-2xl" aria-hidden>{a.emoji}</span>
-            <span>{a.label}</span>
-          </Link>
-        ))}
+      {/* Ask bar — primary CTA for "I don't know what to do" / "find me X" */}
+      <section className="mb-6">
+        <Link
+          href="/ask"
+          className="flex w-full items-center justify-between rounded-2xl border border-brand-300 bg-gradient-to-r from-brand-50 to-white p-4 shadow-sm transition hover:border-brand-400 hover:shadow-md"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl" aria-hidden>💬</span>
+            <div>
+              <div className="font-semibold text-brand-900">Ask TPAR</div>
+              <div className="text-xs text-brand-700/80">Type what you want — I&apos;ll direct or advise</div>
+            </div>
+          </div>
+          <span className="text-brand-700">→</span>
+        </Link>
+      </section>
+
+      {/* Action grid — mode-aware tiles */}
+      <section className="mb-6">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Quick actions</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {tiles.map((t) => {
+            const baseClass = "flex flex-col items-center gap-1.5 rounded-2xl border p-4 text-center shadow-sm transition";
+            const enabled = "border-neutral-200 bg-white hover:border-brand-300 hover:bg-brand-50";
+            const disabled = "border-neutral-200 bg-neutral-50 cursor-not-allowed opacity-60";
+            const primary = "border-brand-400 bg-brand-50 ring-2 ring-brand-300";
+            const cls = t.disabled ? `${baseClass} ${disabled}` : t.primary ? `${baseClass} ${primary}` : `${baseClass} ${enabled}`;
+            const inner = (
+              <>
+                <span className="text-2xl" aria-hidden>{t.emoji}</span>
+                <span className={`text-sm font-semibold ${t.primary ? "text-brand-900" : "text-neutral-900"}`}>{t.label}</span>
+                {t.subtitle ? (
+                  <span className={`text-[10px] uppercase tracking-wide ${t.primary ? "text-brand-700" : t.disabled ? "text-neutral-400" : "text-neutral-500"}`}>
+                    {t.subtitle}
+                  </span>
+                ) : null}
+              </>
+            );
+            if (t.disabled) return <div key={t.label} className={cls}>{inner}</div>;
+            return <Link key={t.label} href={t.href} className={cls}>{inner}</Link>;
+          })}
+        </div>
       </section>
 
       <div className="space-y-8">
