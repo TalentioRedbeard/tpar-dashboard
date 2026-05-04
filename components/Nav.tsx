@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/estimates", label: "Estimates" },
   { href: "/comms",     label: "Comms" },
   { href: "/dispatch",  label: "Dispatch" },
+  { href: "/shopping",  label: "Shopping" },
   { href: "/reports",   label: "Reports" },
 ];
 
@@ -22,8 +23,9 @@ const TOOL_ITEMS = [
 ];
 
 const ADMIN_ITEMS = [
-  { href: "/alarms", label: "Alarms" },
-  { href: "/snap",   label: "Snap" },
+  { href: "/alarms",        label: "Alarms" },
+  { href: "/snap",          label: "Snap" },
+  { href: "/admin/view-as", label: "View as" },
 ];
 
 export function Nav({
