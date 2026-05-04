@@ -3,6 +3,7 @@ import { db } from "@/lib/supabase";
 import Link from "next/link";
 import { NoteForm } from "../../../components/NoteForm";
 import { addJobNote } from "../../../lib/notes-actions";
+import { getNeedsForJob } from "../../shopping/actions";
 import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
 import { StatCard } from "../../../components/ui/StatCard";
@@ -60,7 +61,30 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const j = jobRow as Record<string, unknown>;
   const customerId = j.hcp_customer_id as string | null;
 
-  const [{ data: comms }, similarRes, notesRes] = await Promise.all([
+  // Tech scope auth: techs only see jobs they were on (#130, per Danny 2026-05-04).
+  // Admin/manager/production_manager bypass.
+  if (me && me.dashboardRole === "tech" && me.tech) {
+    const techName = me.tech.tech_short_name;
+    const onPrimary = j.tech_primary_name === techName;
+    const onCrew = Array.isArray(j.tech_all_names) && (j.tech_all_names as string[]).includes(techName);
+    if (!onPrimary && !onCrew) {
+      return (
+        <PageShell kicker="Job" title="Outside your scope" backHref="/" backLabel="Today">
+          <EmptyState
+            title="You weren't on this job."
+            description={
+              <>
+                For privacy + system safety, techs only see jobs they were on.
+                If you need access, ask the production manager.
+              </>
+            }
+          />
+        </PageShell>
+      );
+    }
+  }
+
+  const [{ data: comms }, similarRes, notesRes, jobNeeds] = await Promise.all([
     customerId
       ? supabase
           .from("communication_events")
@@ -76,8 +100,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       .eq("hcp_job_id", id)
       .order("created_at", { ascending: false })
       .limit(50),
+    getNeedsForJob(id),
   ]);
   const notes = (notesRes.data ?? []) as JobNote[];
+  const openJobNeeds = jobNeeds.filter((n) => n.status !== "fulfilled" && n.status !== "cancelled");
 
   const addressLine = [j.street as string, j.city as string].filter(Boolean).join(", ");
   const description = (
@@ -101,9 +127,16 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       backLabel="All jobs"
       actions={
         canWrite ? (
-          <LinkButton href={`/job/${id}/estimate/new`} variant="primary">
-            + Multi-option estimate
-          </LinkButton>
+          <div className="flex flex-wrap gap-2">
+            <LinkButton href={`/job/${id}/estimate/new`} variant="primary">
+              + Multi-option estimate
+            </LinkButton>
+            {customerId ? (
+              <LinkButton href={`/membership/enroll?customer=${customerId}&job=${id}`} variant="secondary">
+                + Add membership
+              </LinkButton>
+            ) : null}
+          </div>
         ) : null
       }
     >
@@ -160,6 +193,84 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </Section>
         )}
 
+        {Number(j.salesask_recording_count) > 0 && (
+          <Section
+            title="SalesAsk intake conversation"
+            description="What the customer said, pre-extracted by SalesAsk. Use this to inform option structure, work descriptions, and pricing."
+          >
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                <span className="font-mono">{(j.salesask_latest_recording_name as string) ?? "—"}</span>
+                {j.salesask_latest_recorded_at ? (
+                  <>
+                    <span>·</span>
+                    <span>
+                      {new Date(j.salesask_latest_recorded_at as string).toLocaleString("en-US", {
+                        timeZone: "America/Chicago",
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      })}
+                    </span>
+                  </>
+                ) : null}
+                {j.salesask_latest_match_method ? (
+                  <>
+                    <span>·</span>
+                    <Pill
+                      tone={
+                        j.salesask_latest_match_method === "invoice_number_exact"
+                          ? "green"
+                          : Number(j.salesask_latest_match_confidence) >= 0.7
+                          ? "brand"
+                          : "amber"
+                      }
+                    >
+                      {j.salesask_latest_match_method as string} {Number(j.salesask_latest_match_confidence).toFixed(1)}
+                    </Pill>
+                  </>
+                ) : null}
+                {Number(j.salesask_recording_count) > 1 ? (
+                  <>
+                    <span>·</span>
+                    <span>{j.salesask_recording_count as number} recordings on file</span>
+                  </>
+                ) : null}
+                {j.salesask_latest_url_mp3 ? (
+                  <a
+                    href={j.salesask_latest_url_mp3 as string}
+                    target="_blank"
+                    rel="noopener"
+                    className="ml-auto rounded-md bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100"
+                  >
+                    Open audio →
+                  </a>
+                ) : null}
+              </div>
+
+              {j.salesask_latest_scope_notes ? (
+                <div className="mb-3">
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">Scope</div>
+                  <p className="whitespace-pre-line text-sm text-neutral-800">{j.salesask_latest_scope_notes as string}</p>
+                </div>
+              ) : null}
+
+              {j.salesask_latest_pricing_notes ? (
+                <div className="mb-3">
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">Pricing discussed</div>
+                  <p className="whitespace-pre-line text-sm text-neutral-800">{j.salesask_latest_pricing_notes as string}</p>
+                </div>
+              ) : null}
+
+              {j.salesask_latest_additional_notes ? (
+                <div>
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">Additional notes</div>
+                  <p className="whitespace-pre-line text-sm text-neutral-800">{j.salesask_latest_additional_notes as string}</p>
+                </div>
+              ) : null}
+            </div>
+          </Section>
+        )}
+
         {Array.isArray(similarRes.data) && (similarRes.data as Array<Record<string, unknown>>).length > 0 && (() => {
           const rows = similarRes.data as Array<Record<string, unknown>>;
           const revenues = rows
@@ -206,6 +317,46 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </Section>
           );
         })()}
+
+        <Section
+          title="Procurement needs for this job"
+          description={
+            openJobNeeds.length > 0
+              ? `${openJobNeeds.length} open · click "Add" to log another`
+              : undefined
+          }
+        >
+          {openJobNeeds.length > 0 ? (
+            <ul className="space-y-2 mb-3">
+              {openJobNeeds.map((n) => (
+                <li key={n.id} className="rounded-2xl border border-neutral-200 bg-white p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Pill
+                      tone={
+                        n.urgency === "asap" ? "red" :
+                        n.urgency === "today" ? "amber" :
+                        n.urgency === "this_week" ? "brand" : "slate"
+                      }
+                    >
+                      {n.urgency.replace("_", " ")}
+                    </Pill>
+                    <span className="font-medium">
+                      {n.qty ? <span className="font-mono text-neutral-500 mr-1">{n.qty}×</span> : null}
+                      {n.item_description}
+                    </span>
+                    <span className="text-xs text-neutral-500">· {n.submitted_by} · via {n.submitted_via}</span>
+                  </div>
+                  {n.notes ? <div className="mt-1 text-xs text-neutral-600 whitespace-pre-line">{n.notes}</div> : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {canWrite ? (
+            <LinkButton href={`/shopping?prefill_job=${id}`} variant="secondary">
+              + Add need for this job
+            </LinkButton>
+          ) : null}
+        </Section>
 
         <Section title="Operator notes">
           {canWrite ? (

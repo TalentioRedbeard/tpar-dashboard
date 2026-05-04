@@ -13,6 +13,8 @@ import { Section } from "../../../components/ui/Section";
 import { StatCard } from "../../../components/ui/StatCard";
 import { Pill } from "../../../components/ui/Pill";
 import { EmptyState } from "../../../components/ui/EmptyState";
+import { LinkButton } from "../../../components/ui/Button";
+import { getCurrentMembership } from "../../membership/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +39,34 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const formerSet = await getFormerTechNames();
   const supabase = db();
 
-  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes] = await Promise.all([
+  // Tech scope auth: techs only see customers they've worked for (#130).
+  // Admin/manager/production_manager bypass.
+  if (me && me.dashboardRole === "tech" && me.tech) {
+    const techName = me.tech.tech_short_name;
+    const { data: scope } = await supabase
+      .from("job_360")
+      .select("hcp_job_id")
+      .eq("hcp_customer_id", id)
+      .or(`tech_primary_name.eq.${techName},tech_all_names.cs.{${techName}}`)
+      .limit(1);
+    if (!scope || scope.length === 0) {
+      return (
+        <PageShell kicker="Customer" title="Outside your scope" backHref="/" backLabel="Today">
+          <EmptyState
+            title="You haven't worked for this customer."
+            description={
+              <>
+                For privacy + system safety, techs only see customers they've worked for.
+                If you need access, ask the production manager.
+              </>
+            }
+          />
+        </PageShell>
+      );
+    }
+  }
+
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -66,6 +95,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       .eq("hcp_customer_id", id)
       .order("status", { ascending: true })
       .order("starts_on", { ascending: false }),
+    getCurrentMembership(id),
   ]);
   const notes = (notesRes.data ?? []) as CustomerNote[];
   const agreements = (agreementsRes.data ?? []) as Array<{
@@ -141,6 +171,38 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       backLabel="All customers"
     >
       <div className="space-y-10">
+        <Section title="Membership">
+          {currentMembership && currentMembership.status === "active" ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
+              <div>
+                <div className="font-semibold text-emerald-900">{currentMembership.customer_facing_name}</div>
+                <div className="mt-0.5 text-xs text-emerald-800">
+                  {currentMembership.bill_discount_pct}% off all service work · member since {new Date(currentMembership.started_at).toLocaleDateString()}
+                  {currentMembership.current_period_end ? <> · renews {new Date(currentMembership.current_period_end).toLocaleDateString()}</> : null}
+                </div>
+                {currentMembership.enrolled_by_tech ? (
+                  <div className="mt-0.5 text-xs text-emerald-700">enrolled by {currentMembership.enrolled_by_tech}</div>
+                ) : null}
+              </div>
+              <Pill tone="green">active</Pill>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-neutral-50/60 p-4">
+              <div>
+                <div className="font-medium text-neutral-700">Not a member yet</div>
+                <div className="mt-0.5 text-xs text-neutral-500">
+                  Offering membership at the next service can be a "no-brainer" for the customer (10–20% off the bill, depending on tier).
+                </div>
+              </div>
+              {canWrite ? (
+                <LinkButton href={`/membership/enroll?customer=${id}`} variant="primary">
+                  + Enroll
+                </LinkButton>
+              ) : null}
+            </div>
+          )}
+        </Section>
+
         <Section title="Lifetime + signal">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatCard label="Lifetime jobs" value={(cust.lifetime_job_count as number) ?? 0} />

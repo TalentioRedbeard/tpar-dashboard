@@ -13,6 +13,7 @@ import { TechName } from "../components/ui/TechName";
 import { getCurrentTech } from "../lib/current-tech";
 import { getFormerTechNames } from "../lib/former-techs";
 import { getCurrentState as getClockState } from "./time/actions";
+import TechHome from "./TechHome";
 
 export const dynamic = "force-dynamic";
 
@@ -174,8 +175,16 @@ function fmtMoney(n: unknown): string {
 }
 
 export default async function Today() {
-  const { followups, leaders, recentJobs, patterns, arTop, todayAppts, error } = await loadData();
   const me = await getCurrentTech().catch(() => null);
+
+  // Role-aware home: techs (non-admin, non-manager, non-production_manager)
+  // get the scope-limited tech home view per Danny 2026-05-04.
+  // Admin / manager / production_manager / unauthenticated → existing operational view.
+  if (me && me.dashboardRole === "tech" && me.tech) {
+    return <TechHome me={me} />;
+  }
+
+  const { followups, leaders, recentJobs, patterns, arTop, todayAppts, error } = await loadData();
   const canWrite = !!me?.canWrite;
   const formerSet = await getFormerTechNames();
   const clockState = me?.tech ? await getClockState().catch(() => null) : null;

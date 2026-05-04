@@ -6,6 +6,7 @@ import { getCurrentTech } from "../lib/current-tech";
 import { Nav } from "../components/Nav";
 import { RegisterServiceWorker } from "../components/RegisterServiceWorker";
 import { InstallPrompt } from "../components/InstallPrompt";
+import { ImpersonationBanner } from "../components/ImpersonationBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -59,6 +60,12 @@ export default async function RootLayout({
             isManager={isManager}
           />
         )}
+        {me?.isImpersonating && me.tech ? (
+          <ImpersonationBanner
+            techShortName={me.tech.tech_short_name}
+            realEmail={me.realEmail}
+          />
+        ) : null}
         <div className="flex-1">{children}</div>
         <RegisterServiceWorker />
         {user && <InstallPrompt />}

@@ -4,8 +4,9 @@
 import { db } from "./supabase";
 import { getSessionUser } from "./supabase-server";
 import { isAdmin } from "./admin";
+import { cookies } from "next/headers";
 
-export type DashboardRole = "admin" | "manager" | "tech" | null;
+export type DashboardRole = "admin" | "manager" | "production_manager" | "tech" | null;
 
 export type CurrentTech = {
   email: string;
@@ -13,6 +14,9 @@ export type CurrentTech = {
   isManager: boolean;        // dashboardRole === 'manager'
   canWrite: boolean;         // 'admin' or 'tech'; manager and unknown blocked
   dashboardRole: DashboardRole;
+  isImpersonating: boolean;  // true if viewing-as another tech (admin/manager only)
+  realRole: DashboardRole;   // the user's actual role (for banner display)
+  realEmail: string;         // the user's actual email (for banner + exit)
   tech: {
     tech_id: string;
     tech_short_name: string;
@@ -23,6 +27,8 @@ export type CurrentTech = {
     notes: string | null;
   } | null;
 };
+
+const VIEW_AS_COOKIE = "tpar_view_as";
 
 export async function getCurrentTech(): Promise<CurrentTech | null> {
   const user = await getSessionUser();
@@ -41,10 +47,51 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
   const dashboardRole = ((data?.dashboard_role as string | null) ?? null) as DashboardRole;
   const envAdmin = isAdmin(user.email);
   const isAdminFinal = envAdmin || dashboardRole === "admin";
-  const isManagerFinal = dashboardRole === "manager";
+  // Production manager is manager-tier auth for v0 (per Danny 2026-05-04). Will refine
+  // as the role separates from Owner per ROLES_AND_PROTOCOLS.md.
+  const isManagerFinal = dashboardRole === "manager" || dashboardRole === "production_manager";
   // Writers can mutate state. Managers are read-only by design (see
   // 2026-05-01 from Danny). Unknown role = no writes either.
   const canWrite = isAdminFinal || dashboardRole === "tech";
+
+  // ── View-as tech impersonation (admin/manager only) ─────────────────
+  // Per Danny 2026-05-04: leadership wants to preview the tech dashboard
+  // architecture to offer guidance. Cookie set via /admin/view-as.
+  if (isAdminFinal || isManagerFinal) {
+    const viewAsName = (await cookies()).get(VIEW_AS_COOKIE)?.value;
+    if (viewAsName && viewAsName.trim()) {
+      const { data: targetTech } = await supa
+        .from("tech_directory")
+        .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, slack_user_id, notes")
+        .ilike("tech_short_name", viewAsName.trim())
+        .eq("is_active", true)
+        .maybeSingle();
+      if (targetTech?.tech_short_name) {
+        // Render as if signed in as this tech. Auth tier downgrades to 'tech'
+        // so the impersonator sees exactly what the real tech would see —
+        // including the scope-limited home page + URL-scope auth on /job + /customer.
+        return {
+          email: user.email,                          // keep real email so action audit trails work
+          isAdmin: false,
+          isManager: false,
+          canWrite: true,
+          dashboardRole: "tech",
+          isImpersonating: true,
+          realRole: dashboardRole,
+          realEmail: user.email,
+          tech: {
+            tech_id: targetTech.tech_id as string,
+            tech_short_name: targetTech.tech_short_name as string,
+            hcp_full_name: targetTech.hcp_full_name as string | null,
+            hcp_employee_id: targetTech.hcp_employee_id as string | null,
+            is_active: targetTech.is_active as boolean,
+            slack_user_id: targetTech.slack_user_id as string | null,
+            notes: targetTech.notes as string | null,
+          },
+        };
+      }
+    }
+  }
 
   return {
     email: user.email,
@@ -52,6 +99,9 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
     isManager: isManagerFinal,
     canWrite,
     dashboardRole,
+    isImpersonating: false,
+    realRole: dashboardRole,
+    realEmail: user.email,
     tech: data ? {
       tech_id: data.tech_id as string,
       tech_short_name: data.tech_short_name as string,
