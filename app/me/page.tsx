@@ -85,6 +85,8 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       .eq("tech_primary_name", techName)
       .gte("appt_date_chicago", today)
       .lte("appt_date_chicago", today)
+      // Hide cancelled — they aren't on the books
+      .not("status", "in", '("pro canceled","user canceled","cancelled","canceled","Pro Canceled","User Canceled","Cancelled","Canceled")')
       .order("scheduled_start"),
     // Recent comms attributed to this tech
     supa
@@ -214,7 +216,8 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                   </div>
                   {a.total_amount && Number(a.total_amount) > 0 ? (
                     <div className="mt-1 text-xs text-emerald-700">
-                      Quoted: ${Number(a.total_amount).toLocaleString()}
+                      {/* appointments_master.total_amount is stored in cents — divide for display */}
+                      Quoted: ${(Number(a.total_amount) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </div>
                   ) : null}
                   {!viewingAs && me.tech && (
