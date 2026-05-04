@@ -12,6 +12,9 @@ import { getCurrentTech } from "@/lib/current-tech";
 export type UserSummary = {
   user_email: string;
   total_views: number;
+  real_views: number;            // viewed_as IS NULL — the user as themselves
+  impersonation_views: number;   // viewed_as IS NOT NULL — admin/manager browsing as a tech
+  impersonation_breakdown: Array<{ viewed_as: string; views: number }>;
   distinct_days: number;
   distinct_paths: number;
   first_seen: string;
@@ -51,33 +54,46 @@ export async function getUserSummary(days = 7): Promise<UserSummary[]> {
 
   const { data: rows } = await supabase
     .from("dashboard_page_views")
-    .select("user_email, path, ts")
+    .select("user_email, path, ts, viewed_as")
     .gte("ts", since)
     .order("ts", { ascending: false })
     .limit(20000);
 
   if (!rows || rows.length === 0) return [];
 
-  const byUser = new Map<string, { count: number; days: Set<string>; paths: Set<string>; first: string; last: string }>();
-  for (const r of rows as Array<{ user_email: string; path: string; ts: string }>) {
+  type UserAgg = {
+    count: number;
+    real: number;
+    impersonation: number;
+    perViewAs: Map<string, number>;
+    days: Set<string>;
+    paths: Set<string>;
+    first: string;
+    last: string;
+  };
+  const byUser = new Map<string, UserAgg>();
+  for (const r of rows as Array<{ user_email: string; path: string; ts: string; viewed_as: string | null }>) {
     const key = r.user_email;
     const dayKey = r.ts.slice(0, 10);
-    const v = byUser.get(key);
-    if (v) {
-      v.count += 1;
-      v.days.add(dayKey);
-      v.paths.add(r.path);
-      if (r.ts < v.first) v.first = r.ts;
-      if (r.ts > v.last) v.last = r.ts;
-    } else {
-      byUser.set(key, {
-        count: 1,
-        days: new Set([dayKey]),
-        paths: new Set([r.path]),
-        first: r.ts,
-        last: r.ts,
-      });
+    let v = byUser.get(key);
+    if (!v) {
+      v = {
+        count: 0, real: 0, impersonation: 0, perViewAs: new Map(),
+        days: new Set(), paths: new Set(), first: r.ts, last: r.ts,
+      };
+      byUser.set(key, v);
     }
+    v.count += 1;
+    if (r.viewed_as) {
+      v.impersonation += 1;
+      v.perViewAs.set(r.viewed_as, (v.perViewAs.get(r.viewed_as) ?? 0) + 1);
+    } else {
+      v.real += 1;
+    }
+    v.days.add(dayKey);
+    v.paths.add(r.path);
+    if (r.ts < v.first) v.first = r.ts;
+    if (r.ts > v.last) v.last = r.ts;
   }
 
   // Join tech_directory for display name + role.
@@ -106,6 +122,11 @@ export async function getUserSummary(days = 7): Promise<UserSummary[]> {
       return {
         user_email: email,
         total_views: v.count,
+        real_views: v.real,
+        impersonation_views: v.impersonation,
+        impersonation_breakdown: [...v.perViewAs.entries()]
+          .map(([viewed_as, views]) => ({ viewed_as, views }))
+          .sort((a, b) => b.views - a.views),
         distinct_days: v.days.size,
         distinct_paths: v.paths.size,
         first_seen: v.first,

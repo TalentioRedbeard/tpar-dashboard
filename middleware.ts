@@ -63,12 +63,18 @@ function recordPageView(req: NextRequest, path: string, email: string): void {
   const search = req.nextUrl.search ? req.nextUrl.search.slice(0, 500) : null;
   const ua = req.headers.get("user-agent")?.slice(0, 500) ?? null;
   const ref = req.headers.get("referer")?.slice(0, 500) ?? null;
+  // If the leader has tpar_view_as set, capture which tech they're rendering
+  // as. Read the cookie BEFORE @supabase/ssr's setAll mutated res cookies —
+  // both sides match for our purposes here. Cookie name lives in
+  // lib/current-tech.ts (VIEW_AS_COOKIE).
+  const viewAs = req.cookies.get("tpar_view_as")?.value?.trim() || null;
   const body = JSON.stringify({
     user_email: email,
     path,
     search,
     user_agent: ua,
     referer: ref,
+    viewed_as: viewAs,
   });
   // Don't await; .catch swallows network/DNS issues so we never disturb
   // the actual user response.

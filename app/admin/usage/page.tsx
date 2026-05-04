@@ -70,7 +70,11 @@ export default async function UsagePage() {
           <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-xs">
             dashboard_page_views
           </code>{" "}
-          (middleware-logged on every page hit). Path IDs are normalized so{" "}
+          (middleware-logged on every page hit). The <em>Real / View-as</em>{" "}
+          column splits views by whether the user was browsing as themselves or
+          impersonating a tech via{" "}
+          <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-xs">/admin/view-as</code>
+          . Path IDs are normalized so{" "}
           <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-xs">/job/12345</code>{" "}
           rolls up with{" "}
           <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-xs">/job/67890</code>.
@@ -108,6 +112,7 @@ export default async function UsagePage() {
                     <th className="px-4 py-2 font-medium text-neutral-600">User</th>
                     <th className="px-4 py-2 font-medium text-neutral-600">Role</th>
                     <th className="px-4 py-2 text-right font-medium text-neutral-600">Views</th>
+                    <th className="px-4 py-2 text-right font-medium text-neutral-600">Real / View-as</th>
                     <th className="px-4 py-2 text-right font-medium text-neutral-600">Days active</th>
                     <th className="px-4 py-2 text-right font-medium text-neutral-600">Distinct paths</th>
                     <th className="px-4 py-2 font-medium text-neutral-600">First seen</th>
@@ -116,7 +121,7 @@ export default async function UsagePage() {
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
                   {users.map((u) => (
-                    <tr key={u.user_email} className="hover:bg-neutral-50">
+                    <tr key={u.user_email} className="hover:bg-neutral-50 align-top">
                       <td className="px-4 py-2">
                         <div className="font-medium text-neutral-900">
                           {u.display_name ?? u.user_email}
@@ -129,6 +134,18 @@ export default async function UsagePage() {
                         <RoleBadge role={u.dashboard_role} />
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums">{u.total_views}</td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="tabular-nums text-neutral-700">
+                          {u.real_views} / {u.impersonation_views}
+                        </div>
+                        {u.impersonation_breakdown.length > 0 ? (
+                          <div className="mt-0.5 text-[10px] text-neutral-500">
+                            {u.impersonation_breakdown
+                              .map((b) => `${b.viewed_as} ${b.views}`)
+                              .join(" · ")}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-2 text-right tabular-nums">
                         {u.distinct_days} / {WINDOW_DAYS}
                       </td>
@@ -200,6 +217,9 @@ export default async function UsagePage() {
                         </span>
                         <span className="ml-2 text-xs text-neutral-500">
                           {u.total_views} views · {u.distinct_days}/{WINDOW_DAYS} days
+                          {u.impersonation_views > 0
+                            ? ` · ${u.impersonation_views} as ${u.impersonation_breakdown.map((b) => b.viewed_as).join("/")}`
+                            : ""}
                         </span>
                       </div>
                       <RoleBadge role={u.dashboard_role} />
