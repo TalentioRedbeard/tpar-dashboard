@@ -64,7 +64,12 @@ export default async function JobsListPage({
       "hcp_job_id, hcp_customer_id, customer_name, invoice_number, job_date, tech_primary_name, appointment_status, revenue, due_amount, days_outstanding, gross_margin_pct, on_time, gps_matched",
       { count: "exact" }
     );
-  if (q)      query = query.or(`customer_name.ilike.%${q}%,invoice_number.ilike.%${q}%`);
+  // Search across customer name, invoice number, AND hcp_estimate_number so
+  // a user can paste the number off any HCP page (estimate or invoice) and
+  // find the job. NB: hcp_estimate_number only populates for estimates we
+  // pushed via Tool 3; pure-HCP estimates won't be found this way (they
+  // require the customer-name fallback or, eventually, a live HCP lookup).
+  if (q)      query = query.or(`customer_name.ilike.%${q}%,invoice_number.ilike.%${q}%,hcp_estimate_number.ilike.%${q}%`);
   // "mine" filter takes precedence over the dropdown tech filter. Match on
   // either primary OR in tech_all_names so helpers see jobs they worked on.
   if (effectiveTechName) {
@@ -93,7 +98,7 @@ export default async function JobsListPage({
     .select("revenue, due_amount, gross_margin_pct, on_time")
     .order("job_date", { ascending: false, nullsFirst: false })
     .limit(500);
-  if (q)      statsQuery = statsQuery.or(`customer_name.ilike.%${q}%,invoice_number.ilike.%${q}%`);
+  if (q)      statsQuery = statsQuery.or(`customer_name.ilike.%${q}%,invoice_number.ilike.%${q}%,hcp_estimate_number.ilike.%${q}%`);
   if (effectiveTechName) {
     statsQuery = statsQuery.or(`tech_primary_name.eq."${effectiveTechName}",tech_all_names.cs.{"${effectiveTechName}"}`);
   } else if (tech) {
@@ -255,7 +260,11 @@ export default async function JobsListPage({
         columns={columns}
         rows={rows}
         rowHref={(r) => (r.hcp_job_id ? `/job/${r.hcp_job_id}` : null)}
-        emptyText="No jobs match those filters."
+        emptyText={
+          q && /^\d+$/.test(q)
+            ? `No job matches "${q}". Numbers from HCP estimate pages aren't always in our DB — try the customer name (e.g. "Herkender") or the invoice number from the bottom of the HCP estimate.`
+            : "No jobs match those filters."
+        }
       />
       <Pagination page={page} pageSize={PAGE_SIZE} totalCount={count ?? null} baseHref={baseHref} />
     </PageShell>
