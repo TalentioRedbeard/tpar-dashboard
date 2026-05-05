@@ -50,6 +50,34 @@ export function EstimateBuilder({
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
+  // Per-option push state — when the tech pushes a single option (Phase 1,
+  // for example), we record the resulting HCP estimate per option index so
+  // they can keep editing other options and push them as separate estimates
+  // later. The main "Push all" submit goes through the existing path.
+  type PerOptionPush = { estimate_id: string; estimate_number: string; hcp_url: string | null };
+  const [pushedOptions, setPushedOptions] = useState<Record<number, PerOptionPush>>({});
+  const [pushingOptionIdx, setPushingOptionIdx] = useState<number | null>(null);
+  const [perOptionError, setPerOptionError] = useState<Record<number, string>>({});
+
+  function handlePushSingleOption(optIdx: number, formEl: HTMLFormElement) {
+    setPerOptionError((prev) => ({ ...prev, [optIdx]: "" }));
+    const fd = new FormData(formEl);
+    fd.set("option_indices", String(optIdx));
+    setPushingOptionIdx(optIdx);
+    startTransition(async () => {
+      const res = await createEstimateForJob(fd);
+      setPushingOptionIdx(null);
+      if (res.ok) {
+        setPushedOptions((prev) => ({
+          ...prev,
+          [optIdx]: { estimate_id: res.estimate_id, estimate_number: res.estimate_number, hcp_url: res.hcp_url },
+        }));
+      } else {
+        setPerOptionError((prev) => ({ ...prev, [optIdx]: res.error }));
+      }
+    });
+  }
+
   // Send-to-client state — separate from create state so the success card
   // can show both "pushed" and "sent" independently.
   const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
@@ -266,7 +294,7 @@ export function EstimateBuilder({
       {/* Options */}
       {options.map((opt, optIdx) => (
         <div key={optIdx} className="rounded-2xl border border-neutral-200 bg-white p-4">
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
             <input
               type="text"
               name={`options[${optIdx}][name]`}
@@ -279,13 +307,45 @@ export function EstimateBuilder({
             <span className="text-xs text-neutral-500">
               Total: <span className="font-medium text-neutral-700">${totalForOption(opt).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </span>
-            <span className="ml-auto flex gap-2">
+            <span className="ml-auto flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => addLine(optIdx)} disabled={isPending} className="text-xs text-neutral-700 underline hover:text-neutral-900">+ line</button>
               {options.length > 1 ? (
                 <button type="button" onClick={() => removeOption(optIdx)} disabled={isPending} className="text-xs text-red-700 hover:text-red-900">remove option</button>
               ) : null}
+              <button
+                type="button"
+                onClick={(e) => {
+                  const formEl = (e.currentTarget.closest("form") as HTMLFormElement | null);
+                  if (formEl) handlePushSingleOption(optIdx, formEl);
+                }}
+                disabled={isPending || opt.line_items.filter((li) => li.name && Number(li.unit_price) > 0).length === 0}
+                title="Pushes just this option as a separate HCP estimate"
+                className="rounded-md bg-brand-700 px-3 py-1 text-xs font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+              >
+                {pushingOptionIdx === optIdx ? "Pushing…" : "Push this option →"}
+              </button>
             </span>
           </div>
+
+          {pushedOptions[optIdx] ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs">
+              <span className="font-semibold text-emerald-900">✓ Pushed as estimate {pushedOptions[optIdx].estimate_number}</span>
+              {pushedOptions[optIdx].hcp_url ? (
+                <a
+                  href={pushedOptions[optIdx].hcp_url!}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md bg-white px-2 py-0.5 font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100"
+                >
+                  Open in HCP →
+                </a>
+              ) : null}
+              <span className="text-emerald-700">— edit + push again to create another estimate.</span>
+            </div>
+          ) : null}
+          {perOptionError[optIdx] ? (
+            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-800">{perOptionError[optIdx]}</div>
+          ) : null}
 
           {opt.line_items.map((li, lineIdx) => (
             <div key={lineIdx} className="mb-2 grid grid-cols-12 gap-2 rounded-md border border-neutral-100 bg-neutral-50 p-2">
@@ -399,14 +459,17 @@ export function EstimateBuilder({
         </label>
       </div>
 
-      <div className="flex items-center gap-3 pt-2">
+      <div className="flex flex-wrap items-center gap-3 pt-2">
         <button type="submit" disabled={isPending} className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300">
-          {isPending ? "Pushing to HCP…" : "Verify + push to HCP"}
+          {isPending && pushingOptionIdx === null ? "Pushing all to HCP…" : "Push ALL options as one HCP estimate →"}
         </button>
         <button type="button" onClick={() => router.back()} disabled={isPending} className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50">
           Cancel
         </button>
         {error ? <span className="text-sm text-red-700">{error}</span> : null}
+        <span className="text-xs text-neutral-500">
+          Or push individual options (above) to stage them as separate HCP estimates — useful for diagnostic/phased work.
+        </span>
       </div>
     </form>
   );

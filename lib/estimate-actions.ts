@@ -86,13 +86,36 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
   }
 
   // Sort + filter
-  const options = [...optionMap.entries()]
+  let options = [...optionMap.entries()]
     .sort(([a], [b]) => a - b)
     .map(([, o]) => ({
       name: o.name || "Option",
       line_items: o.line_items.filter((li) => li.name && li.unit_price_cents > 0 && li.quantity > 0),
     }))
     .filter((o) => o.line_items.length > 0);
+
+  // Optional scoping — push a single option (or subset). UI sends a
+  // comma-separated list of option indices in the original form ordering.
+  // Used by the per-option "Push this option" button so techs can push
+  // Phase 1 today, Phase 2 later (matches the diagnostic-work flow Danny
+  // articulated 2026-05-05).
+  const scopeRaw = String(formData.get("option_indices") ?? "").trim();
+  if (scopeRaw) {
+    const wantIdx = new Set(
+      scopeRaw.split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n >= 0),
+    );
+    // Map after the same sort+filter the parser did — option_indices refer to
+    // the original optionMap key (form's optIdx). The .sort by key preserves
+    // that ordering, but filter may have dropped empties; so we re-resolve
+    // against the still-present indices.
+    const presentIdx = [...optionMap.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([k]) => k);
+    options = options.filter((_, i) => wantIdx.has(presentIdx[i]));
+    if (options.length === 0) {
+      return { ok: false, error: "Selected option(s) had no valid line items." };
+    }
+  }
 
   if (options.length === 0) {
     return { ok: false, error: "Add at least one option with at least one line item (name + price + quantity)." };
