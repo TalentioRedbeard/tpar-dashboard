@@ -230,6 +230,8 @@ export default async function FromVoiceNotePage({
           voiceNoteId: sp.note,
           sourceSummary: result.source_summary,
           model: result.model,
+          scope,
+          hcpJobIdForRegen: id,
         }}
       />
     </PageShell>

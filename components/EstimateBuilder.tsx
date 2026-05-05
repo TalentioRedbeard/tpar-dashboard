@@ -53,7 +53,7 @@ export function EstimateBuilder({
   defaultProjectName: string;
   initialOptions?: Option[];
   initialNote?: string;
-  basedOnBanner?: { voiceNoteId: string; sourceSummary: string; model: string };
+  basedOnBanner?: { voiceNoteId: string; sourceSummary: string; model: string; scope?: string; hcpJobIdForRegen?: string };
 }) {
   const [options, setOptions] = useState<Option[]>(
     initialOptions && initialOptions.length > 0
@@ -279,9 +279,9 @@ export function EstimateBuilder({
 
       {basedOnBanner ? (
         <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <span aria-hidden className="text-lg">✨</span>
-            <div className="flex-1">
+            <div className="flex-1 min-w-[240px]">
               <div className="font-semibold text-brand-900">Pre-populated from a voice note</div>
               <div className="mt-0.5 text-xs text-brand-800">
                 Reference: {basedOnBanner.sourceSummary} · Model: {basedOnBanner.model}
@@ -290,12 +290,20 @@ export function EstimateBuilder({
                 Review carefully — confidence on per-line reasoning was below 1.0. Edit anything before pushing.
               </div>
             </div>
-            <a
-              href={`/voice-notes/${basedOnBanner.voiceNoteId}`}
-              className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100"
-            >
-              Open voice note
-            </a>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={`/voice-notes/${basedOnBanner.voiceNoteId}`}
+                className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100"
+              >
+                Open voice note
+              </a>
+              <RegenerateButton
+                voiceNoteId={basedOnBanner.voiceNoteId}
+                scope={basedOnBanner.scope ?? "full_option_set"}
+                hcpJobId={basedOnBanner.hcpJobIdForRegen ?? hcpJobId}
+                disabled={isPending}
+              />
+            </div>
           </div>
         </div>
       ) : null}
@@ -510,5 +518,106 @@ export function EstimateBuilder({
         </span>
       </div>
     </form>
+  );
+}
+
+// Small inline panel for regenerating from the same voice note. Lets the
+// tech change scope or pass extra instructions before navigating to a
+// fresh server-render of the from-voice-note page (which re-runs the
+// generator). Confirms first because it replaces the in-progress draft.
+function RegenerateButton({
+  voiceNoteId,
+  scope: initialScope,
+  hcpJobId,
+  disabled,
+}: {
+  voiceNoteId: string;
+  scope: string;
+  hcpJobId: string;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [scope, setScope] = useState<string>(initialScope);
+  const [extra, setExtra] = useState<string>("");
+  const router = useRouter();
+
+  function go() {
+    if (!confirm("Regenerate will replace your current draft with a fresh generator output. You'll lose any edits. Continue?")) return;
+    const params = new URLSearchParams();
+    params.set("note", voiceNoteId);
+    params.set("scope", scope);
+    if (extra.trim()) params.set("extra", extra.trim());
+    // Bust any router cache by appending a salt
+    params.set("_", String(Date.now()));
+    router.push(`/job/${hcpJobId}/estimate/from-voice-note?${params.toString()}`);
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100 disabled:opacity-50"
+        title="Run the generator again — generator output is non-deterministic"
+      >
+        ↻ Regenerate
+      </button>
+    );
+  }
+
+  return (
+    <div className="w-full rounded-lg border border-brand-300 bg-white p-3 text-xs">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="font-semibold text-brand-900">Regenerate from voice note</span>
+        <button type="button" onClick={() => setOpen(false)} className="text-neutral-500 hover:text-neutral-800">×</button>
+      </div>
+      <div className="mb-2">
+        <div className="mb-1 font-medium text-neutral-700">Target scope</div>
+        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+          {[
+            { v: "single_line_item", label: "Single line item" },
+            { v: "full_option_set", label: "Full option set" },
+            { v: "add_to_option", label: "Add to existing option" },
+          ].map((opt) => (
+            <button
+              key={opt.v}
+              type="button"
+              onClick={() => setScope(opt.v)}
+              className={`rounded-md border px-2 py-1.5 ${scope === opt.v ? "border-brand-400 bg-brand-50 text-brand-900" : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mb-2">
+        <div className="mb-1 font-medium text-neutral-700">Extra instructions (optional)</div>
+        <textarea
+          value={extra}
+          onChange={(e) => setExtra(e.target.value)}
+          rows={2}
+          placeholder='e.g. "make the phases cheaper" or "keep options unranked" or "add a line for sediment trap"'
+          className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-xs"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={go}
+          className="rounded-md bg-brand-700 px-3 py-1 text-xs font-medium text-white hover:bg-brand-800"
+        >
+          ↻ Generate fresh draft
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+        >
+          Cancel
+        </button>
+        <span className="text-[10px] text-neutral-500">Replaces your current draft.</span>
+      </div>
+    </div>
   );
 }
