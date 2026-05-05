@@ -3,7 +3,14 @@
 //
 // "Mine only" = filter to the signed-in tech (admins can ?as=Anthony to
 // view another tech's lane). Resolved via getEffectiveTechName.
+//
+// HCP estimate fallback: if the search query is an all-digit string and
+// our DB returns 0 hits, we ask the resolve-hcp-estimate edge function
+// to live-look-up HCP and redirect to the matching job (typically the
+// most recent job for the estimate's customer). Closes the gap where
+// estimates created in HCP's Pro UI aren't synced to our DB.
 
+import { redirect } from "next/navigation";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, StatusPill, fmtMoney, fmtPct, fmtDateShort, type Column } from "../../components/Table";
@@ -11,6 +18,33 @@ import { StatCard } from "../../components/ui/StatCard";
 import { getEffectiveTechName } from "../../lib/current-tech";
 import { getFormerTechNames } from "../../lib/former-techs";
 import { TechName } from "../../components/ui/TechName";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+async function liveLookupHcpEstimate(estimateNumber: string): Promise<{ hcp_job_id: string | null; hcp_customer_id: string | null; customer_name: string | null } | null> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/resolve-hcp-estimate`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ estimate_number: estimateNumber }),
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (!data?.ok) return null;
+    return {
+      hcp_job_id: data.hcp_job_id ?? null,
+      hcp_customer_id: data.hcp_customer_id ?? null,
+      customer_name: data.customer_name ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export const metadata = { title: "Jobs · TPAR-DB" };
 
@@ -89,6 +123,20 @@ export default async function JobsListPage({
     .order("job_date", { ascending: false, nullsFirst: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   const rows = (data ?? []) as JobRow[];
+
+  // HCP fallback: if our DB returns 0 hits AND the query looks like an HCP
+  // estimate number (all digits, 6-9 chars), live-lookup HCP and redirect
+  // to the matching job. Cuts the "I pasted the number off the HCP page,
+  // why doesn't it find anything" friction.
+  const looksLikeHcpNumber = /^\d{6,9}$/.test(q);
+  if (rows.length === 0 && (count ?? 0) === 0 && looksLikeHcpNumber) {
+    const live = await liveLookupHcpEstimate(q);
+    if (live?.hcp_job_id) {
+      // Found in HCP — go straight to the job page. Tag from=hcp-estimate
+      // so /job/[id] could surface a banner (future).
+      redirect(`/job/${live.hcp_job_id}?from=hcp-estimate&estimate=${q}`);
+    }
+  }
 
   const formerSet = await getFormerTechNames();
 
