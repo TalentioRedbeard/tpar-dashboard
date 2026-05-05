@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Estimate from voice note · TPAR-DB" };
 
 type LineItem = { name: string; description: string; quantity: string; unit_price: string; unit_cost: string };
-type Option = { name: string; line_items: LineItem[] };
+type OptionRank = "" | "good" | "better" | "best";
+type Option = { name: string; rank: OptionRank; line_items: LineItem[] };
 
 function fmtMoney(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(Number(n))) return "0.00";
@@ -47,10 +48,15 @@ function mapGeneratorToBuilder(output: any, scope: string): { options: Option[];
 
   if (scope === "full_option_set" && Array.isArray(output?.options)) {
     return {
-      options: output.options.map((opt: any, i: number) => ({
-        name: opt.name ? `${opt.name} (Phase ${opt.level ?? i + 1})` : `Option ${i + 1}`,
-        line_items: (opt.line_items ?? []).map(mapLineItem),
-      })),
+      options: output.options.map((opt: any, i: number) => {
+        const rank = typeof opt?.rank === "string" ? opt.rank.toLowerCase() : null;
+        const validRank: OptionRank = (rank === "good" || rank === "better" || rank === "best") ? rank : "";
+        return {
+          name: String(opt?.name ?? "").trim() || `Option ${i + 1}`,
+          rank: validRank,
+          line_items: (opt.line_items ?? []).map(mapLineItem),
+        };
+      }),
       note: noteParts.join("\n"),
     };
   }
@@ -58,7 +64,7 @@ function mapGeneratorToBuilder(output: any, scope: string): { options: Option[];
   // single_line_item or add_to_option → one option, one line
   if (output?.line_item) {
     return {
-      options: [{ name: "Option 1", line_items: [mapLineItem(output.line_item)] }],
+      options: [{ name: "Option 1", rank: "" as OptionRank, line_items: [mapLineItem(output.line_item)] }],
       note: noteParts.join("\n"),
     };
   }

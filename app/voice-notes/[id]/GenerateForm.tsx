@@ -121,7 +121,7 @@ export function GenerateForm({ voiceNoteId, hcpJobId, hcpCustomerId }: Props) {
           {scope === "full_option_set" && Array.isArray(output?.options) ? (
             <div className="space-y-3">
               {output.options.map((opt: any, i: number) => (
-                <OptionCard key={i} option={opt} />
+                <OptionCard key={i} option={opt} index={i} />
               ))}
             </div>
           ) : output?.line_item ? (
@@ -180,12 +180,18 @@ function LineItemCard({ item }: { item: any }) {
   );
 }
 
-function OptionCard({ option }: { option: any }) {
+function OptionCard({ option, index }: { option: any; index: number }) {
+  const rank = typeof option?.rank === "string" ? option.rank.toLowerCase() : null;
+  const validRank = (rank === "good" || rank === "better" || rank === "best") ? rank : null;
+  const name = String(option?.name ?? "").trim() || `Option ${index + 1}`;
   return (
     <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 bg-neutral-50 px-4 py-2">
-        <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Option {option.level ?? "?"}</div>
-        <div className="font-semibold text-neutral-900">{option.name ?? "(unnamed)"}</div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Option {index + 1}</div>
+        <div className="font-semibold text-neutral-900">
+          {name}
+          {validRank ? <span className="ml-2 italic font-normal text-neutral-600">({validRank})</span> : null}
+        </div>
         {option.description ? <div className="mt-0.5 text-xs text-neutral-600">{option.description}</div> : null}
       </div>
       <div className="space-y-3 p-4">

@@ -16,12 +16,29 @@ type LineItem = {
   unit_cost: string;
 };
 
-type Option = {
+// Rank is the optional good/better/best designation displayed alongside the
+// descriptive option name. "" = unranked. Options should be NAMED
+// descriptively (e.g. "Hydrostatic Slab Test"); the rank is decoration the
+// tech can opt out of (Danny 2026-05-05).
+export type OptionRank = "" | "good" | "better" | "best";
+
+export type Option = {
   name: string;
+  rank: OptionRank;
   line_items: LineItem[];
 };
 
 const blankLine = (): LineItem => ({ name: "", description: "", quantity: "1", unit_price: "", unit_cost: "" });
+const blankOption = (idx: number): Option => ({ name: `Option ${idx + 1}`, rank: "", line_items: [blankLine()] });
+
+// Combine the descriptive name + rank into the string we send to HCP. HCP
+// stores the option name as a single plain-text string; rank lives in
+// parentheses there. UI keeps them separate for editability + italic
+// rendering of the rank.
+function combinedHcpOptionName(o: Option): string {
+  const base = (o.name ?? "").trim() || "Option";
+  return o.rank ? `${base} (${o.rank})` : base;
+}
 
 export function EstimateBuilder({
   hcpJobId,
@@ -40,8 +57,8 @@ export function EstimateBuilder({
 }) {
   const [options, setOptions] = useState<Option[]>(
     initialOptions && initialOptions.length > 0
-      ? initialOptions
-      : [{ name: "Option 1", line_items: [blankLine()] }],
+      ? initialOptions.map((o) => ({ ...o, rank: (o.rank ?? "") as OptionRank }))
+      : [blankOption(0)],
   );
   const [note, setNote] = useState(initialNote ?? "");
   const [message, setMessage] = useState("");
@@ -119,7 +136,7 @@ export function EstimateBuilder({
   }
 
   function addOption() {
-    setOptions((prev) => [...prev, { name: `Option ${prev.length + 1}`, line_items: [blankLine()] }]);
+    setOptions((prev) => [...prev, blankOption(prev.length)]);
   }
 
   function removeOption(idx: number) {
@@ -207,7 +224,7 @@ export function EstimateBuilder({
             </button>
             <button
               type="button"
-              onClick={() => { setResult(null); setSendState("idle"); setSendError(null); setSentAt(null); setSendMessage(""); setOptions([{ name: "Option 1", line_items: [blankLine()] }]); setNote(""); setMessage(""); }}
+              onClick={() => { setResult(null); setSendState("idle"); setSendError(null); setSentAt(null); setSendMessage(""); setOptions([blankOption(0)]); setNote(""); setMessage(""); }}
               className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
             >
               Build another
@@ -295,15 +312,36 @@ export function EstimateBuilder({
       {options.map((opt, optIdx) => (
         <div key={optIdx} className="rounded-2xl border border-neutral-200 bg-white p-4">
           <div className="mb-3 flex flex-wrap items-center gap-3">
+            {/* Hidden field — combined "Name (rank)" — what HCP sees */}
+            <input type="hidden" name={`options[${optIdx}][name]`} value={combinedHcpOptionName(opt)} />
+
+            {/* Descriptive name (visible, editable) */}
             <input
               type="text"
-              name={`options[${optIdx}][name]`}
               value={opt.name}
               onChange={(e) => setOptions((prev) => prev.map((o, i) => (i === optIdx ? { ...o, name: e.target.value } : o)))}
-              className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-semibold focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder={`Option ${optIdx + 1}`}
+              className="min-w-[220px] flex-1 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm font-semibold focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              placeholder={`Descriptive option name (e.g. "Hydrostatic Slab Test")`}
               disabled={isPending}
             />
+
+            {/* Rank picker (italic display) — empty = unranked */}
+            <label className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wide text-neutral-500">Rank</span>
+              <select
+                value={opt.rank}
+                onChange={(e) => setOptions((prev) => prev.map((o, i) => (i === optIdx ? { ...o, rank: e.target.value as OptionRank } : o)))}
+                disabled={isPending}
+                className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs italic focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                title="Optional good/better/best designation. Leave unranked for sequential phases or alternatives that aren't strictly better-than."
+              >
+                <option value="">unranked</option>
+                <option value="good">good</option>
+                <option value="better">better</option>
+                <option value="best">best</option>
+              </select>
+            </label>
+
             <span className="text-xs text-neutral-500">
               Total: <span className="font-medium text-neutral-700">${totalForOption(opt).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </span>
