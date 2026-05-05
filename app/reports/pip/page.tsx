@@ -17,6 +17,10 @@ import { PageShell } from "../../../components/PageShell";
 
 export const metadata = { title: "PIP report · TPAR-DB" };
 
+// Heavy aggregation queries — never prerender. The DB statement timeout was
+// killing the Vercel build (2026-05-05).
+export const dynamic = "force-dynamic";
+
 const DAYS = 30;
 
 type ProcessRow = {
