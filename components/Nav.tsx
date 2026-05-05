@@ -22,6 +22,7 @@ const NAV_ITEMS = [
 const TOOL_ITEMS = [
   { href: "/price", label: "Price" },
   { href: "/ask",   label: "Ask" },
+  { href: "/voice-notes", label: "Voice" },
 ];
 
 // Visible to admin + manager + production_manager — leadership review surfaces.

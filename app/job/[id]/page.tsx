@@ -7,6 +7,7 @@ import Link from "next/link";
 import { NoteForm } from "../../../components/NoteForm";
 import { addJobNote } from "../../../lib/notes-actions";
 import { getNeedsForJob } from "../../shopping/actions";
+import { listVoiceNotesForJob } from "../../voice-notes/actions";
 import { getFiredTriggersForJob } from "./trigger-actions";
 import { TriggerForms } from "./TriggerForms";
 import { PageShell } from "../../../components/PageShell";
@@ -90,7 +91,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     }
   }
 
-  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers] = await Promise.all([
+  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes] = await Promise.all([
     customerId
       ? supabase
           .from("communication_events")
@@ -108,6 +109,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       .limit(50),
     getNeedsForJob(id),
     getFiredTriggersForJob(id),
+    listVoiceNotesForJob(id),
   ]);
   const notes = (notesRes.data ?? []) as JobNote[];
   const openJobNeeds = jobNeeds.filter((n) => n.status !== "fulfilled" && n.status !== "cancelled");
@@ -277,6 +279,47 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </div>
           </Section>
         )}
+
+        <Section
+          title="Voice notes"
+          description="Tech-recorded context for this job. Use any as a Based-on… reference for line-item generation."
+          action={
+            <Link
+              href={`/voice-notes/new?job=${id}`}
+              className="rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-800"
+            >
+              + Record / upload
+            </Link>
+          }
+        >
+          {voiceNotes.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-600">
+              No voice notes attached to this job yet. Record one to capture rich context (recommendation, decisions, what you saw on site) — then generate options/lines from it.
+            </div>
+          ) : (
+            <ul className="divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+              {voiceNotes.map((vn: any) => (
+                <li key={vn.id}>
+                  <Link href={`/voice-notes/${vn.id}`} className="block px-4 py-3 hover:bg-neutral-50">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-neutral-500">
+                      <span className="font-medium text-neutral-900">{vn.tech_short_name ?? vn.user_email ?? "—"}</span>
+                      <span>{new Date(vn.ts).toLocaleString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wide text-neutral-500">
+                      <span className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono">{vn.source}</span>
+                      {vn.intent_tag ? <span className="rounded bg-brand-50 px-1.5 py-0.5 text-brand-700">{vn.intent_tag}</span> : null}
+                      {vn.audio_duration_seconds ? <span>{Math.round(vn.audio_duration_seconds)}s</span> : null}
+                      {vn.transcription_status !== "transcribed" ? <span className="text-amber-700">{vn.transcription_status}</span> : null}
+                    </div>
+                    {vn.transcript ? (
+                      <p className="mt-1.5 line-clamp-2 text-xs text-neutral-700">{(vn.transcript as string).slice(0, 280)}{(vn.transcript as string).length > 280 ? "…" : ""}</p>
+                    ) : null}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
 
         {Array.isArray(similarRes.data) && (similarRes.data as Array<Record<string, unknown>>).length > 0 && (() => {
           const rows = similarRes.data as Array<Record<string, unknown>>;

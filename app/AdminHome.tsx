@@ -90,6 +90,7 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
     label: string; emoji: string; href: string; primary?: boolean; subtitle?: string; disabled?: boolean;
   }> = [
     { label: "Receipt", emoji: "🧾", href: "/receipt", subtitle: "Log a receipt photo" },
+    { label: "Voice note", emoji: "🎤", href: "/voice-notes/new", subtitle: "Record context for an estimate" },
     clockedIntoJob
       ? { label: "Estimate current job", emoji: "✏️", href: `/job/${clockedIntoJob}/estimate/new`, primary: true, subtitle: "You're clocked in" }
       : { label: "Estimate current job", emoji: "✏️", href: "#", disabled: true, subtitle: "Clock into a job first" },

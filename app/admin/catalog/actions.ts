@@ -119,6 +119,7 @@ export const DASHBOARD_PAGES: CatalogPage[] = [
   { path: "/shopping",                 surface: "all",     description: "Procurement / shopping list — log a need, research vendors, mark fulfilled." },
   { path: "/membership/enroll",        surface: "all",     description: "Tech-led membership enrollment with tier picker + 'no-brainer math' panel." },
   { path: "/receipt",                  surface: "all",     description: "Web receipt upload — photo + invoice + amount, writes to receipts_master." },
+  { path: "/voice-notes",              surface: "all",     description: "Voice notes — record/upload audio, Whisper transcribes, use as Based-on… reference for estimate generation." },
   { path: "/photos",                   surface: "all",     description: "Web photo upload for jobs — photo + job picker, writes to photo_labels." },
   { path: "/snap",                     surface: "admin",   description: "Snap-server (screenshot Danny's laptop) + Push-key (send keystroke). Local PowerShell poller." },
   { path: "/alarms",                   surface: "admin",   description: "Wake-up alarm management — Twilio-driven persistent calling + DTMF auth." },
