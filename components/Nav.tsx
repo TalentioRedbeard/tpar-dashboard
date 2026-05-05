@@ -30,6 +30,7 @@ const TOOL_ITEMS = [
 // Catalog: every system surface (auto-generated).
 const LEADERSHIP_ITEMS = [
   { href: "/admin/view-as",   label: "View as" },
+  { href: "/admin/concerns",  label: "Concerns" },
   { href: "/admin/salesask",  label: "SalesAsk" },
   { href: "/admin/catalog",   label: "Catalog" },
 ];

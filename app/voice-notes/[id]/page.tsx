@@ -73,6 +73,14 @@ export default async function VoiceNotePage({ params }: { params: Promise<{ id: 
             Linked to job: {jobLabel}
           </Link>
         ) : null}
+        {note.hcp_job_id && note.transcription_status === "transcribed" ? (
+          <Link
+            href={`/job/${note.hcp_job_id}/estimate/from-voice-note?note=${note.id}&scope=full_option_set`}
+            className="rounded-md bg-brand-700 px-2.5 py-1 font-medium text-white hover:bg-brand-800"
+          >
+            ✨ Use in estimate builder →
+          </Link>
+        ) : null}
       </div>
 
       <Section title="Audio">

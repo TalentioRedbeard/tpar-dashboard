@@ -28,6 +28,7 @@ export async function uploadVoiceNote(formData: FormData): Promise<UploadVoiceNo
   const hcpJobId      = (formData.get("hcp_job_id") as string | null)?.trim() || null;
   const hcpCustomerId = (formData.get("hcp_customer_id") as string | null)?.trim() || null;
   const intentTag     = (formData.get("intent_tag") as string | null)?.trim() || null;
+  const needsDiscussion = formData.get("needs_discussion") === "1";
 
   // Forward to edge fn as multipart/form-data
   const fwd = new FormData();
@@ -41,6 +42,7 @@ export async function uploadVoiceNote(formData: FormData): Promise<UploadVoiceNo
   if (hcpJobId)      fwd.set("hcp_job_id", hcpJobId);
   if (hcpCustomerId) fwd.set("hcp_customer_id", hcpCustomerId);
   if (intentTag)     fwd.set("intent_tag", intentTag);
+  if (needsDiscussion) fwd.set("needs_discussion", "1");
 
   let res: Response;
   try {

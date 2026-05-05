@@ -7,7 +7,7 @@ import Link from "next/link";
 import { getCurrentTech } from "@/lib/current-tech";
 import { db } from "@/lib/supabase";
 import { PageShell } from "@/components/PageShell";
-import { VoiceNoteRecorder } from "../VoiceNoteRecorder";
+import { VoiceNoteRecorder, TECH_INTENTS, LEADERSHIP_INTENTS } from "../VoiceNoteRecorder";
 
 export const metadata = { title: "New voice note · TPAR-DB" };
 
@@ -73,6 +73,8 @@ export default async function NewVoiceNotePage({
         hcpJobId={hcpJobId}
         hcpCustomerId={hcpCustomerId}
         defaultIntentTag="estimate-context"
+        intentOptions={(me.isAdmin || me.isManager) ? LEADERSHIP_INTENTS : TECH_INTENTS}
+        showNeedsDiscussion={me.isAdmin || me.isManager}
       />
 
       <div className="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600">

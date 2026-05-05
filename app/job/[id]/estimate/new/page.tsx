@@ -46,8 +46,16 @@ export default async function NewEstimatePage({ params }: { params: Promise<{ id
       title="Build a multi-option estimate"
       description={`${customerName}${job.street ? ` · ${job.street}${job.city ? ", " + job.city : ""}` : ""} — pushes to HCP after review.`}
     >
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <Link href={`/job/${id}`} className="text-xs text-neutral-500 hover:underline">← Back to job</Link>
+        {canWrite ? (
+          <Link
+            href={`/job/${id}/estimate/from-voice-note`}
+            className="rounded-md bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-800 ring-1 ring-inset ring-brand-200 hover:bg-brand-100"
+          >
+            ✨ Based on a voice note…
+          </Link>
+        ) : null}
       </div>
 
       {canWrite ? (

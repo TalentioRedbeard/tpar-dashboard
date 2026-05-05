@@ -8,20 +8,48 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { uploadVoiceNote } from "./actions";
 
+type IntentOption = { value: string; label: string };
+
 type Props = {
   hcpJobId?: string;
   hcpCustomerId?: string;
   defaultIntentTag?: string;
+  intentOptions?: IntentOption[];
+  showNeedsDiscussion?: boolean;
 };
 
-export function VoiceNoteRecorder({ hcpJobId, hcpCustomerId, defaultIntentTag }: Props) {
+const TECH_INTENT_OPTIONS: IntentOption[] = [
+  { value: "estimate-context", label: "Estimate context (use as Based-on… reference)" },
+  { value: "job-note",         label: "Job note (general info, decisions on site)" },
+  { value: "process-doc",      label: "Process documentation" },
+  { value: "other",            label: "Other" },
+];
+
+const LEADERSHIP_INTENT_OPTIONS: IntentOption[] = [
+  { value: "estimate-context",   label: "Estimate context (use as Based-on… reference)" },
+  { value: "scheduling-issue",   label: "Scheduling issue / dispatch concern" },
+  { value: "process-concern",    label: "Process concern (workflow, system, organization)" },
+  { value: "employee-concern",   label: "Employee concern (private — leadership only)" },
+  { value: "system-issue",       label: "System / website / tool issue" },
+  { value: "leadership-note",    label: "Leadership note (general — discuss later)" },
+  { value: "job-note",           label: "Job note (general info, decisions)" },
+  { value: "process-doc",        label: "Process documentation" },
+  { value: "other",              label: "Other" },
+];
+
+export const TECH_INTENTS = TECH_INTENT_OPTIONS;
+export const LEADERSHIP_INTENTS = LEADERSHIP_INTENT_OPTIONS;
+
+export function VoiceNoteRecorder({ hcpJobId, hcpCustomerId, defaultIntentTag, intentOptions, showNeedsDiscussion }: Props) {
+  const options = intentOptions ?? TECH_INTENT_OPTIONS;
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [recording, setRecording] = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedDurationMs, setRecordedDurationMs] = useState(0);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [intentTag, setIntentTag] = useState<string>(defaultIntentTag ?? "estimate-context");
+  const [intentTag, setIntentTag] = useState<string>(defaultIntentTag ?? options[0]?.value ?? "estimate-context");
+  const [needsDiscussion, setNeedsDiscussion] = useState<boolean>(false);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -86,6 +114,7 @@ export function VoiceNoteRecorder({ hcpJobId, hcpCustomerId, defaultIntentTag }:
     if (hcpJobId)      fd.set("hcp_job_id", hcpJobId);
     if (hcpCustomerId) fd.set("hcp_customer_id", hcpCustomerId);
     if (intentTag)     fd.set("intent_tag", intentTag);
+    if (needsDiscussion) fd.set("needs_discussion", "1");
 
     startTransition(async () => {
       const res = await uploadVoiceNote(fd);
@@ -154,18 +183,33 @@ export function VoiceNoteRecorder({ hcpJobId, hcpCustomerId, defaultIntentTag }:
         ) : null}
       </div>
 
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-        <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Intent tag</label>
-        <select
-          value={intentTag}
-          onChange={(e) => setIntentTag(e.target.value)}
-          className="mt-2 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm"
-        >
-          <option value="estimate-context">Estimate context (use as "Based on…" reference)</option>
-          <option value="job-note">Job note (general info, decisions)</option>
-          <option value="process-doc">Process documentation</option>
-          <option value="other">Other</option>
-        </select>
+      <div className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-3">
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Intent tag</label>
+          <select
+            value={intentTag}
+            onChange={(e) => setIntentTag(e.target.value)}
+            className="mt-2 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm"
+          >
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        {showNeedsDiscussion ? (
+          <label className="flex items-start gap-2 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              checked={needsDiscussion}
+              onChange={(e) => setNeedsDiscussion(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Flag for discussion</span>
+              <span className="block text-xs text-neutral-500">Surfaces in the leadership concerns queue until resolved.</span>
+            </span>
+          </label>
+        ) : null}
       </div>
 
       {error ? (

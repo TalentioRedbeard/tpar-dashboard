@@ -27,15 +27,23 @@ export function EstimateBuilder({
   hcpJobId,
   customerName,
   defaultProjectName,
+  initialOptions,
+  initialNote,
+  basedOnBanner,
 }: {
   hcpJobId: string;
   customerName: string;
   defaultProjectName: string;
+  initialOptions?: Option[];
+  initialNote?: string;
+  basedOnBanner?: { voiceNoteId: string; sourceSummary: string; model: string };
 }) {
-  const [options, setOptions] = useState<Option[]>([
-    { name: "Option 1", line_items: [blankLine()] },
-  ]);
-  const [note, setNote] = useState("");
+  const [options, setOptions] = useState<Option[]>(
+    initialOptions && initialOptions.length > 0
+      ? initialOptions
+      : [{ name: "Option 1", line_items: [blankLine()] }],
+  );
+  const [note, setNote] = useState(initialNote ?? "");
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ estimate_id: string; estimate_number: string; hcp_url: string | null } | null>(null);
@@ -223,6 +231,29 @@ export function EstimateBuilder({
   return (
     <form onSubmit={onSubmit} className="space-y-6">
       <input type="hidden" name="hcp_job_id" value={hcpJobId} />
+
+      {basedOnBanner ? (
+        <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm">
+          <div className="flex items-start gap-3">
+            <span aria-hidden className="text-lg">✨</span>
+            <div className="flex-1">
+              <div className="font-semibold text-brand-900">Pre-populated from a voice note</div>
+              <div className="mt-0.5 text-xs text-brand-800">
+                Reference: {basedOnBanner.sourceSummary} · Model: {basedOnBanner.model}
+              </div>
+              <div className="mt-1 text-xs text-brand-700">
+                Review carefully — confidence on per-line reasoning was below 1.0. Edit anything before pushing.
+              </div>
+            </div>
+            <a
+              href={`/voice-notes/${basedOnBanner.voiceNoteId}`}
+              className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100"
+            >
+              Open voice note
+            </a>
+          </div>
+        </div>
+      ) : null}
 
       {/* Customer/job context (read-only) */}
       <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm">
