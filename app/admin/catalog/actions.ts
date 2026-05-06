@@ -129,6 +129,7 @@ export const DASHBOARD_PAGES: CatalogPage[] = [
   { path: "/admin/catalog",            surface: "manager", description: "This page — feature catalog of every system surface." },
   { path: "/admin/usage",              surface: "manager", description: "Dashboard usage analytics — who hits which pages, how often." },
   { path: "/admin/concerns",           surface: "manager", description: "Leadership review queue — voice notes flagged for discussion. Resolve in-place with a short note." },
+  { path: "/admin/leads",              surface: "manager", description: "New-lead queue — inbound prospects flagged by the classifier. Per-row contact extraction + mark-handled. Surfaced 2026-05-05." },
   { path: "/reports/ar",               surface: "all",     description: "Accounts receivable detail." },
   { path: "/reports/patterns",         surface: "all",     description: "Customer recurring-pattern detection (preventative candidates)." },
   { path: "/price",                    surface: "all",     description: "Pricebook lookup — items + sell prices + categories." },
