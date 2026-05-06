@@ -29,6 +29,7 @@ const TOOL_ITEMS = [
 // View-as: leadership previews tech dashboard. SalesAsk: binding review.
 // Catalog: every system surface (auto-generated).
 const LEADERSHIP_ITEMS = [
+  { href: "/admin/leads",     label: "Leads" },
   { href: "/admin/view-as",   label: "View as" },
   { href: "/admin/concerns",  label: "Concerns" },
   { href: "/admin/salesask",  label: "SalesAsk" },
