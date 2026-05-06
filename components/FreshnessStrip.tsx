@@ -10,6 +10,8 @@
 // rendered. A page navigation re-renders it.
 
 import { db } from "@/lib/supabase";
+import { triggerSync } from "@/app/actions/sync-actions";
+import { UpdateButton } from "./UpdateButton";
 
 type SourceKey = "hcp" | "salesask" | "bouncie" | "texts" | "calls" | "embeddings";
 
@@ -22,13 +24,16 @@ type FreshnessSource = {
   expectedLagMin: number;
 };
 
+// Each source's loggers list includes its scheduled-cron logger AND the
+// manual-trigger:<key> logger written by the Update button server action,
+// so a successful manual fire updates the freshness pill immediately.
 const SOURCES: FreshnessSource[] = [
-  { key: "hcp",        label: "HCP",         loggers: ["hcp-sync-appointments", "hcp-webhook"], expectedLagMin: 130 },
-  { key: "salesask",   label: "SalesAsk",    loggers: ["salesask-sync", "salesask_sync_hourly"], expectedLagMin: 70 },
-  { key: "bouncie",    label: "Bouncie",     loggers: ["tpar-bouncie-sync-trips-daily"], expectedLagMin: 1500 },
-  { key: "texts",      label: "Texts",       loggers: ["hourly_extract_texts"], expectedLagMin: 70 },
-  { key: "calls",      label: "Calls",       loggers: ["hourly_transcribe_calls"], expectedLagMin: 70 },
-  { key: "embeddings", label: "Embeddings",  loggers: ["hourly_embed_events"], expectedLagMin: 70 },
+  { key: "hcp",        label: "HCP",         loggers: ["hcp-sync-appointments", "hcp-webhook", "manual-trigger:hcp"], expectedLagMin: 130 },
+  { key: "salesask",   label: "SalesAsk",    loggers: ["salesask-sync", "salesask_sync_hourly", "manual-trigger:salesask"], expectedLagMin: 70 },
+  { key: "bouncie",    label: "Bouncie",     loggers: ["tpar-bouncie-sync-trips-daily", "manual-trigger:bouncie"], expectedLagMin: 1500 },
+  { key: "texts",      label: "Texts",       loggers: ["hourly_extract_texts", "manual-trigger:texts"], expectedLagMin: 70 },
+  { key: "calls",      label: "Calls",       loggers: ["hourly_transcribe_calls", "manual-trigger:calls"], expectedLagMin: 70 },
+  { key: "embeddings", label: "Embeddings",  loggers: ["hourly_embed_events", "manual-trigger:embeddings"], expectedLagMin: 70 },
 ];
 
 function fmtAgo(iso: string | null): string {
@@ -89,14 +94,20 @@ export async function FreshnessStrip() {
           rendered {new Date().toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" })} CT · refresh page to update
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
         {items.map((it) => (
-          <div key={it.key} className="flex items-center gap-1.5">
-            <Dot state={it.state} />
-            <span className="font-medium text-neutral-700">{it.label}</span>
-            <span className="tabular-nums text-neutral-500">
-              {it.lastSeen ? fmtAgo(it.lastSeen) : "no recent data"}
-            </span>
+          <div key={it.key} className="flex flex-col items-start gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <Dot state={it.state} />
+              <span className="font-medium text-neutral-700">{it.label}</span>
+              <span className="tabular-nums text-neutral-500">
+                {it.lastSeen ? fmtAgo(it.lastSeen) : "no recent data"}
+              </span>
+            </div>
+            <form action={triggerSync} className="ml-3">
+              <input type="hidden" name="source" value={it.key} />
+              <UpdateButton label={it.label} />
+            </form>
           </div>
         ))}
       </div>
