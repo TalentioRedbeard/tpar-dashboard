@@ -104,8 +104,8 @@ export default async function MarginReport() {
 
       <h2 className="mb-3 text-sm font-semibold text-neutral-700">Job detail</h2>
       <p className="mb-3 text-xs text-neutral-500">
-        Uses placeholder $50/hr labor burden until per-tech actuals are entered. Same numbers
-        the morning broadcast uses. Quality flag: <code>derived</code> = GPS hours × burden;{" "}
+        Uses placeholder $35/tech-hr (= $70/hr per 2-person truck — Kelsey-supplied 2026-05-06) until per-tech actuals are entered.
+        Same numbers the morning broadcast uses. Quality flag: <code>derived</code> = GPS hours × burden;{" "}
         <code>hcp</code> = HCP-native (only when burden is configured). Internal jobs excluded.
       </p>
       <Table
