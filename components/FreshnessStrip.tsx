@@ -14,7 +14,6 @@
 // Reserved as a follow-up enhancement; v1 here is data-only.
 
 import { db } from "@/lib/supabase";
-import { triggerSync } from "@/app/actions/sync-actions";
 import { UpdateButton } from "./UpdateButton";
 
 type SourceKey = "hcp" | "salesask" | "bouncie" | "texts" | "calls" | "embeddings";
@@ -142,10 +141,9 @@ export async function FreshnessStrip() {
                 {it.lastSeen ? fmtAgo(it.lastSeen) : "no recent data"}
               </span>
             </div>
-            <form action={triggerSync} className="ml-3">
-              <input type="hidden" name="source" value={it.key} />
-              <UpdateButton label={it.label} />
-            </form>
+            <div className="ml-3">
+              <UpdateButton source={it.key} label={it.label} />
+            </div>
           </div>
         ))}
       </div>

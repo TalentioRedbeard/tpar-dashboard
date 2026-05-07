@@ -29,6 +29,11 @@ const SECTIONS = [
     title: "Dev log",
     desc: "Nightly narrative of TPAR development — what shipped, what's open, what we decided. Compaction of last 24h maintenance_logs via Haiku.",
   },
+  {
+    href: "/admin/data-health",
+    title: "Data health",
+    desc: "Upstream-data freshness across HCP, SalesAsk, Bouncie, texts, calls, embeddings. 24h history + alert log. Source of truth = the data tables themselves, not cron-firing logs.",
+  },
 ];
 
 export default async function AdminIndexPage() {
