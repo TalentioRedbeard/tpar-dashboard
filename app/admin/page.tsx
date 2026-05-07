@@ -34,6 +34,11 @@ const SECTIONS = [
     title: "Data health",
     desc: "Upstream-data freshness across HCP, SalesAsk, Bouncie, texts, calls, embeddings. 24h history + alert log. Source of truth = the data tables themselves, not cron-firing logs.",
   },
+  {
+    href: "/admin/queue",
+    title: "Follow-up queue",
+    desc: "The communication_events backlog needing triage. Per-item Done/Handled/Dismiss + bulk sweep for low-importance long tail. Phase 0 clearing before email ingest opens.",
+  },
 ];
 
 export default async function AdminIndexPage() {
