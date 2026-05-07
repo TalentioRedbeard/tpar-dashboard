@@ -1,13 +1,17 @@
-// FreshnessStrip — server component showing "when was each upstream
-// data source last synced." Rendered on AdminHome so leadership can
-// glance and trust (or distrust) what they're looking at.
+// FreshnessStrip — server component showing "when did real data last land
+// for each upstream source." Rendered on AdminHome so leadership can glance
+// and trust (or distrust) what they're looking at.
 //
-// Source: maintenance_logs MAX(ts) per source, mapped to user-friendly
-// labels with an expected cadence. Sources whose last fire is older
-// than ~2x cadence render in amber; older than ~4x in red.
+// Source-of-truth (changed 2026-05-07): we now read MAX(<data timestamp>) on
+// each source's actual data table — NOT MAX(ts) on maintenance_logs. The
+// 6-day comms outage (2026-04-30 → 2026-05-07) was hidden because pg_cron
+// fired hourly and wrote "cron fired" to maintenance_logs even while the
+// bot was silently failing on expired HCP auth. Tracking data, not cron,
+// makes that class of outage visible immediately.
 //
-// This is server-rendered, so the values reflect when the page was
-// rendered. A page navigation re-renders it.
+// Cron firing is still useful as a SECONDARY signal — when data is sparse
+// by nature (calls on a quiet morning), a healthy cron prevents false red.
+// Reserved as a follow-up enhancement; v1 here is data-only.
 
 import { db } from "@/lib/supabase";
 import { triggerSync } from "@/app/actions/sync-actions";
@@ -18,22 +22,19 @@ type SourceKey = "hcp" | "salesask" | "bouncie" | "texts" | "calls" | "embedding
 type FreshnessSource = {
   key: SourceKey;
   label: string;
-  // Source names in maintenance_logs. We take MAX(ts) across all of them.
-  loggers: string[];
-  // Expected lag in minutes (how stale data should ever get under normal cadence).
+  // Expected data-arrival lag in minutes. Tuned to natural activity, not
+  // cron cadence — calls don't happen every hour, but we expect at least
+  // one within ~4h on a normal workday.
   expectedLagMin: number;
 };
 
-// Each source's loggers list includes its scheduled-cron logger AND the
-// manual-trigger:<key> logger written by the Update button server action,
-// so a successful manual fire updates the freshness pill immediately.
 const SOURCES: FreshnessSource[] = [
-  { key: "hcp",        label: "HCP",         loggers: ["hcp-sync-appointments", "hcp-webhook", "manual-trigger:hcp"], expectedLagMin: 130 },
-  { key: "salesask",   label: "SalesAsk",    loggers: ["salesask-sync", "salesask_sync_hourly", "manual-trigger:salesask"], expectedLagMin: 70 },
-  { key: "bouncie",    label: "Bouncie",     loggers: ["tpar-bouncie-sync-trips-daily", "manual-trigger:bouncie"], expectedLagMin: 1500 },
-  { key: "texts",      label: "Texts",       loggers: ["hourly_extract_texts", "manual-trigger:texts"], expectedLagMin: 70 },
-  { key: "calls",      label: "Calls",       loggers: ["hourly_transcribe_calls", "manual-trigger:calls"], expectedLagMin: 70 },
-  { key: "embeddings", label: "Embeddings",  loggers: ["hourly_embed_events", "manual-trigger:embeddings"], expectedLagMin: 70 },
+  { key: "hcp",        label: "HCP",        expectedLagMin: 240 },
+  { key: "salesask",   label: "SalesAsk",   expectedLagMin: 240 },
+  { key: "bouncie",    label: "Bouncie",    expectedLagMin: 240 },
+  { key: "texts",      label: "Texts",      expectedLagMin: 240 },
+  { key: "calls",      label: "Calls",      expectedLagMin: 240 },
+  { key: "embeddings", label: "Embeddings", expectedLagMin: 120 },
 ];
 
 function fmtAgo(iso: string | null): string {
@@ -57,30 +58,67 @@ function staleness(lastSeen: string | null, expectedLagMin: number): "fresh" | "
   return "very-stale";
 }
 
-export async function FreshnessStrip() {
+// Each source's freshness query. Returns ISO timestamp of the most recent
+// data row, or null. Queries run in parallel via Promise.all.
+async function fetchFreshness(): Promise<Record<SourceKey, string | null>> {
   const supabase = db();
-  const allLoggers = SOURCES.flatMap((s) => s.loggers);
-  const since = new Date(Date.now() - 7 * 86400_000).toISOString();
 
-  const { data: rows } = await supabase
-    .from("maintenance_logs")
-    .select("source, ts")
-    .in("source", allLoggers)
-    .gte("ts", since)
-    .order("ts", { ascending: false })
-    .limit(2000);
+  const [hcp, salesask, bouncie, texts, calls, embeddings] = await Promise.all([
+    supabase
+      .from("appointments_master")
+      .select("updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("salesask_recordings")
+      .select("updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("bouncie_trips")
+      .select("ended_at")
+      .order("ended_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("communication_events")
+      .select("occurred_at")
+      .eq("channel", "text")
+      .order("occurred_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("communication_events")
+      .select("occurred_at")
+      .eq("channel", "call")
+      .order("occurred_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("entity_embeddings")
+      .select("created_at")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  const lastBySource = new Map<string, string>();
-  for (const r of (rows ?? []) as Array<{ source: string; ts: string }>) {
-    if (!lastBySource.has(r.source)) lastBySource.set(r.source, r.ts);
-  }
+  return {
+    hcp:        (hcp.data        as { updated_at?: string } | null)?.updated_at        ?? null,
+    salesask:   (salesask.data   as { updated_at?: string } | null)?.updated_at        ?? null,
+    bouncie:    (bouncie.data    as { ended_at?: string }   | null)?.ended_at          ?? null,
+    texts:      (texts.data      as { occurred_at?: string }| null)?.occurred_at       ?? null,
+    calls:      (calls.data      as { occurred_at?: string }| null)?.occurred_at       ?? null,
+    embeddings: (embeddings.data as { created_at?: string } | null)?.created_at        ?? null,
+  };
+}
+
+export async function FreshnessStrip() {
+  const lastByKey = await fetchFreshness();
 
   const items = SOURCES.map((s) => {
-    let last: string | null = null;
-    for (const lg of s.loggers) {
-      const v = lastBySource.get(lg);
-      if (v && (!last || v > last)) last = v;
-    }
+    const last = lastByKey[s.key];
     return { ...s, lastSeen: last, state: staleness(last, s.expectedLagMin) };
   });
 
@@ -91,7 +129,7 @@ export async function FreshnessStrip() {
           Data freshness
         </span>
         <span className="text-[10px] text-neutral-400">
-          rendered {new Date().toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" })} CT · refresh page to update
+          rendered {new Date().toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" })} CT · last data row, not last cron fire · refresh to update
         </span>
       </div>
       <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
@@ -126,12 +164,12 @@ function Dot({ state }: { state: "fresh" | "stale" | "very-stale" | "missing" })
       : "bg-neutral-300";
   const title =
     state === "fresh"
-      ? "Within expected cadence"
+      ? "Latest data row within expected window"
       : state === "stale"
-      ? "Older than expected"
+      ? "Latest data row older than expected"
       : state === "very-stale"
-      ? "Significantly stale — check the cron"
-      : "No recent data";
+      ? "Latest data row significantly stale — check the upstream sync"
+      : "No data found";
   return (
     <span
       aria-label={title}
