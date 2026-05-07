@@ -20,7 +20,7 @@ function ActionButton({ label, color, title }: { label: string; color: string; t
   );
 }
 
-export function QueueItemActions({ id }: { id: string }) {
+export function QueueItemActions({ id, kind = "event" }: { id: string; kind?: "event" | "email" }) {
   const [state, formAction] = useActionState(ackEvent, initial);
 
   if (state.ok === true) {
@@ -31,16 +31,19 @@ export function QueueItemActions({ id }: { id: string }) {
     <div className="flex items-center gap-1.5">
       <form action={formAction}>
         <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="kind" value={kind} />
         <input type="hidden" name="disposition" value="actioned" />
         <ActionButton label="Done" color="bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100" title="I worked it / will work it now" />
       </form>
       <form action={formAction}>
         <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="kind" value={kind} />
         <input type="hidden" name="disposition" value="handled_elsewhere" />
         <ActionButton label="Handled" color="bg-sky-50 text-sky-700 ring-sky-200 hover:bg-sky-100" title="Already handled / no action needed" />
       </form>
       <form action={formAction}>
         <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="kind" value={kind} />
         <input type="hidden" name="disposition" value="dismissed_noise" />
         <ActionButton label="Dismiss" color="bg-neutral-50 text-neutral-600 ring-neutral-200 hover:bg-neutral-100" title="Noise / classifier was wrong" />
       </form>

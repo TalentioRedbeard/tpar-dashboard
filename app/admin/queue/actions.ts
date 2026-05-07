@@ -28,16 +28,21 @@ export async function ackEvent(_prev: AckResult, formData: FormData): Promise<Ac
   if (!me) return { ok: false, message: "not authorized" };
 
   const id = String(formData.get("id") ?? "").trim();
+  const kind = String(formData.get("kind") ?? "event").trim();   // 'event' (communication_events) | 'email' (emails_received)
   const dispositionRaw = String(formData.get("disposition") ?? "").trim();
   const valid: AckDisposition[] = ["actioned", "handled_elsewhere", "dismissed_noise"];
   if (!id) return { ok: false, message: "missing id" };
   if (!valid.includes(dispositionRaw as AckDisposition)) {
     return { ok: false, message: `invalid disposition: ${dispositionRaw}` };
   }
+  if (!["event", "email"].includes(kind)) {
+    return { ok: false, message: `invalid kind: ${kind}` };
+  }
 
+  const table = kind === "email" ? "emails_received" : "communication_events";
   const supa = db();
   const { error } = await supa
-    .from("communication_events")
+    .from(table)
     .update({
       acked_at: new Date().toISOString(),
       acked_by: me.email,
