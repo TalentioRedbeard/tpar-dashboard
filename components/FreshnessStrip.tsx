@@ -78,6 +78,7 @@ async function fetchFreshness(): Promise<Record<SourceKey, string | null>> {
     supabase
       .from("bouncie_trips")
       .select("ended_at")
+      .not("ended_at", "is", null)
       .order("ended_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
