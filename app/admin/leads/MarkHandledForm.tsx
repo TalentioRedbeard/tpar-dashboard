@@ -3,12 +3,13 @@
 import { useTransition } from "react";
 import { markLeadHandled, reopenLead } from "./actions";
 
-export function MarkHandledForm({ id }: { id: number }) {
+export function MarkHandledForm({ id, kind }: { id: string; kind: "event" | "email" }) {
   const [pending, startTransition] = useTransition();
   function submit() {
     startTransition(async () => {
       const fd = new FormData();
-      fd.set("id", String(id));
+      fd.set("id", id);
+      fd.set("kind", kind);
       await markLeadHandled(fd);
     });
   }
@@ -24,12 +25,13 @@ export function MarkHandledForm({ id }: { id: number }) {
   );
 }
 
-export function ReopenForm({ id }: { id: number }) {
+export function ReopenForm({ id, kind }: { id: string; kind: "event" | "email" }) {
   const [pending, startTransition] = useTransition();
   function submit() {
     startTransition(async () => {
       const fd = new FormData();
-      fd.set("id", String(id));
+      fd.set("id", id);
+      fd.set("kind", kind);
       await reopenLead(fd);
     });
   }

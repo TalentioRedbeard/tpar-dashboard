@@ -67,7 +67,7 @@ function LeadCard({ lead, isHandled }: { lead: Lead; isHandled: boolean }) {
         {isHandled ? (
           <div className="flex items-center gap-2 text-emerald-700">
             <span>handled {fmtAbs(lead.acked_at)} by {lead.acked_by ?? "?"}</span>
-            <ReopenForm id={lead.id} />
+            <ReopenForm id={lead.id} kind={lead.kind} />
           </div>
         ) : null}
       </div>
@@ -112,7 +112,7 @@ function LeadCard({ lead, isHandled }: { lead: Lead; isHandled: boolean }) {
       {!isHandled ? (
         <div className="border-t border-neutral-100 bg-neutral-50/50 px-4 py-2">
           <div className="flex items-center justify-end">
-            <MarkHandledForm id={lead.id} />
+            <MarkHandledForm id={lead.id} kind={lead.kind} />
           </div>
         </div>
       ) : null}
@@ -153,7 +153,7 @@ export default async function LeadsPage() {
         ) : (
           <ul className="space-y-3">
             {open.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} isHandled={false} />
+              <LeadCard key={`${lead.kind}-${lead.id}`} lead={lead} isHandled={false} />
             ))}
           </ul>
         )}
@@ -167,7 +167,7 @@ export default async function LeadsPage() {
         ) : (
           <ul className="space-y-3">
             {handled.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} isHandled={true} />
+              <LeadCard key={`${lead.kind}-${lead.id}`} lead={lead} isHandled={true} />
             ))}
           </ul>
         )}
