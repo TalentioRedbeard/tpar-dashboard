@@ -39,6 +39,11 @@ const SECTIONS = [
     title: "Follow-up queue",
     desc: "The communication_events backlog needing triage. Per-item Done/Handled/Dismiss + bulk sweep for low-importance long tail. Phase 0 clearing before email ingest opens.",
   },
+  {
+    href: "/admin/marketing",
+    title: "Marketing intelligence",
+    desc: "Phase 1: channel attribution from CallRail (90-day window), answer-rate-by-hour, geographic distribution, observed leaks + proposed experiments. No new integrations yet.",
+  },
 ];
 
 export default async function AdminIndexPage() {
