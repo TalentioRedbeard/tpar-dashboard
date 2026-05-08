@@ -41,6 +41,19 @@ export async function ackEvent(_prev: AckResult, formData: FormData): Promise<Ac
 
   const table = kind === "email" ? "emails_received" : "communication_events";
   const supa = db();
+
+  // For emails: pre-fetch gmail_message_id so we can archive in Gmail
+  // after the ack succeeds. Best-effort — Gmail failure doesn't block ack.
+  let gmailMessageId: string | null = null;
+  if (kind === "email") {
+    const { data } = await supa
+      .from("emails_received")
+      .select("gmail_message_id")
+      .eq("id", id)
+      .maybeSingle();
+    gmailMessageId = (data as { gmail_message_id?: string } | null)?.gmail_message_id ?? null;
+  }
+
   const { error } = await supa
     .from(table)
     .update({
@@ -53,8 +66,34 @@ export async function ackEvent(_prev: AckResult, formData: FormData): Promise<Ac
 
   if (error) return { ok: false, message: error.message };
 
+  // Archive the email in Gmail itself (gmail.modify scope was added 2026-05-08).
+  // Any disposition triggers archive — once you've dealt with an email, it
+  // doesn't need to be in the inbox anymore. Failures log but don't block UX.
+  let gmailNote = "";
+  if (kind === "email" && gmailMessageId) {
+    try {
+      const r = await fetch(
+        "https://bwpoqsfrygyopwxmegax.functions.supabase.co/gmail-modify",
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ gmail_message_id: gmailMessageId, action: "archive" }),
+        },
+      );
+      if (r.ok) gmailNote = " · archived";
+      else gmailNote = ` · archive failed (${r.status})`;
+    } catch (e) {
+      gmailNote = ` · archive error`;
+      console.error("gmail-modify call failed:", e);
+    }
+  }
+
   revalidatePath("/admin/queue");
-  return { ok: true, message: dispositionRaw === "actioned" ? "✓ done" : dispositionRaw === "handled_elsewhere" ? "✓ handled" : "✓ dismissed" };
+  const baseMsg = dispositionRaw === "actioned" ? "✓ done" : dispositionRaw === "handled_elsewhere" ? "✓ handled" : "✓ dismissed";
+  return { ok: true, message: baseMsg + gmailNote };
 }
 
 export type BulkResult = { ok: boolean; swept: number; message: string };
