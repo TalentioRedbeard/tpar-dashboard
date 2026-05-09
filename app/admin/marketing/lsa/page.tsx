@@ -14,6 +14,7 @@ import { isAdmin } from "../../../../lib/admin";
 import { PageShell } from "../../../../components/PageShell";
 import { Section } from "../../../../components/ui/Section";
 import { StatCard } from "../../../../components/ui/StatCard";
+import { UploadCsvForm } from "./UploadCsvForm";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "LSA · Marketing · Admin · TPAR-DB" };
@@ -178,6 +179,28 @@ export default async function LsaPage() {
       backHref="/admin/marketing"
       backLabel="Marketing home"
     >
+      <Section
+        title="Refresh data"
+        description={
+          <>
+            Export today's CSV from{" "}
+            <a
+              href="https://ads.google.com/local-services-ads"
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2 hover:text-neutral-900"
+            >
+              ads.google.com/local-services-ads
+            </a>{" "}
+            (DOWNLOAD button) and drop it here. Re-uploads are idempotent — fingerprint hashes prevent duplicates.
+          </>
+        }
+      >
+        <UploadCsvForm />
+      </Section>
+
+      <div className="my-6" />
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Leads (180d)" value={total} />
         <StatCard
