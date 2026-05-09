@@ -104,6 +104,41 @@ export default async function MarketingPage() {
       backHref="/admin"
       backLabel="Admin home"
     >
+      <Section title="Channel deep-dives" description="Per-channel views with their own data + dispute candidates.">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <a
+            href="/admin/marketing/lsa"
+            className="group rounded-xl border border-neutral-200 bg-white p-4 transition-all hover:border-brand-300 hover:shadow-sm"
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+              Local Services Ads
+            </div>
+            <div className="mt-1.5 text-base font-semibold text-neutral-900 group-hover:text-brand-700">
+              LSA leads + dispute candidates →
+            </div>
+            <div className="mt-1.5 text-xs text-neutral-500">
+              Mirrored from ads.google.com/local-services-ads. Highlights "Charged but bad-quality" leads worth disputing.
+            </div>
+          </a>
+          <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 p-4 opacity-70">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
+              Google Business Profile
+            </div>
+            <div className="mt-1.5 text-base font-semibold text-neutral-500">Coming Phase 2</div>
+            <div className="mt-1.5 text-xs text-neutral-400">Reviews, posts, photos, attributes.</div>
+          </div>
+          <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 p-4 opacity-70">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
+              Google Ads (paid)
+            </div>
+            <div className="mt-1.5 text-base font-semibold text-neutral-500">Coming Phase 2</div>
+            <div className="mt-1.5 text-xs text-neutral-400">Spend ↔ revenue, day-parting tests.</div>
+          </div>
+        </div>
+      </Section>
+
+      <div className="my-6" />
+
       <Section
         title="Channel attribution (last 90 days)"
         description="From CallRail's last-touch source. Sources with under 10 calls hidden."
