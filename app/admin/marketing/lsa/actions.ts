@@ -7,9 +7,14 @@
 // and uploads it here. We parse + fingerprint + upsert via the
 // store-lsa-leads bridge (same path the bot will eventually use).
 //
-// Same parse + fingerprint logic as scripts/smoke-lsa-csv.ts in tpar-hcp-bot
-// — kept inlined here rather than extracted to a shared lib until we have a
-// 3rd consumer.
+// CROSS-REPO MIRROR: the parse/fingerprint logic below is duplicated from
+// the canonical source at:
+//   tpar-hcp-bot/src/lsa/csv.ts
+// They are NOT hooked together — separate repos, no shared package. If you
+// change the logic here, update tpar-hcp-bot/src/lsa/csv.ts to match
+// (or vice-versa). The CSV format, fingerprint inputs, date parser, and
+// schema mapping must agree across both for fingerprint stability — same
+// inputs must produce the same lsa_lead_id from either path.
 
 import { revalidatePath } from "next/cache";
 import { createHash } from "node:crypto";
