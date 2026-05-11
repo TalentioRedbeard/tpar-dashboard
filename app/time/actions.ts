@@ -163,6 +163,7 @@ export async function clockIn(input: {
   }
 
   revalidatePath("/");
+  revalidatePath("/me");
   revalidatePath("/time");
 
   return {
@@ -220,6 +221,7 @@ export async function clockOut(input: {
   }
 
   revalidatePath("/");
+  revalidatePath("/me");
   revalidatePath("/time");
 
   return {
