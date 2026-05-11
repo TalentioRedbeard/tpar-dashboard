@@ -45,6 +45,10 @@ export default async function RootLayout({
   const isTech = !!me?.tech && me?.dashboardRole === "tech";
   const isAdmin = !!me?.isAdmin;
   const isManager = !!me?.isManager;
+  // Admins/managers who have a tech_directory row (e.g., Danny, Kelsey) should
+  // see the My day link so they can intentionally visit /me — but they don't
+  // get redirected there. /me stays a deliberate destination.
+  const hasTechRow = !!me?.tech;
 
   return (
     <html
@@ -58,6 +62,7 @@ export default async function RootLayout({
             isTech={isTech}
             isAdmin={isAdmin}
             isManager={isManager}
+            hasTechRow={hasTechRow}
           />
         )}
         {me?.isImpersonating && me.tech ? (

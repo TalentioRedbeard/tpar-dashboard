@@ -48,18 +48,24 @@ export function Nav({
   isTech,
   isAdmin: showAdmin = false,
   isManager = false,
+  hasTechRow = false,
 }: {
   userEmail: string | null;
   isTech?: boolean;
   isAdmin?: boolean;
   isManager?: boolean;
+  hasTechRow?: boolean;
 }) {
+  // Show "My day" link to anyone with a tech_directory row, regardless of
+  // dashboard role. Admins (Danny, Kelsey) can intentionally visit /me without
+  // being forced there.
+  const showMyDay = isTech || hasTechRow;
   // Build the section list once for the mobile drawer
   const mobileSections = [
     {
       title: "Main",
       items: [
-        ...(isTech ? [{ href: "/me", label: "My day", tone: "tech" as const }] : []),
+        ...(showMyDay ? [{ href: "/me", label: "My day", tone: "tech" as const }] : []),
         ...NAV_ITEMS.map((i) => ({ ...i, tone: "default" as const })),
       ],
     },
@@ -100,7 +106,7 @@ export function Nav({
 
         {/* Desktop horizontal nav — hidden on phones */}
         <ul className="ml-2 hidden flex-1 items-center gap-1 overflow-x-auto text-sm md:flex">
-          {isTech ? (
+          {showMyDay ? (
             <li>
               <Link
                 href="/me"
