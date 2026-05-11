@@ -36,29 +36,36 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
 
   // Admin "view-as" override: ?as=<tech_short_name> renders that tech's lane.
   // Useful for QA + admin impersonation without changing identity.
+  //
+  // Two names are needed downstream — short and full — because the views split:
+  //   - communication_events + vehicles_current_v.driver use SHORT name
+  //   - appointment_location_v.tech_primary_name + tech_kpi_current_v1.tech_name use FULL name
+  //   (per reference_tech_name_fields_2026-05-04.md)
   const sp = await searchParams;
   const asOverride = sp?.as?.trim() ?? "";
   let techName: string | null = null;
+  let techFullName: string | null = null;
   let viewingAs: string | null = null;
 
   if (asOverride && me.isAdmin) {
-    // Confirm the requested tech exists in the directory
     const supaCheck = db();
     const { data } = await supaCheck
       .from("tech_directory")
-      .select("tech_short_name")
+      .select("tech_short_name, hcp_full_name")
       .ilike("tech_short_name", asOverride)
       .eq("is_active", true)
       .maybeSingle();
     if (data?.tech_short_name) {
       techName = data.tech_short_name as string;
+      techFullName = (data.hcp_full_name as string | null) ?? null;
       viewingAs = techName;
     } else {
-      // Fall back to admin's own tech identity if override doesn't resolve
       techName = me.tech?.tech_short_name ?? null;
+      techFullName = me.tech?.hcp_full_name ?? null;
     }
   } else {
     techName = me.tech?.tech_short_name ?? null;
+    techFullName = me.tech?.hcp_full_name ?? null;
   }
 
   if (!techName) redirect("/?msg=not_a_tech");
@@ -78,11 +85,12 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     : Promise.resolve({ data: null });
 
   const [apptsRes, commsRes, vehicleRes, kpiRes, techListResolved] = await Promise.all([
-    // Today's appointments where this tech is primary
+    // Today's appointments where this tech is primary.
+    // appointment_location_v.tech_primary_name = FULL name (e.g. "Danny Dunlop").
     supa
       .from("appointment_location_v")
       .select("appointment_id, hcp_job_id, scheduled_start, scheduled_start_chicago, customer_name, street, city, zip, status, total_amount")
-      .eq("tech_primary_name", techName)
+      .eq("tech_primary_name", techFullName ?? techName)
       .gte("appt_date_chicago", today)
       .lte("appt_date_chicago", today)
       // Hide cancelled — they aren't on the books
@@ -102,11 +110,12 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       .eq("driver", techName)
       .eq("is_active", true)
       .maybeSingle(),
-    // KPI snapshot from existing per-tech view
+    // KPI snapshot from existing per-tech view.
+    // tech_kpi_current_v1.tech_name = FULL name.
     supa
       .from("tech_kpi_current_v1")
       .select("*")
-      .eq("tech_name", techName)
+      .eq("tech_name", techFullName ?? techName)
       .maybeSingle(),
     techListRes,
   ]);
