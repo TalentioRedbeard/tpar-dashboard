@@ -15,6 +15,7 @@ import { PageShell } from "../../components/PageShell";
 import { ClockButton } from "../../components/ClockButton";
 import { StartAppointmentButton } from "../../components/StartAppointmentButton";
 import { ClockSuggestionBanner } from "../../components/ClockSuggestionBanner";
+import { LifecycleButtons } from "../../components/LifecycleButtons";
 import { getCurrentState as getClockState } from "../time/actions";
 import { getPendingSuggestions } from "../time/suggestions";
 
@@ -84,7 +85,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     ? supa.from("tech_directory").select("tech_short_name, is_test").eq("is_active", true).order("tech_short_name")
     : Promise.resolve({ data: null });
 
-  const [apptsRes, commsRes, vehicleRes, kpiRes, techListResolved] = await Promise.all([
+  const [apptsRes, commsRes, vehicleRes, kpiRes, techListResolved, lifecycleRes] = await Promise.all([
     // Today's appointments where this tech is primary.
     // appointment_location_v.tech_primary_name = FULL name (e.g. "Danny Dunlop").
     supa
@@ -118,6 +119,13 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       .eq("tech_name", techFullName ?? techName)
       .maybeSingle(),
     techListRes,
+    // Lifecycle events fired today, grouped by appointment.
+    // Used to show which trigger buttons have already been pressed.
+    supa
+      .from("job_lifecycle_events")
+      .select("hcp_job_id, appointment_id, trigger_number")
+      .gte("fired_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .eq("fired_by", techName),
   ]);
 
   const appts = (apptsRes.data ?? []) as Array<Record<string, unknown>>;
@@ -127,6 +135,15 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   const techList = ((techListResolved as { data: Array<{ tech_short_name: string; is_test?: boolean | null }> | null }).data ?? [])
     .filter((t) => t.is_test !== true)
     .map((t) => t.tech_short_name);
+
+  // Build map: hcp_job_id → list of trigger_numbers fired today
+  const lifecycleByJob = new Map<string, number[]>();
+  for (const row of (lifecycleRes.data ?? []) as Array<{ hcp_job_id: string | null; trigger_number: number }>) {
+    if (!row.hcp_job_id) continue;
+    const arr = lifecycleByJob.get(row.hcp_job_id) ?? [];
+    arr.push(row.trigger_number);
+    lifecycleByJob.set(row.hcp_job_id, arr);
+  }
 
   return (
     <PageShell
@@ -238,6 +255,13 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                         isClockedInElsewhere={isElsewhere}
                       />
                     </div>
+                  )}
+                  {!viewingAs && me.tech && jobId && (
+                    <LifecycleButtons
+                      hcpJobId={jobId}
+                      hcpAppointmentId={apptId}
+                      firedTriggers={lifecycleByJob.get(jobId) ?? []}
+                    />
                   )}
                 </li>
               );
