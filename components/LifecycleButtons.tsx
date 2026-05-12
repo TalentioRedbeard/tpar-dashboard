@@ -16,6 +16,7 @@ const BUTTONS: Array<{
   variant: "primary" | "secondary" | "danger";
 }> = [
   { trigger: 2, label: "On my way", variant: "secondary" },
+  { trigger: 3, label: "Start", variant: "secondary" },
   { trigger: 4, label: "Build estimate", variant: "secondary" },
   { trigger: 5, label: "Present", variant: "secondary" },
   { trigger: 6, label: "Finish work", variant: "secondary" },
