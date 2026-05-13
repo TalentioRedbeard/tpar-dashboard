@@ -44,6 +44,11 @@ const SECTIONS = [
     title: "Marketing intelligence",
     desc: "Phase 1: channel attribution from CallRail (90-day window), answer-rate-by-hour, geographic distribution, observed leaks + proposed experiments. No new integrations yet.",
   },
+  {
+    href: "/admin/lifecycle-mirrors",
+    title: "Lifecycle HCP mirrors",
+    desc: "Health of trigger 2/3/6 → HCP bot mirrors. 24h success rate + open misses with one-click retry. Powered by the verify-hcp-mirrors pg_cron job.",
+  },
 ];
 
 export default async function AdminIndexPage() {
