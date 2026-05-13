@@ -8,6 +8,7 @@ import { getCurrentTech } from "@/lib/current-tech";
 import { db } from "@/lib/supabase";
 import { PageShell } from "@/components/PageShell";
 import { VoiceNoteRecorder, TECH_INTENTS, LEADERSHIP_INTENTS } from "../VoiceNoteRecorder";
+import { resolveJobIdentifier } from "@/lib/typed-db/job-360";
 
 export const metadata = { title: "New voice note · TPAR-DB" };
 
@@ -20,25 +21,31 @@ export default async function NewVoiceNotePage({
   if (!me) redirect("/login?from=/voice-notes/new");
 
   const params = await searchParams;
-  const hcpJobId = params.job?.trim();
+  const jobInput = params.job?.trim();
   const hcpCustomerId = params.customer?.trim();
 
-  // Attach context label so the user knows what this note is being saved against.
+  // The `job` query param may be an actual hcp_job_id (job_xxx...) or, more
+  // commonly, an invoice number the tech typed. Resolve via the canonical
+  // resolver so /voice-notes/new?job=27691236 works as expected.
+  // (Per feedback_job_id_vs_invoice_conundrum_2026-05-13.md)
+  let hcpJobId: string | undefined = undefined;
   let attached: { label: string; href: string } | null = null;
-  if (hcpJobId) {
-    const supa = db();
-    const { data } = await supa
-      .from("job_360")
-      .select("customer_name, invoice_number")
-      .eq("hcp_job_id", hcpJobId)
-      .maybeSingle();
-    if (data) {
+  if (jobInput) {
+    const resolved = await resolveJobIdentifier(jobInput);
+    if (resolved.kind === "hcp_id" || resolved.kind === "invoice") {
+      const row = resolved.row as Record<string, unknown>;
+      hcpJobId = row.hcp_job_id as string;
+      const customer = (row.customer_name as string | null) ?? "(unknown)";
+      const invoice = (row.invoice_number as string | null) ?? "—";
       attached = {
-        label: `${data.customer_name ?? "(unknown)"} — invoice ${data.invoice_number ?? "—"}`,
+        label: `${customer} — invoice ${invoice}`,
         href: `/job/${hcpJobId}`,
       };
     }
-  } else if (hcpCustomerId) {
+    // If resolved.kind is "invoice_multiple" or "none", leave hcpJobId undefined.
+    // The recorder will save as a standalone note (still useful).
+  }
+  if (!attached && hcpCustomerId) {
     const supa = db();
     const { data } = await supa
       .from("customer_360")
