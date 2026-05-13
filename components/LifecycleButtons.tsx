@@ -8,6 +8,15 @@ type Props = {
   hcpAppointmentId: string | null;
   // Trigger numbers already fired for this appointment (so we can show completed state)
   firedTriggers: number[];
+  // Pre-rendered mirror state per trigger — populated by /me from a server-
+  // side query so the pill survives page refreshes. After firing in-session,
+  // live polling takes over and updates the same per-trigger entry.
+  initialMirrors?: Record<number, {
+    fired_at: string;
+    state: "pending" | "synced" | "failed";
+    message?: string;
+    elapsed_ms?: number;
+  }>;
 };
 
 type TriggerNum = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -31,11 +40,28 @@ const HCP_MIRRORED_TRIGGERS = new Set<TriggerNum>([2, 3, 6]);
 
 type MirrorEntry = { firedAt: string; status: HcpMirrorStatus };
 
-export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers }: Props) {
+export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors }: Props) {
   const [pending, startTransition] = useTransition();
   const [lastFired, setLastFired] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mirror, setMirror] = useState<Record<number, MirrorEntry>>({});
+  // Seed mirror state from server-rendered initialMirrors so pills survive
+  // page refreshes. After in-session fires, live polling overwrites entries.
+  const [mirror, setMirror] = useState<Record<number, MirrorEntry>>(() => {
+    if (!initialMirrors) return {};
+    const out: Record<number, MirrorEntry> = {};
+    for (const [k, v] of Object.entries(initialMirrors)) {
+      const t = Number(k);
+      out[t] = {
+        firedAt: v.fired_at,
+        status: {
+          state: v.state,
+          message: v.message,
+          elapsed_ms: v.elapsed_ms,
+        },
+      };
+    }
+    return out;
+  });
 
   // Poll mirror status for triggers that are pending. Stops automatically
   // when all pending triggers resolve.

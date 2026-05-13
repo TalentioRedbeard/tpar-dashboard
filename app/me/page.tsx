@@ -86,7 +86,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   const clockStatePromise = !viewingAs && me.tech ? getClockState() : Promise.resolve(null);
   const suggestionsPromise = !viewingAs && me.tech ? getPendingSuggestions() : Promise.resolve([]);
 
-  const [clockState, suggestions, apptsRes, commsRes, vehicleRes, kpiRes, techListResolved, lifecycleRes] = await Promise.all([
+  const [clockState, suggestions, apptsRes, commsRes, vehicleRes, kpiRes, techListResolved, lifecycleRes, mirrorLogsRes] = await Promise.all([
     clockStatePromise,
     suggestionsPromise,
     // Today's appointments where this tech is primary.
@@ -126,9 +126,19 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     // Used to show which trigger buttons have already been pressed.
     supa
       .from("job_lifecycle_events")
-      .select("hcp_job_id, appointment_id, trigger_number")
+      .select("hcp_job_id, appointment_id, trigger_number, fired_at")
       .gte("fired_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
       .eq("fired_by", techName),
+    // Recent HCP-mirror outcomes (last 24h) for this tech's jobs. Lets
+    // LifecycleButtons render the pill ON MOUNT instead of waiting for a
+    // re-fire to populate it — survives page refreshes.
+    supa
+      .from("maintenance_logs")
+      .select("ts, level, context")
+      .eq("source", "hcp-trigger-action")
+      .gte("ts", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .order("ts", { ascending: false })
+      .limit(200),
   ]);
 
   const appts = (apptsRes.data ?? []) as Array<Record<string, unknown>>;
@@ -141,11 +151,60 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
 
   // Build map: hcp_job_id → list of trigger_numbers fired today
   const lifecycleByJob = new Map<string, number[]>();
-  for (const row of (lifecycleRes.data ?? []) as Array<{ hcp_job_id: string | null; trigger_number: number }>) {
+  // Also track fired_at per (job, trigger) so we can correlate with mirror logs.
+  const firedAtByJobTrigger = new Map<string, string>();
+  for (const row of (lifecycleRes.data ?? []) as Array<{ hcp_job_id: string | null; trigger_number: number; fired_at: string }>) {
     if (!row.hcp_job_id) continue;
     const arr = lifecycleByJob.get(row.hcp_job_id) ?? [];
     arr.push(row.trigger_number);
     lifecycleByJob.set(row.hcp_job_id, arr);
+    firedAtByJobTrigger.set(`${row.hcp_job_id}::${row.trigger_number}`, row.fired_at);
+  }
+
+  // Build initial mirror state per (job, trigger). LifecycleButtons uses this
+  // to populate pills on mount — survives page refreshes (without polling).
+  type InitialMirror = {
+    fired_at: string;
+    state: "pending" | "synced" | "failed";
+    message?: string;
+    elapsed_ms?: number;
+  };
+  const TRIGGER_TO_HCP_ACTION_MAP: Record<number, "on_my_way" | "start" | "finish" | undefined> = {
+    2: "on_my_way", 3: "start", 6: "finish",
+  };
+  const mirrorLogs = (mirrorLogsRes.data ?? []) as Array<{ ts: string; level: string; context: Record<string, unknown> | null }>;
+  const initialMirrorsByJob = new Map<string, Record<number, InitialMirror>>();
+  for (const [job, triggers] of lifecycleByJob) {
+    const perTrigger: Record<number, InitialMirror> = {};
+    for (const trigger of triggers) {
+      const action = TRIGGER_TO_HCP_ACTION_MAP[trigger];
+      if (!action) continue;
+      const firedAt = firedAtByJobTrigger.get(`${job}::${trigger}`);
+      if (!firedAt) continue;
+      // Find the most recent mirror log entry for this (job, action) AFTER fired_at
+      const match = mirrorLogs.find((r) => {
+        const c = r.context as { job_id?: string; action?: string } | null;
+        if (!c) return false;
+        return c.job_id === job && c.action === action && r.ts > firedAt;
+      });
+      if (!match) {
+        // If fired_at is more than 5 min ago and we still have no log row,
+        // treat as failed (the bot never ran or its log got lost).
+        const ageMs = Date.now() - new Date(firedAt).getTime();
+        perTrigger[trigger] = ageMs > 5 * 60 * 1000
+          ? { fired_at: firedAt, state: "failed", message: "No mirror log found within 5 min of firing." }
+          : { fired_at: firedAt, state: "pending" };
+        continue;
+      }
+      const ctx = (match.context ?? {}) as { bot_response?: { success?: boolean; error?: string }; elapsed_ms?: number };
+      const success = ctx.bot_response?.success;
+      perTrigger[trigger] = success === false || match.level === "error"
+        ? { fired_at: firedAt, state: "failed", message: ctx.bot_response?.error?.slice(0, 200), elapsed_ms: ctx.elapsed_ms }
+        : { fired_at: firedAt, state: "synced", elapsed_ms: ctx.elapsed_ms };
+    }
+    if (Object.keys(perTrigger).length > 0) {
+      initialMirrorsByJob.set(job, perTrigger);
+    }
   }
 
   return (
@@ -306,6 +365,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       hcpJobId={jobId}
                       hcpAppointmentId={apptId}
                       firedTriggers={lifecycleByJob.get(jobId) ?? []}
+                      initialMirrors={initialMirrorsByJob.get(jobId) ?? {}}
                     />
                   )}
                 </li>
