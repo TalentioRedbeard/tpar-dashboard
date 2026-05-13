@@ -56,10 +56,19 @@ export function VoiceNoteRecorder({ hcpJobId, hcpCustomerId, defaultIntentTag, i
   const startTsRef = useRef<number>(0);
   const tickRef = useRef<number | null>(null);
 
+  // Stop the recorder when this component unmounts OR when `recorder`
+  // changes to a new instance. Don't touch tickRef here — this cleanup
+  // ran on every recorder transition (null → r), which used to clear the
+  // interval immediately after startRecording registered it. Bug found in
+  // the field 2026-05-13: timer stuck at 0.0s while recording.
   useEffect(() => () => {
-    if (tickRef.current) window.clearInterval(tickRef.current);
     if (recorder && recorder.state !== "inactive") recorder.stop();
   }, [recorder]);
+
+  // Interval cleanup ONLY on unmount.
+  useEffect(() => () => {
+    if (tickRef.current) window.clearInterval(tickRef.current);
+  }, []);
 
   async function startRecording() {
     setError(null);

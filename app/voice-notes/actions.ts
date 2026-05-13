@@ -11,7 +11,7 @@ import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
+const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 export type UploadVoiceNoteResult =
@@ -44,19 +44,43 @@ export async function uploadVoiceNote(formData: FormData): Promise<UploadVoiceNo
   if (intentTag)     fwd.set("intent_tag", intentTag);
   if (needsDiscussion) fwd.set("needs_discussion", "1");
 
+  const fwdUrl = `${SUPABASE_URL}/functions/v1/voice-note-upload`;
   let res: Response;
   try {
-    res = await fetch(`${SUPABASE_URL}/functions/v1/voice-note-upload`, {
+    res = await fetch(fwdUrl, {
       method: "POST",
       headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
       body: fwd,
     });
   } catch (e) {
-    return { ok: false, error: `network: ${e instanceof Error ? e.message : String(e)}` };
+    const msg = `network: ${e instanceof Error ? e.message : String(e)}`;
+    try {
+      await db().from("maintenance_logs").insert({
+        source: "dashboard-voice-note-upload", level: "error",
+        message: msg,
+        context: { fwd_url: fwdUrl, author_email: me.email, hcp_job_id: hcpJobId, audio_size: audio.size, audio_type: audio.type },
+      });
+    } catch { /* ignore */ }
+    return { ok: false, error: msg };
   }
-  const json = await res.json().catch(() => ({} as any));
+  const bodyText = await res.text();
+  let json: any = {};
+  try { json = JSON.parse(bodyText); } catch { /* keep body for log */ }
   if (!res.ok || !json?.ok) {
-    return { ok: false, error: String(json?.error ?? `upload returned ${res.status}`) };
+    const msg = String(json?.error ?? `upload returned ${res.status}`);
+    try {
+      await db().from("maintenance_logs").insert({
+        source: "dashboard-voice-note-upload", level: "error",
+        message: msg,
+        context: {
+          fwd_url: fwdUrl, http_status: res.status,
+          response_body: bodyText.slice(0, 800),
+          author_email: me.email, hcp_job_id: hcpJobId,
+          audio_size: audio.size, audio_type: audio.type,
+        },
+      });
+    } catch { /* ignore */ }
+    return { ok: false, error: msg };
   }
 
   revalidatePath("/voice-notes");
