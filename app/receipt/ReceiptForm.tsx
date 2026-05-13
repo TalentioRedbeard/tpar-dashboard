@@ -11,7 +11,7 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
   const [vendor, setVendor] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ receipt_id: number; photo_url: string } | null>(null);
+  const [success, setSuccess] = useState<{ receipt_id: number; photo_url: string; amount: string; vendor: string; invoice: string; notes: string; localPreview: string | null } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   if (!canWrite) {
@@ -23,18 +23,52 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
   }
 
   if (success) {
+    // Prefer the local data-URL preview for instant render (no network roundtrip);
+    // fall back to the public Supabase URL. Both should produce the same image.
+    const inlineSrc = success.localPreview ?? success.photo_url;
+    const jobLabel = success.invoice ? `Job #${success.invoice}` : "Overhead";
     return (
       <div className="space-y-4">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-6">
-          <div className="text-lg font-semibold text-emerald-900">Receipt logged.</div>
-          <div className="mt-2 text-sm text-emerald-900">
-            Saved as receipt #{success.receipt_id}. Submitted by {techShortName}.
+        <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-6">
+          <div className="flex items-start gap-3">
+            <span aria-hidden className="text-3xl leading-none">✅</span>
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-emerald-900">Receipt uploaded!</h2>
+              <p className="mt-1 text-sm text-emerald-800">
+                Saved as receipt #{success.receipt_id} · submitted by {techShortName}
+              </p>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-emerald-900 sm:max-w-md">
+                <dt className="font-medium">Amount</dt>
+                <dd>{success.amount ? `$${success.amount}` : <span className="text-emerald-700/70 italic">(not entered)</span>}</dd>
+                <dt className="font-medium">Vendor</dt>
+                <dd>{success.vendor || <span className="text-emerald-700/70 italic">(not entered)</span>}</dd>
+                <dt className="font-medium">Charged to</dt>
+                <dd>{jobLabel}</dd>
+                {success.notes ? (<><dt className="font-medium">Notes</dt><dd>{success.notes}</dd></>) : null}
+              </dl>
+            </div>
           </div>
-          <a href={success.photo_url} target="_blank" rel="noopener" className="mt-2 inline-block text-xs text-emerald-700 hover:underline">
-            View uploaded photo →
+
+          {inlineSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={inlineSrc}
+              alt={`Receipt #${success.receipt_id}`}
+              className="mt-4 max-h-96 w-full rounded-xl border-2 border-emerald-200 bg-white object-contain"
+            />
+          ) : null}
+
+          <a
+            href={success.photo_url}
+            target="_blank"
+            rel="noopener"
+            className="mt-3 inline-block text-xs text-emerald-700 hover:underline"
+          >
+            Open full-size photo →
           </a>
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => {
               setSuccess(null); setPhoto(null); setPhotoPreview(null);
@@ -45,10 +79,10 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
             Log another
           </button>
           <a
-            href="/"
+            href="/me"
             className="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
           >
-            Done — back home
+            ← Back to my day
           </a>
         </div>
       </div>
@@ -68,10 +102,26 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
         fd.set("amount", amount);
         fd.set("vendor", vendor);
         fd.set("notes", notes);
+        // Snapshot the form values + local preview BEFORE the request so the
+        // success card can show them back to the tech (instant visual proof).
+        const snapshot = {
+          amount: amount.trim(),
+          vendor: vendor.trim(),
+          invoice: invoiceNumber.trim(),
+          notes: notes.trim(),
+          localPreview: photoPreview,
+        };
         startTransition(async () => {
           const res = await uploadReceipt(fd);
-          if (res.ok) setSuccess({ receipt_id: res.receipt_id, photo_url: res.photo_url });
-          else setError(res.error);
+          if (res.ok) {
+            setSuccess({
+              receipt_id: res.receipt_id,
+              photo_url: res.photo_url,
+              ...snapshot,
+            });
+          } else {
+            setError(res.error);
+          }
         });
       }}
     >
