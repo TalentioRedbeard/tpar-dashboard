@@ -129,7 +129,7 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers }: 
                 {wasFired ? "✓ " : ""}{b.label}
               </button>
               {mirrorEntry ? (
-                <MirrorPill entry={mirrorEntry} />
+                <MirrorPill entry={mirrorEntry} hcpJobId={hcpJobId} onRetry={() => onFire(b.trigger)} retryDisabled={pending} />
               ) : null}
             </span>
           );
@@ -140,7 +140,12 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers }: 
   );
 }
 
-function MirrorPill({ entry }: { entry: MirrorEntry }) {
+function MirrorPill({ entry, hcpJobId, onRetry, retryDisabled }: {
+  entry: MirrorEntry;
+  hcpJobId: string;
+  onRetry: () => void;
+  retryDisabled: boolean;
+}) {
   const { status } = entry;
   if (status.state === "not_applicable") return null;
   if (status.state === "pending") {
@@ -158,9 +163,38 @@ function MirrorPill({ entry }: { entry: MirrorEntry }) {
     );
   }
   if (status.state === "failed") {
+    // Surface a short reason in the pill label when it matches a known blocker;
+    // full error always available in tooltip + linked-out HCP fix path.
+    const msg = (status.message ?? "").toLowerCase();
+    const shortReason = msg.includes("checklist")
+      ? "checklist"
+      : msg.includes("invoice")
+        ? "invoice"
+        : msg.includes("auth")
+          ? "auth"
+          : null;
+    const label = shortReason ? `⚠ HCP: ${shortReason}` : "⚠ HCP";
+    const hcpUrl = `https://pro.housecallpro.com/app/jobs/${hcpJobId}`;
     return (
-      <span className="rounded-md border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-800" title={status.message ?? "HCP mirror failed"}>
-        ⚠ HCP
+      <span className="inline-flex items-center gap-1">
+        <a
+          href={hcpUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-md border border-red-300 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-800 hover:bg-red-100"
+          title={`${status.message ?? "HCP mirror failed"} · Click to open job in HCP`}
+        >
+          {label}
+        </a>
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retryDisabled}
+          className="rounded-md border border-neutral-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+          title="Re-fire after fixing in HCP"
+        >
+          ↻
+        </button>
       </span>
     );
   }
