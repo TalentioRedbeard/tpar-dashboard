@@ -6,7 +6,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createEstimateForJob, sendEstimateToClient, generateLineDescription } from "../lib/estimate-actions";
+import { createEstimateForJob, sendEstimateToClient, generateLineDescription, lookupPriceForScope, type PriceMatch } from "../lib/estimate-actions";
 
 type LineItem = {
   name: string;
@@ -162,6 +162,49 @@ export function EstimateBuilder({
   // so multiple lines can request in parallel without collision.
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [generateError, setGenerateError] = useState<Record<string, string | null>>({});
+
+  // Per-line price-lookup state.
+  const [pricing, setPricing] = useState<Record<string, boolean>>({});
+  const [priceMatches, setPriceMatches] = useState<Record<string, PriceMatch[] | null>>({});
+  const [priceError, setPriceError] = useState<Record<string, string | null>>({});
+
+  async function handleLookupPrice(optIdx: number, lineIdx: number) {
+    const li = options[optIdx]?.line_items[lineIdx];
+    if (!li) return;
+    const query = (li.name?.trim() || li.description?.trim() || "").trim();
+    const key = `${optIdx}-${lineIdx}`;
+    if (!query) {
+      setPriceError((prev) => ({ ...prev, [key]: "Type a line name first." }));
+      return;
+    }
+    setPricing((prev) => ({ ...prev, [key]: true }));
+    setPriceError((prev) => ({ ...prev, [key]: null }));
+    setPriceMatches((prev) => ({ ...prev, [key]: null }));
+    const res = await lookupPriceForScope(query);
+    setPricing((prev) => ({ ...prev, [key]: false }));
+    if (res.ok) {
+      setPriceMatches((prev) => ({ ...prev, [key]: res.matches }));
+      if (res.matches.length === 0) {
+        setPriceError((prev) => ({ ...prev, [key]: "No close matches — type more specifically or set price manually." }));
+      }
+    } else {
+      setPriceError((prev) => ({ ...prev, [key]: res.error }));
+    }
+  }
+
+  function applyPriceMatch(optIdx: number, lineIdx: number, m: PriceMatch) {
+    if (m.price_low != null) {
+      setLineField(optIdx, lineIdx, "unit_price", m.price_low.toFixed(2));
+    }
+    const key = `${optIdx}-${lineIdx}`;
+    setPriceMatches((prev) => ({ ...prev, [key]: null }));
+  }
+
+  function dismissPriceMatches(optIdx: number, lineIdx: number) {
+    const key = `${optIdx}-${lineIdx}`;
+    setPriceMatches((prev) => ({ ...prev, [key]: null }));
+    setPriceError((prev) => ({ ...prev, [key]: null }));
+  }
 
   async function handleGenerateDescription(optIdx: number, lineIdx: number) {
     const li = options[optIdx]?.line_items[lineIdx];
@@ -453,7 +496,7 @@ export function EstimateBuilder({
                   disabled={isPending}
                   className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
-                <div className="mt-1 flex items-center gap-2">
+                <div className="mt-1 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleGenerateDescription(optIdx, lineIdx)}
@@ -463,10 +506,78 @@ export function EstimateBuilder({
                   >
                     {generating[`${optIdx}-${lineIdx}`] ? "Generating…" : "✨ Generate description"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => handleLookupPrice(optIdx, lineIdx)}
+                    disabled={isPending || pricing[`${optIdx}-${lineIdx}`]}
+                    className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Search pricing_quick_reference + price_book for matches on the line name."
+                  >
+                    {pricing[`${optIdx}-${lineIdx}`] ? "Looking up…" : "💲 Look up price"}
+                  </button>
                   {generateError[`${optIdx}-${lineIdx}`] ? (
                     <span className="text-xs text-red-700">{generateError[`${optIdx}-${lineIdx}`]}</span>
                   ) : null}
+                  {priceError[`${optIdx}-${lineIdx}`] ? (
+                    <span className="text-xs text-red-700">{priceError[`${optIdx}-${lineIdx}`]}</span>
+                  ) : null}
                 </div>
+                {priceMatches[`${optIdx}-${lineIdx}`] && priceMatches[`${optIdx}-${lineIdx}`]!.length > 0 ? (
+                  <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-emerald-900">Price matches (similarity-ranked)</span>
+                      <button
+                        type="button"
+                        onClick={() => dismissPriceMatches(optIdx, lineIdx)}
+                        className="text-xs text-emerald-700 hover:text-emerald-900"
+                        title="Hide these results"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {priceMatches[`${optIdx}-${lineIdx}`]!.map((m) => {
+                        const priceLabel = m.price_low == null
+                          ? "—"
+                          : m.price_high != null
+                            ? `$${m.price_low.toFixed(2)} – $${m.price_high.toFixed(2)}`
+                            : `$${m.price_low.toFixed(2)}`;
+                        const methodNote = m.pricing_method && m.pricing_method !== "flat"
+                          ? ` · ${m.pricing_method.replace(/_/g, " ")}`
+                          : "";
+                        const sourceLabel = m.source === "pricing_quick_reference" ? "quick ref" : "price book";
+                        const applyDisabled = m.price_low == null
+                          || m.pricing_method === "quote_required"
+                          || m.pricing_method === "diagnostic_to_quoted";
+                        return (
+                          <li key={`${m.source}-${m.id}`} className="flex flex-wrap items-start justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-xs">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-neutral-900">{m.item_name}</div>
+                              <div className="text-neutral-600">
+                                {priceLabel}
+                                <span className="text-neutral-500">{methodNote} · {sourceLabel} · sim {m.similarity.toFixed(2)}</span>
+                              </div>
+                              {m.pending_review_note ? (
+                                <div className="mt-0.5 text-amber-700">⚠ {m.pending_review_note}</div>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => applyPriceMatch(optIdx, lineIdx, m)}
+                              disabled={applyDisabled}
+                              title={applyDisabled
+                                ? (m.pricing_method === "quote_required" ? "Quote required — no flat price to apply." : m.pricing_method === "diagnostic_to_quoted" ? "Diagnostic-to-quoted — set firm price after on-site assessment." : "No applicable price.")
+                                : "Set this line's unit price to the matched value."}
+                              className="rounded-md bg-brand-700 px-2 py-0.5 text-xs font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+                            >
+                              Apply
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}

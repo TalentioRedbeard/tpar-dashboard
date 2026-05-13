@@ -220,6 +220,105 @@ export async function sendEstimateToClient(formData: FormData): Promise<SendResu
   };
 }
 
+// ── Price lookup — mirrors slack-price's QR-then-price_book search, in JS.
+// Returns up to 3 matches sorted by trigram similarity.
+
+export type PriceMatch = {
+  source: "pricing_quick_reference" | "price_book";
+  id: number;
+  item_name: string;
+  price_low: number | null;        // QR low end / PB sell_price
+  price_high: number | null;       // QR high end only
+  pricing_method: string | null;   // PB only
+  category: string | null;
+  task_code: string | null;        // PB only
+  pending_review_note: string | null;
+  similarity: number;
+};
+
+export type PriceLookupResult =
+  | { ok: true; matches: PriceMatch[] }
+  | { ok: false; error: string };
+
+function jsTrigramSim(a: string, b: string): number {
+  const trig = (s: string): Set<string> => {
+    const p = `  ${s.toLowerCase().trim()} `;
+    const out = new Set<string>();
+    for (let i = 0; i < p.length - 2; i++) out.add(p.slice(i, i + 3));
+    return out;
+  };
+  const A = trig(a);
+  const B = trig(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+
+const PRICE_SIMILARITY_THRESHOLD = 0.25;
+
+export async function lookupPriceForScope(query: string): Promise<PriceLookupResult> {
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
+  const q = query.trim();
+  if (!q) return { ok: false, error: "Type something to look up." };
+
+  const supa = db();
+
+  // 1) pricing_quick_reference — small table, fetch all active rows + score in JS
+  const { data: qrRows, error: qrErr } = await supa
+    .from("pricing_quick_reference")
+    .select("id,item_name,price_low,price_high,price_note,category,pending_review_note")
+    .eq("active", true);
+  if (qrErr) return { ok: false, error: `quick_ref: ${qrErr.message}` };
+
+  const qrScored: PriceMatch[] = (qrRows ?? []).map((r) => ({
+    source: "pricing_quick_reference" as const,
+    id: r.id as number,
+    item_name: r.item_name as string,
+    price_low: r.price_low === null ? null : Number(r.price_low),
+    price_high: r.price_high === null ? null : Number(r.price_high),
+    pricing_method: null,
+    category: r.category as string | null,
+    task_code: null,
+    pending_review_note: r.pending_review_note as string | null,
+    similarity: jsTrigramSim(q, r.item_name as string),
+  }));
+
+  // 2) price_book — too large to load fully, ILIKE-filter on tokens then score in JS
+  const tokens = q.toLowerCase().split(/\s+/).filter((t) => t.length >= 3);
+  let pbScored: PriceMatch[] = [];
+  if (tokens.length > 0) {
+    const orExpr = tokens.map((t) => `item_name.ilike.%${t}%`).join(",");
+    const { data: pbRows, error: pbErr } = await supa
+      .from("price_book")
+      .select("id,item_name,sell_price,pricing_method,category,task_code,pending_review_note")
+      .eq("active", true)
+      .or(orExpr)
+      .limit(50);
+    if (pbErr) return { ok: false, error: `price_book: ${pbErr.message}` };
+    pbScored = (pbRows ?? []).map((r) => ({
+      source: "price_book" as const,
+      id: r.id as number,
+      item_name: r.item_name as string,
+      price_low: r.sell_price === null ? null : Number(r.sell_price),
+      price_high: null,
+      pricing_method: r.pricing_method as string | null,
+      category: r.category as string | null,
+      task_code: r.task_code as string | null,
+      pending_review_note: r.pending_review_note as string | null,
+      similarity: jsTrigramSim(q, r.item_name as string),
+    }));
+  }
+
+  const matches = [...qrScored, ...pbScored]
+    .filter((m) => m.similarity >= PRICE_SIMILARITY_THRESHOLD)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, 3);
+
+  return { ok: true, matches };
+}
+
 export type GenerateDescriptionResult =
   | { ok: true; description: string }
   | { ok: false; error: string };
