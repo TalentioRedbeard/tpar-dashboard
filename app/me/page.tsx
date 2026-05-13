@@ -353,9 +353,17 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
               return (
                 <li key={apptId ?? "(no-id)"} className={"rounded-2xl border bg-white p-4 " + (isHere ? "border-emerald-300" : "border-neutral-200")}>
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <Link href={`/job/${a.hcp_job_id}`} className="font-medium text-neutral-900 hover:underline">
-                      {(a.customer_name as string) ?? "(no name)"}
-                    </Link>
+                    {jobId ? (
+                      <Link href={`/job/${jobId}`} className="font-medium text-neutral-900 hover:underline">
+                        {(a.customer_name as string) ?? "(no name)"}
+                      </Link>
+                    ) : (
+                      // Estimate-only appointment (csr_...) — no underlying hcp_job_id
+                      // yet. Render the name without a link rather than /job/null.
+                      <span className="font-medium text-neutral-900">
+                        {(a.customer_name as string) ?? "(no name)"}
+                      </span>
+                    )}
                     <span className="text-xs text-neutral-500">
                       {fmtTime(a.scheduled_start as string)} · {(a.status as string) ?? "?"}
                     </span>
@@ -365,6 +373,14 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                     <div className="mt-0.5 text-xs">
                       <span className="text-neutral-500">Job </span>
                       <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-neutral-700">#{invoiceByJob.get(jobId)}</code>
+                    </div>
+                  ) : !jobId ? (
+                    // Estimate-only — surface that so tech knows the job
+                    // hasn't been created yet (no invoice number, no lifecycle
+                    // buttons, no Start). They likely need to create the job
+                    // in HCP or via /estimate-draft first.
+                    <div className="mt-0.5 text-[11px] text-amber-700">
+                      Estimate-only — job not created yet in HCP
                     </div>
                   ) : null}
                   <div className="mt-1 text-xs text-neutral-600">
