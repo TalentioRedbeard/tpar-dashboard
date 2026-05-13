@@ -71,11 +71,6 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
 
   if (!techName) redirect("/?msg=not_a_tech");
 
-  // Load clock state once and reuse — both for ClockButton and per-appointment
-  // "Start" buttons. Cheaper than calling getClockState() twice.
-  const clockState = !viewingAs && me.tech ? await getClockState() : null;
-  const suggestions = !viewingAs && me.tech ? await getPendingSuggestions() : [];
-
   const supa = db();
   const today = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -85,7 +80,15 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     ? supa.from("tech_directory").select("tech_short_name, is_test").eq("is_active", true).order("tech_short_name")
     : Promise.resolve({ data: null });
 
-  const [apptsRes, commsRes, vehicleRes, kpiRes, techListResolved, lifecycleRes] = await Promise.all([
+  // Hoisted from serial awaits into the Promise.all below so all I/O fans out
+  // in parallel (clockState + suggestions used to add ~200-400ms serially
+  // before the rest of the page started fetching).
+  const clockStatePromise = !viewingAs && me.tech ? getClockState() : Promise.resolve(null);
+  const suggestionsPromise = !viewingAs && me.tech ? getPendingSuggestions() : Promise.resolve([]);
+
+  const [clockState, suggestions, apptsRes, commsRes, vehicleRes, kpiRes, techListResolved, lifecycleRes] = await Promise.all([
+    clockStatePromise,
+    suggestionsPromise,
     // Today's appointments where this tech is primary.
     // appointment_location_v.tech_primary_name = FULL name (e.g. "Danny Dunlop").
     supa
