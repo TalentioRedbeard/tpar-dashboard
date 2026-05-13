@@ -149,6 +149,65 @@ export async function getJob360(hcp_job_id: string): Promise<Job360Row | null> {
   return result.match === "unique" ? result.row : null;
 }
 
+/**
+ * Resolve a user-provided "job number" to a job_360 row. Techs SEE and SHARE
+ * invoice/estimate numbers (7-9 digits like "27691236"); HCP's actual IDs are
+ * `job_xxxx...`. When the user pastes/types the visible number into a URL or
+ * form, we need to resolve it back to hcp_job_id.
+ *
+ * Resolution order:
+ *   1. If it looks like an hcp_job_id (starts with "job_") → try hcp_id match
+ *   2. If it's all digits 6-9 chars → try invoice match (handles "X-3" suffix)
+ *   3. Otherwise → try invoice match anyway (cheap)
+ *
+ * Returns the row + the kind that matched, OR a list (when multiple invoice
+ * segments share the trunk and caller needs to pick), OR null.
+ *
+ * Live HCP estimate-number fallback is intentionally NOT done here — that's
+ * an external network call that belongs to the calling page (so the caller
+ * can decide whether to redirect or render a picker).
+ */
+export type ResolveJobResult =
+  | { kind: "hcp_id"; row: Job360Row }
+  | { kind: "invoice"; row: Job360Row; was_segmented: boolean }
+  | { kind: "invoice_multiple"; rows: Job360Row[]; trunk: string }
+  | { kind: "none"; input: string };
+
+export async function resolveJobIdentifier(input: string): Promise<ResolveJobResult> {
+  const v = input.trim();
+  if (!v) return { kind: "none", input };
+
+  // Path 1: looks like hcp_id (starts with job_)
+  if (v.startsWith("job_")) {
+    const r = await findJob360ByIdentifier({ kind: "hcp_id", value: v });
+    if (r.match === "unique") return { kind: "hcp_id", row: r.row };
+    return { kind: "none", input: v };
+  }
+
+  // Path 2: all digits 6-9 chars (with optional -N segment suffix)
+  const digitMatch = /^\d{6,9}(-\d+)?$/.test(v);
+  if (digitMatch) {
+    const r = await findJob360ByIdentifier({ kind: "invoice", value: v });
+    if (r.match === "unique") {
+      return { kind: "invoice", row: r.row, was_segmented: v.includes("-") };
+    }
+    if (r.match === "multiple") {
+      const trunk = v.split("-")[0]!;
+      return { kind: "invoice_multiple", rows: r.rows, trunk };
+    }
+    return { kind: "none", input: v };
+  }
+
+  // Path 3: fallback — try invoice match for anything else
+  // (handles unusual formats like leading-zero or alphanumeric estimate IDs)
+  const fallback = await findJob360ByIdentifier({ kind: "invoice", value: v });
+  if (fallback.match === "unique") return { kind: "invoice", row: fallback.row, was_segmented: false };
+  if (fallback.match === "multiple") {
+    return { kind: "invoice_multiple", rows: fallback.rows, trunk: v };
+  }
+  return { kind: "none", input: v };
+}
+
 /** Convenience: type-safe accessor for the dollar-valued revenue column. */
 export function jobRevenueDollars(row: Job360Row): Dollars | null {
   if (row.revenue == null) return null;

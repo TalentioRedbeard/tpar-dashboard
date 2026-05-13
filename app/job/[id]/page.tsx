@@ -11,7 +11,8 @@ import { listVoiceNotesForJob } from "../../voice-notes/actions";
 import { getFiredTriggersForJob } from "./trigger-actions";
 import { TriggerForms } from "./TriggerForms";
 import { PageShell } from "../../../components/PageShell";
-import { getJob360, jobRevenueDollars, jobDueDollars } from "@/lib/typed-db/job-360";
+import { getJob360, resolveJobIdentifier, jobRevenueDollars, jobDueDollars } from "@/lib/typed-db/job-360";
+import { redirect } from "next/navigation";
 import { fmtDollars } from "@/lib/typed-db/money";
 import { Section } from "../../../components/ui/Section";
 import { StatCard } from "../../../components/ui/StatCard";
@@ -45,22 +46,117 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const formerSet = await getFormerTechNames();
   const supabase = db();
 
-  // Typed read — schema validation + compile-time column access (#120)
-  const jobRow = await getJob360(id);
+  // Typed read — schema validation + compile-time column access (#120).
+  // First try direct hcp_job_id lookup (the canonical case).
+  let jobRow = await getJob360(id);
 
+  // If no match, the URL slug may actually be an invoice/estimate number
+  // (what techs see + share). Resolve and either redirect to the real
+  // hcp_job_id or render a segment picker.
   if (!jobRow) {
-    return (
-      <PageShell title="Job not found" backHref="/" backLabel="Today">
-        <EmptyState
-          title="No job_360 row for this id."
-          description={
-            <>
-              Looked up <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-xs">{id}</code> · It may have been archived or the id may be wrong.
-            </>
+    const resolved = await resolveJobIdentifier(id);
+    if (resolved.kind === "hcp_id") {
+      jobRow = resolved.row;
+    } else if (resolved.kind === "invoice") {
+      // Found exactly one job for this invoice trunk — redirect to its real
+      // hcp_job_id URL so the address bar reflects the canonical identifier.
+      const realId = (resolved.row as Record<string, unknown>).hcp_job_id as string | undefined;
+      if (realId && realId !== id) {
+        redirect(`/job/${realId}?from_invoice=${encodeURIComponent(id)}`);
+      }
+      jobRow = resolved.row;
+    } else if (resolved.kind === "invoice_multiple") {
+      // The invoice trunk has multiple segments (HCP splits big jobs into
+      // -1, -2, -3 etc.). Show a picker so the tech can choose the right one.
+      return (
+        <PageShell
+          kicker="Multiple matches"
+          title={`Job #${resolved.trunk} has multiple segments`}
+          backHref="/jobs"
+          backLabel="All jobs"
+        >
+          <EmptyState
+            title={`Pick the right segment of #${resolved.trunk}`}
+            description={
+              <>
+                Invoice <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-xs">{resolved.trunk}</code> has{" "}
+                {resolved.rows.length} day-segments. Pick the one you mean — most-recent first.
+              </>
+            }
+          />
+          <ul className="mt-3 divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+            {resolved.rows
+              .slice()
+              .sort((a, b) => {
+                const da = (a as Record<string, unknown>).job_date as string | null;
+                const db_ = (b as Record<string, unknown>).job_date as string | null;
+                if (da && db_) return db_.localeCompare(da);
+                return 0;
+              })
+              .map((row) => {
+                const r = row as Record<string, unknown>;
+                return (
+                  <li key={r.hcp_job_id as string}>
+                    <Link
+                      href={`/job/${r.hcp_job_id}?from_invoice=${encodeURIComponent(id)}`}
+                      className="block px-4 py-3 hover:bg-neutral-50"
+                    >
+                      <div className="font-medium text-neutral-900">
+                        {(r.invoice_number as string) ?? "—"} · {(r.customer_name as string) ?? "—"}
+                      </div>
+                      <div className="text-xs text-neutral-600">
+                        {(r.job_date as string) ?? "no date"} · {(r.appointment_status as string) ?? "no status"} · {(r.tech_primary_name as string) ?? "—"}
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+          </ul>
+        </PageShell>
+      );
+    } else {
+      // Truly not found in our DB. Final fallback: live HCP estimate lookup.
+      // /jobs has the same fallback (project_jobs_hcp_live_lookup_2026-05-05);
+      // share the pattern. Only fires for digit-shaped inputs.
+      if (/^\d{6,9}$/.test(id)) {
+        const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+        const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+        if (SUPABASE_URL && SERVICE_KEY) {
+          try {
+            const r = await fetch(`${SUPABASE_URL}/functions/v1/resolve-hcp-estimate`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ estimate_number: id }),
+            });
+            const data = await r.json().catch(() => null) as { ok?: boolean; hcp_job_id?: string | null } | null;
+            if (data?.ok && data.hcp_job_id) {
+              redirect(`/job/${data.hcp_job_id}?from_estimate=${encodeURIComponent(id)}`);
+            }
+          } catch {
+            // Fall through to "not found"
           }
-        />
-      </PageShell>
-    );
+        }
+      }
+      return (
+        <PageShell title="Job not found" backHref="/jobs" backLabel="All jobs">
+          <EmptyState
+            title="Couldn't find that job."
+            description={
+              <>
+                <p>
+                  Looked up <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-xs">{id}</code>.
+                  Tried direct hcp_job_id, invoice number (with HCP segment trunk match), and live HCP estimate lookup.
+                </p>
+                <p className="mt-2 text-xs text-neutral-600">
+                  If you got here from a Slack link or someone&apos;s screenshot, the invoice/estimate may not be synced yet. Try{" "}
+                  <Link href={`/jobs?q=${encodeURIComponent(id)}`} className="text-brand-700 hover:underline">searching /jobs</Link>.
+                </p>
+              </>
+            }
+          />
+        </PageShell>
+      );
+    }
   }
 
   const j = jobRow as Record<string, unknown>;
