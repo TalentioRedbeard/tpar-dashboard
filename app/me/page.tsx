@@ -200,6 +200,48 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
         </section>
       ) : null}
 
+      {/* Quick-action tiles for capture surfaces. Linked surfaces have the
+          same gestures available standalone (without an active appointment) —
+          useful for gas-station receipts, drive-time voice notes, etc. */}
+      {!viewingAs && me.tech ? (
+        <section className="mb-8">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Link
+              href="/receipt"
+              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
+            >
+              <span className="text-2xl" aria-hidden>🧾</span>
+              <span className="text-sm font-semibold text-neutral-900">Receipt</span>
+              <span className="text-xs text-neutral-600">Snap a photo + log details</span>
+            </Link>
+            <Link
+              href="/voice-notes/new"
+              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
+            >
+              <span className="text-2xl" aria-hidden>🎙️</span>
+              <span className="text-sm font-semibold text-neutral-900">Voice note</span>
+              <span className="text-xs text-neutral-600">Record or upload audio</span>
+            </Link>
+            <Link
+              href="/jobs"
+              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
+            >
+              <span className="text-2xl" aria-hidden>📋</span>
+              <span className="text-sm font-semibold text-neutral-900">Jobs</span>
+              <span className="text-xs text-neutral-600">Look up + estimate</span>
+            </Link>
+            <Link
+              href="/ask"
+              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
+            >
+              <span className="text-2xl" aria-hidden>💬</span>
+              <span className="text-sm font-semibold text-neutral-900">Ask</span>
+              <span className="text-xs text-neutral-600">Search the system</span>
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       {/* Geofence-driven clock-in suggestions */}
       {suggestions.length > 0 && (
         <section className="mb-8 space-y-2">
