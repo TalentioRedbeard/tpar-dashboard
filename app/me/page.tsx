@@ -149,6 +149,25 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     .filter((t) => t.is_test !== true)
     .map((t) => t.tech_short_name);
 
+  // Look up invoice_number for today's appointment job_ids so the appointment
+  // cards can show the tech-recognized identifier (per
+  // feedback_job_id_vs_invoice_conundrum_2026-05-13: techs think in invoice
+  // numbers, not hcp_job_ids). One small query — runs serially after appts
+  // since we don't know the ids until the appts query resolves.
+  const apptJobIds = (apptsRes.data ?? [])
+    .map((a) => (a as Record<string, unknown>).hcp_job_id as string | null)
+    .filter((id): id is string => Boolean(id));
+  const invoiceByJob = new Map<string, string>();
+  if (apptJobIds.length > 0) {
+    const { data: invoiceRows } = await supa
+      .from("job_360")
+      .select("hcp_job_id, invoice_number")
+      .in("hcp_job_id", apptJobIds);
+    for (const row of (invoiceRows ?? []) as Array<{ hcp_job_id: string; invoice_number: string | null }>) {
+      if (row.invoice_number) invoiceByJob.set(row.hcp_job_id, row.invoice_number);
+    }
+  }
+
   // Build map: hcp_job_id → list of trigger_numbers fired today
   const lifecycleByJob = new Map<string, number[]>();
   // Also track fired_at per (job, trigger) so we can correlate with mirror logs.
@@ -341,6 +360,13 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       {fmtTime(a.scheduled_start as string)} · {(a.status as string) ?? "?"}
                     </span>
                   </div>
+                  {/* Show invoice number prominently — that's what techs see + share. */}
+                  {jobId && invoiceByJob.get(jobId) ? (
+                    <div className="mt-0.5 text-xs">
+                      <span className="text-neutral-500">Job </span>
+                      <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-neutral-700">#{invoiceByJob.get(jobId)}</code>
+                    </div>
+                  ) : null}
                   <div className="mt-1 text-xs text-neutral-600">
                     {[a.street, a.city, a.zip].filter(Boolean).join(", ")}
                   </div>
