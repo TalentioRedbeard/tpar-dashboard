@@ -364,8 +364,8 @@ export function EstimateBuilder({
                   const formEl = (e.currentTarget.closest("form") as HTMLFormElement | null);
                   if (formEl) handlePushSingleOption(optIdx, formEl);
                 }}
-                disabled={isPending || opt.line_items.filter((li) => li.name && Number(li.unit_price) > 0).length === 0}
-                title="Pushes just this option as a separate HCP estimate"
+                disabled={isPending || opt.line_items.filter((li) => li.name && Number(li.quantity) > 0).length === 0}
+                title="Pushes just this option as a separate HCP estimate. Prices can be filled in later (in HCP or back here)."
                 className="rounded-md bg-brand-700 px-3 py-1 text-xs font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
               >
                 {pushingOptionIdx === optIdx ? "Pushing…" : "Push this option →"}

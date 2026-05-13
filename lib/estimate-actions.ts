@@ -85,12 +85,14 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
     }
   }
 
-  // Sort + filter
+  // Sort + filter. Allow $0 unit_price so techs can push descriptive options
+  // first and fill prices in HCP (or back here) after — field workflow
+  // requirement, Danny 2026-05-13.
   let options = [...optionMap.entries()]
     .sort(([a], [b]) => a - b)
     .map(([, o]) => ({
       name: o.name || "Option",
-      line_items: o.line_items.filter((li) => li.name && li.unit_price_cents > 0 && li.quantity > 0),
+      line_items: o.line_items.filter((li) => li.name && li.quantity > 0),
     }))
     .filter((o) => o.line_items.length > 0);
 
@@ -118,7 +120,7 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
   }
 
   if (options.length === 0) {
-    return { ok: false, error: "Add at least one option with at least one line item (name + price + quantity)." };
+    return { ok: false, error: "Add at least one option with at least one line item (name + quantity)." };
   }
 
   const body: Record<string, unknown> = {
