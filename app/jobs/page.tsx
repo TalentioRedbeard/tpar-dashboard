@@ -138,9 +138,8 @@ export default async function JobsListPage({
     }
   }
 
-  const formerSet = await getFormerTechNames();
-
-  // Stat strip aggregates over the same filter window (capped at 500).
+  // Build statsQuery so we can fire it concurrently with the other two
+  // remaining queries instead of serially after each one.
   let statsQuery = supa
     .from("job_360")
     .select("revenue, due_amount, gross_margin_pct, on_time")
@@ -157,8 +156,20 @@ export default async function JobsListPage({
   if (!includeInternal) {
     statsQuery = statsQuery.not("customer_name", "in", '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")');
   }
-  const { data: statsRows } = await statsQuery;
-  const stats = (statsRows ?? []) as Array<{ revenue: number | null; due_amount: number | null; gross_margin_pct: number | null; on_time: boolean | null }>;
+
+  // Fan out: former-techs + stats aggregation + tech directory all in
+  // parallel (was 3 serial awaits, ~150-400ms).
+  const [formerSet, statsRes, techDirRes] = await Promise.all([
+    getFormerTechNames(),
+    statsQuery,
+    supa
+      .from("tech_directory")
+      .select("hcp_full_name")
+      .eq("is_active", true)
+      .order("hcp_full_name", { ascending: true }),
+  ]);
+
+  const stats = (statsRes.data ?? []) as Array<{ revenue: number | null; due_amount: number | null; gross_margin_pct: number | null; on_time: boolean | null }>;
   const totalRevenue = stats.reduce((s, r) => s + (Number(r.revenue) || 0), 0);
   const totalDue = stats.reduce((s, r) => s + (Number(r.due_amount) || 0), 0);
   const marginValues = stats.map((r) => Number(r.gross_margin_pct)).filter((v) => Number.isFinite(v) && v < 100);
@@ -166,13 +177,7 @@ export default async function JobsListPage({
   const onTimeStats = stats.filter((r) => r.on_time !== null);
   const onTimePct = onTimeStats.length > 0 ? (onTimeStats.filter((r) => r.on_time === true).length / onTimeStats.length) * 100 : null;
 
-  // Tech list from tech_directory — authoritative, no scan-and-distinct hack.
-  const { data: techData } = await supa
-    .from("tech_directory")
-    .select("hcp_full_name")
-    .eq("is_active", true)
-    .order("hcp_full_name", { ascending: true });
-  const techNames = (techData ?? [])
+  const techNames = (techDirRes.data ?? [])
     .map((r: { hcp_full_name: string | null }) => r.hcp_full_name)
     .filter((n): n is string => Boolean(n));
 
