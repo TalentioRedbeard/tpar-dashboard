@@ -91,10 +91,14 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     suggestionsPromise,
     // Today's appointments where this tech is primary.
     // appointment_location_v.tech_primary_name = FULL name (e.g. "Danny Dunlop").
+    // Match on tech_primary_name OR tech_all_names so HELPERS see the jobs
+    // they're on, not just LEADS — discovered 2026-05-13 verify pass:
+    // Landon was on Anthony's 3 jobs as crew + /me showed him 0 appts.
+    // Same OR-pattern that /jobs already uses.
     supa
       .from("appointment_location_v")
-      .select("appointment_id, hcp_job_id, scheduled_start, scheduled_start_chicago, customer_name, street, city, zip, status, total_amount")
-      .eq("tech_primary_name", techFullName ?? techName)
+      .select("appointment_id, hcp_job_id, scheduled_start, scheduled_start_chicago, customer_name, street, city, zip, status, total_amount, tech_primary_name, tech_all_names")
+      .or(`tech_primary_name.eq."${techFullName ?? techName}",tech_all_names.cs.{"${techFullName ?? techName}"}`)
       .gte("appt_date_chicago", today)
       .lte("appt_date_chicago", today)
       // Hide cancelled — they aren't on the books
@@ -353,17 +357,27 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
               return (
                 <li key={apptId ?? "(no-id)"} className={"rounded-2xl border bg-white p-4 " + (isHere ? "border-emerald-300" : "border-neutral-200")}>
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    {jobId ? (
-                      <Link href={`/job/${jobId}`} className="font-medium text-neutral-900 hover:underline">
-                        {(a.customer_name as string) ?? "(no name)"}
-                      </Link>
-                    ) : (
-                      // Estimate-only appointment (csr_...) — no underlying hcp_job_id
-                      // yet. Render the name without a link rather than /job/null.
-                      <span className="font-medium text-neutral-900">
-                        {(a.customer_name as string) ?? "(no name)"}
-                      </span>
-                    )}
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      {jobId ? (
+                        <Link href={`/job/${jobId}`} className="font-medium text-neutral-900 hover:underline">
+                          {(a.customer_name as string) ?? "(no name)"}
+                        </Link>
+                      ) : (
+                        // Estimate-only appointment (csr_...) — no underlying hcp_job_id
+                        // yet. Render the name without a link rather than /job/null.
+                        <span className="font-medium text-neutral-900">
+                          {(a.customer_name as string) ?? "(no name)"}
+                        </span>
+                      )}
+                      {/* If tech is on the crew but not the primary lead, badge it
+                          so they know they're helping (not leading). Surfaced 2026-05-13:
+                          /me used to filter only on primary, hiding crew assignments. */}
+                      {techFullName && a.tech_primary_name !== techFullName ? (
+                        <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200" title={`Lead: ${a.tech_primary_name ?? "—"}`}>
+                          as helper
+                        </span>
+                      ) : null}
+                    </div>
                     <span className="text-xs text-neutral-500">
                       {fmtTime(a.scheduled_start as string)} · {(a.status as string) ?? "?"}
                     </span>
