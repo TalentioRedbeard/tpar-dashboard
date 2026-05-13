@@ -220,8 +220,19 @@ export async function sendEstimateToClient(formData: FormData): Promise<SendResu
   };
 }
 
-// ── Price lookup — mirrors slack-price's QR-then-price_book search, in JS.
-// Returns up to 3 matches sorted by trigram similarity.
+// ── Price lookup ─────────────────────────────────────────────────────────
+//
+// V1 implementation. Canonical lives in tpar-forge:
+//   @tpar-forge/schemas/pricing  (PriceMatch, PriceLookupResult, ...)
+//   @tpar-forge/client/pricing.lookupPriceForScope
+//
+// As of 2026-05-13 (refactor plan Phase 2 start), forge owns the typed
+// contract + canonical impl. This file stays in sync manually until forge
+// publishing/vendoring is wired. When that lands, replace the body of
+// `lookupPriceForScope` below with a call into @tpar-forge/client/pricing.
+//
+// Mirrors slack-price's QR-then-price_book search, in JS. Returns up to 3
+// matches sorted by trigram similarity.
 
 export type PriceMatch = {
   source: "pricing_quick_reference" | "price_book";
