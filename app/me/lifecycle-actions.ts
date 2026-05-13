@@ -112,7 +112,74 @@ function fireHcpMirrorInBackground(
   })();
 }
 
-export type FireResult = { ok: true; event_id: string } | { ok: false; error: string };
+export type FireResult = { ok: true; event_id: string; fired_at: string } | { ok: false; error: string };
+
+export type HcpMirrorStatus = {
+  state: "pending" | "synced" | "failed" | "not_applicable" | "unknown";
+  message?: string;
+  bot_status?: number;
+  elapsed_ms?: number;
+};
+
+/**
+ * Look up the HCP-mirror outcome for a recently-fired lifecycle trigger.
+ * Returns 'pending' until the bot finishes (~2:30 typical) and the
+ * hcp-trigger-action edge fn writes its outcome to maintenance_logs.
+ *
+ * Called by LifecycleButtons via polling after a fire.
+ */
+export async function getLifecycleHcpStatus(input: {
+  hcp_job_id: string;
+  trigger_number: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  fired_after: string;
+}): Promise<HcpMirrorStatus> {
+  const me = await getCurrentTech();
+  if (!me?.tech) return { state: "unknown", message: "Not signed in." };
+
+  const hcpAction = TRIGGER_TO_HCP_ACTION[input.trigger_number];
+  if (!hcpAction) return { state: "not_applicable" };
+
+  const supa = db();
+  const { data, error } = await supa
+    .from("maintenance_logs")
+    .select("ts,level,message,context")
+    .eq("source", "hcp-trigger-action")
+    .gte("ts", input.fired_after)
+    .order("ts", { ascending: false })
+    .limit(20);
+
+  if (error) return { state: "unknown", message: error.message };
+  if (!data || data.length === 0) return { state: "pending" };
+
+  // Find the row matching this job + action (the same edge fn invocation
+  // can fire for many job+action pairs; we want OUR ONE).
+  const match = data.find((row) => {
+    const ctx = (row.context ?? {}) as Record<string, unknown>;
+    return ctx.job_id === input.hcp_job_id && ctx.action === hcpAction;
+  });
+  if (!match) return { state: "pending" };
+
+  const ctx = (match.context ?? {}) as Record<string, unknown>;
+  const botStatus = typeof ctx.bot_status === "number" ? (ctx.bot_status as number) : undefined;
+  const elapsedMs = typeof ctx.elapsed_ms === "number" ? (ctx.elapsed_ms as number) : undefined;
+  const botResponse = ctx.bot_response as { success?: boolean; error?: string } | undefined;
+
+  if (match.level === "error" || botResponse?.success === false) {
+    return {
+      state: "failed",
+      message: botResponse?.error?.slice(0, 200) ?? (match.message as string | undefined) ?? "bot failed",
+      bot_status: botStatus,
+      elapsed_ms: elapsedMs,
+    };
+  }
+
+  return {
+    state: "synced",
+    message: typeof match.message === "string" ? match.message : undefined,
+    bot_status: botStatus,
+    elapsed_ms: elapsedMs,
+  };
+}
 
 export async function fireLifecycleTrigger(input: {
   trigger_number: 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -147,6 +214,12 @@ export async function fireLifecycleTrigger(input: {
     return { ok: false, error: error?.message ?? "insert failed" };
   }
 
+  // Capture an ISO timestamp BEFORE firing the HCP mirror so the client can
+  // poll maintenance_logs with `ts >= fired_at` and find this trigger's
+  // outcome cleanly. Small skew (the insert already happened a moment ago)
+  // is fine — the bot's log row will be strictly after.
+  const firedAt = new Date().toISOString();
+
   // Fire-and-forget HCP mirror for triggers that have an HCP counterpart.
   // Awaiting this would block the tech for ~2:30 (Playwright launch + navigate
   // + two-click sequence + verify). The bot result lands in maintenance_logs.
@@ -158,5 +231,5 @@ export async function fireLifecycleTrigger(input: {
   revalidatePath("/me");
   revalidatePath(`/job/${input.hcp_job_id}`);
 
-  return { ok: true, event_id: data.id as string };
+  return { ok: true, event_id: data.id as string, fired_at: firedAt };
 }
