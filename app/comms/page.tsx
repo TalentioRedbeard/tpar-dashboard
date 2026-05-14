@@ -30,6 +30,7 @@ type CommRow = {
   summary: string | null;
   flags: string[] | null;
   acked_at: string | null;
+  raw_metadata: { attribution_source?: string } | null;
 };
 
 export default async function CommsPage({
@@ -61,7 +62,7 @@ export default async function CommsPage({
   const supa = db();
   let query = supa
     .from("communication_events")
-    .select("id, occurred_at, channel, direction, hcp_customer_id, customer_name, tech_short_name, importance, sentiment, summary, flags, acked_at", { count: "exact" });
+    .select("id, occurred_at, channel, direction, hcp_customer_id, customer_name, tech_short_name, importance, sentiment, summary, flags, acked_at, raw_metadata", { count: "exact" });
   if (q) query = query.or(`customer_name.ilike.%${q}%,summary.ilike.%${q}%`);
   if (channel) query = query.eq("channel", channel);
   if (effectiveTechName) query = query.eq("tech_short_name", effectiveTechName);
@@ -119,7 +120,25 @@ export default async function CommsPage({
           <span className="font-medium text-neutral-900">{r.customer_name ?? "—"}</span>
         ),
     },
-    { header: "Tech", cell: (r) => <TechName name={r.tech_short_name} formerSet={formerShortSet} /> },
+    {
+      header: "Tech",
+      cell: (r) => {
+        const isInferred = r.raw_metadata?.attribution_source === "inferred_from_nearest_appointment";
+        return (
+          <span className="inline-flex items-center gap-1">
+            <TechName name={r.tech_short_name} formerSet={formerShortSet} />
+            {isInferred && (
+              <span
+                className="text-[10px] text-amber-600"
+                title="Inferred from nearest job assignment — not confirmed via caller identity."
+              >
+                ⌖
+              </span>
+            )}
+          </span>
+        );
+      },
+    },
     {
       header: "Imp",
       cell: (r) =>

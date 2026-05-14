@@ -111,10 +111,12 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       // support EXISTS subqueries; the test set is tiny so just enumerate.
       .not("hcp_customer_id", "in", '("cus_9cf8cc5b02e1430a85288b034763cc19","cus_386a644b8054483788825c86c1b13b9c")')
       .order("scheduled_start"),
-    // Recent comms attributed to this tech
+    // Recent comms attributed to this tech.
+    // raw_metadata.attribution_source is included so the UI can flag inferred
+    // attributions ('⌖') from confirmed ones (see 2026-05-13 backfill).
     supa
       .from("communication_events")
-      .select("id, occurred_at, channel, direction, customer_name, importance, sentiment, flags, summary")
+      .select("id, occurred_at, channel, direction, customer_name, importance, sentiment, flags, summary, raw_metadata")
       .eq("tech_short_name", techName)
       .order("occurred_at", { ascending: false })
       .limit(15),
@@ -515,6 +517,14 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                 <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-neutral-500">
                   <span>
                     {fmtDate(c.occurred_at as string)} · <span className="uppercase">{c.channel as string}</span> · {c.direction as string}
+                    {(c.raw_metadata as { attribution_source?: string } | null)?.attribution_source === "inferred_from_nearest_appointment" && (
+                      <span
+                        className="ml-1 text-amber-600"
+                        title="Attribution inferred from the nearest job assignment — not confirmed via caller identity."
+                      >
+                        ⌖
+                      </span>
+                    )}
                   </span>
                   {c.customer_name ? <span className="font-medium text-neutral-700">{c.customer_name as string}</span> : null}
                 </div>
