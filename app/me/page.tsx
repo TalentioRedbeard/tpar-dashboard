@@ -95,14 +95,21 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     // they're on, not just LEADS — discovered 2026-05-13 verify pass:
     // Landon was on Anthony's 3 jobs as crew + /me showed him 0 appts.
     // Same OR-pattern that /jobs already uses.
+    //
+    // hcp_customer_id filter excludes test-customer artifacts (Danny
+    // testing functionality on his own customer record).
     supa
       .from("appointment_location_v")
-      .select("appointment_id, hcp_job_id, scheduled_start, scheduled_start_chicago, customer_name, street, city, zip, status, total_amount, tech_primary_name, tech_all_names")
+      .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_start_chicago, customer_name, street, city, zip, status, total_amount, tech_primary_name, tech_all_names")
       .or(`tech_primary_name.eq."${techFullName ?? techName}",tech_all_names.cs.{"${techFullName ?? techName}"}`)
       .gte("appt_date_chicago", today)
       .lte("appt_date_chicago", today)
       // Hide cancelled — they aren't on the books
       .not("status", "in", '("pro canceled","user canceled","cancelled","canceled","Pro Canceled","User Canceled","Cancelled","Canceled")')
+      // Hide test-customer rows (seeded in public.test_customer_blocklist).
+      // Pulled inline via a join would be cleaner but PostgREST doesn't
+      // support EXISTS subqueries; the test set is tiny so just enumerate.
+      .not("hcp_customer_id", "in", '("cus_9cf8cc5b02e1430a85288b034763cc19","cus_386a644b8054483788825c86c1b13b9c")')
       .order("scheduled_start"),
     // Recent comms attributed to this tech
     supa

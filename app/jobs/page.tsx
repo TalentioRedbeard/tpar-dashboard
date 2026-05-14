@@ -117,6 +117,10 @@ export default async function JobsListPage({
   // customer work. Same filter the recurring-jobs view applies.
   if (!includeInternal) {
     query = query.not("customer_name", "in", '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")');
+    // Also exclude test-customer rows (Danny-as-customer test artifacts).
+    // Seeded in public.test_customer_blocklist; enumerated here because
+    // PostgREST doesn't support EXISTS subqueries.
+    query = query.not("hcp_customer_id", "in", '("cus_9cf8cc5b02e1430a85288b034763cc19","cus_386a644b8054483788825c86c1b13b9c")');
   }
 
   const { data, count } = await query
@@ -155,6 +159,7 @@ export default async function JobsListPage({
   if (outstandingOnly) statsQuery = statsQuery.gt("due_amount", 0);
   if (!includeInternal) {
     statsQuery = statsQuery.not("customer_name", "in", '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")');
+    statsQuery = statsQuery.not("hcp_customer_id", "in", '("cus_9cf8cc5b02e1430a85288b034763cc19","cus_386a644b8054483788825c86c1b13b9c")');
   }
 
   // Fan out: former-techs + stats aggregation + tech directory all in
