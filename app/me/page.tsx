@@ -299,7 +299,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           useful for gas-station receipts, drive-time voice notes, etc. */}
       {!viewingAs && me.tech ? (
         <section className="mb-8">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             <Link
               href="/receipt"
               className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
@@ -331,6 +331,14 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
               <span className="text-2xl" aria-hidden>💬</span>
               <span className="text-sm font-semibold text-neutral-900">Ask</span>
               <span className="text-xs text-neutral-600">Search the system</span>
+            </Link>
+            <Link
+              href="/me/coaching"
+              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
+            >
+              <span className="text-2xl" aria-hidden>📈</span>
+              <span className="text-sm font-semibold text-neutral-900">My coaching</span>
+              <span className="text-xs text-neutral-600">Your calls + your conversion</span>
             </Link>
           </div>
         </section>
