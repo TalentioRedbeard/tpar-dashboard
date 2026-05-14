@@ -138,6 +138,9 @@ export default async function DispatchPage() {
     vansRes,
     mapCustomersRes,
     vanPositionsRes,
+    openArRes,
+    agedHighImpRes,
+    agedHighImpCountRes,
   ] = await Promise.all([
     // Today's appts (Chicago day, no cancels, no internal customers, no test customers)
     supa
@@ -229,6 +232,37 @@ export default async function DispatchPage() {
     supa
       .from("vehicle_last_known_position_v")
       .select("vehicle_id, display_name, driver_short_name, driver_full_name, lat, lng, last_seen_at"),
+    // Open AR — invoices in 'open' or 'pending_payment' state on jobs HCP
+    // marks completed. Surfaced 2026-05-14 after variance audit found $38k+
+    // sitting in this bucket. Madisson's collection lever lives here.
+    supa
+      .from("hcp_invoices_by_job")
+      .select("hcp_invoice_id, hcp_job_id, amount, due_amount, status, invoice_date")
+      .in("status", ["open", "pending_payment"])
+      .gte("invoice_date", new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0,10))
+      .limit(500),
+    // High-importance aged comms — variance audit V13 surfaced 62 imp≥7
+    // events unacked >24h. Top 6 here, link to full queue for the rest.
+    supa
+      .from("communication_events")
+      .select("id, occurred_at, channel, direction, customer_name, importance, summary, flags, tech_short_name")
+      .is("acked_at", null)
+      .gte("importance", 7)
+      .lt("occurred_at", new Date(Date.now() - 24 * 3600_000).toISOString())
+      .gte("occurred_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+      .or("direction.is.null,direction.neq.internal")
+      .order("importance", { ascending: false })
+      .order("occurred_at", { ascending: false })
+      .limit(6),
+    // Total count for the aged-high-imp banner (so the badge reflects reality, not just top 6)
+    supa
+      .from("communication_events")
+      .select("id", { count: "exact", head: true })
+      .is("acked_at", null)
+      .gte("importance", 7)
+      .lt("occurred_at", new Date(Date.now() - 24 * 3600_000).toISOString())
+      .gte("occurred_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+      .or("direction.is.null,direction.neq.internal"),
   ]);
 
   const todayRows = (todayRes.data ?? []) as Appt[];
@@ -307,6 +341,18 @@ export default async function DispatchPage() {
   const todayRecognized = paidToday
     .filter((p) => todayJobIds.has(p.hcp_job_id))
     .reduce((s, p) => s + (Number(p.amount) || 0), 0) / 100;
+  // Open AR — invoices not yet paid. Use due_amount if known, fall back to amount.
+  // Per variance audit 2026-05-13: ~$38k sitting here on completed jobs.
+  const openArRows = (openArRes.data ?? []) as Array<{ amount: number; due_amount: number | null }>;
+  const openArDollars = openArRows.reduce((s, r) => s + (Number(r.due_amount ?? r.amount) || 0), 0) / 100;
+  const openArCount = openArRows.length;
+  // Aged high-importance comms — variance audit V13. List for the banner.
+  const agedHighImpRows = (agedHighImpRes.data ?? []) as Array<{
+    id: number; occurred_at: string; channel: string | null; direction: string | null;
+    customer_name: string | null; importance: number; summary: string | null;
+    flags: string[] | null; tech_short_name: string | null;
+  }>;
+  const agedHighImpTotal = agedHighImpCountRes.count ?? agedHighImpRows.length;
 
   // Group today's appts by lane (primary tech for now; tech_all_names listed in card)
   const laneByTech = new Map<string, Appt[]>();
@@ -351,13 +397,13 @@ export default async function DispatchPage() {
       title="Dispatch"
       description={`Today · ${todayRows.length} appt${todayRows.length === 1 ? "" : "s"} across ${laneByTech.size} lane${laneByTech.size === 1 ? "" : "s"}`}
     >
-      {/* TOP STRIP — intake + scheduling + revenue conversion */}
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-3">
+      {/* TOP STRIP — intake + scheduling + revenue conversion + AR */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <Link href="/admin/queue" className="rounded-2xl border border-neutral-200 bg-white p-3 hover:border-neutral-400 hover:shadow-sm">
           <div className="text-xs uppercase tracking-wide text-neutral-500">Open intake</div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{intakeCount}</div>
           <div className="text-xs text-neutral-500">flagged for follow-up</div>
-        </div>
+        </Link>
         <div className="rounded-2xl border border-neutral-200 bg-white p-3">
           <div className="text-xs uppercase tracking-wide text-neutral-500">Scheduled (24h)</div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{scheduledLast24h}</div>
@@ -373,7 +419,44 @@ export default async function DispatchPage() {
           <div className="mt-1 text-2xl font-semibold tabular-nums text-emerald-900">{fmtMoney(todayRecognized)}</div>
           <div className="text-xs text-emerald-700/80">paid invoices · gravy</div>
         </div>
+        <Link href="/admin/ar" className="rounded-2xl border border-amber-200 bg-amber-50 p-3 hover:border-amber-400 hover:shadow-sm">
+          <div className="text-xs uppercase tracking-wide text-amber-700">Open AR</div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums text-amber-900">{fmtMoney(openArDollars)}</div>
+          <div className="text-xs text-amber-700/80">{openArCount} unpaid · click to chase</div>
+        </Link>
       </div>
+
+      {/* AGED HIGH-IMP COMMS — customer follow-ups that have been waiting > 24h */}
+      {agedHighImpTotal > 0 && (
+        <details className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4" open={agedHighImpTotal >= 10}>
+          <summary className="cursor-pointer text-sm font-semibold text-red-900">
+            ⚠ {agedHighImpTotal} high-importance follow-up{agedHighImpTotal === 1 ? "" : "s"} waiting &gt; 24h
+            <span className="ml-2 font-normal text-red-900/70">click to expand · these need a human</span>
+          </summary>
+          <ul className="mt-3 space-y-2">
+            {agedHighImpRows.map((c) => {
+              const hours = Math.floor((Date.now() - new Date(c.occurred_at).getTime()) / 3_600_000);
+              const ageLabel = hours >= 24 ? `${Math.floor(hours / 24)}d` : `${hours}h`;
+              return (
+                <li key={c.id} className="rounded-xl bg-white p-2 text-sm">
+                  <div className="flex items-baseline gap-2 text-xs text-red-900/70">
+                    <span className="font-mono font-semibold">{ageLabel} old</span>
+                    <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800">imp {c.importance}</span>
+                    <span className="uppercase">{c.channel ?? "—"}{c.direction ? ` · ${c.direction}` : ""}</span>
+                    {c.tech_short_name ? <span className="ml-auto text-neutral-600">{c.tech_short_name}</span> : null}
+                  </div>
+                  <div className="mt-1 font-medium text-neutral-900">{c.customer_name ?? "—"}</div>
+                  <div className="text-xs text-neutral-700">{c.summary ?? "—"}</div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-3 text-xs text-red-900/70">
+            Showing top {agedHighImpRows.length} of {agedHighImpTotal} —
+            <Link href="/admin/queue" className="ml-1 font-medium underline">open full queue →</Link>
+          </p>
+        </details>
+      )}
 
       {/* MAP — customer pins + van pins, color-coded by tech */}
       <DispatchMap customers={customerPins} vans={vanPins} />
