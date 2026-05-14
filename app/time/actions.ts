@@ -14,6 +14,29 @@ import { requireWriter } from "@/lib/current-tech";
 import { getCurrentTech } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
 
+// HCP mirror — TPAR is source of truth for hours; HCP becomes a downstream
+// mirror because HCP's REST has no time-tracking writes. Fire-and-forget;
+// outcome lands in maintenance_logs (source='hcp-clock-action'). 2026-05-14.
+async function fireHcpClockMirror(payload: {
+  tech_short_name: string;
+  hcp_employee_id: string | null;
+  action: "in" | "out";
+  tech_time_entry_id: string;
+}): Promise<void> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return; // Quietly skip if not configured (local dev w/o secrets)
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/hcp-clock-action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Never block the user's clock-in/out on the mirror — bot can be down, retries are fine.
+  }
+}
+
 type Location = { lat: number; lng: number; accuracy_m?: number };
 
 export type CurrentClockState =
@@ -166,6 +189,14 @@ export async function clockIn(input: {
   revalidatePath("/me");
   revalidatePath("/time");
 
+  // Fire HCP mirror — fire-and-forget, user is not blocked.
+  void fireHcpClockMirror({
+    tech_short_name: me.tech_short_name,
+    hcp_employee_id: (await getCurrentTech())?.tech?.hcp_employee_id ?? null,
+    action: "in",
+    tech_time_entry_id: data.id as string,
+  });
+
   return {
     ok: true,
     entry_id: data.id as string,
@@ -223,6 +254,13 @@ export async function clockOut(input: {
   revalidatePath("/");
   revalidatePath("/me");
   revalidatePath("/time");
+
+  void fireHcpClockMirror({
+    tech_short_name: me.tech_short_name,
+    hcp_employee_id: (await getCurrentTech())?.tech?.hcp_employee_id ?? null,
+    action: "out",
+    tech_time_entry_id: data.id as string,
+  });
 
   return {
     ok: true,
