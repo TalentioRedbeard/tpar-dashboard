@@ -17,6 +17,7 @@ import { fmtMoney } from "../../components/Table";
 import { TechName } from "../../components/ui/TechName";
 import { getFormerTechNames } from "../../lib/former-techs";
 import { getCurrentTech } from "../../lib/current-tech";
+import { DispatchMap, type CustomerPin, type VanPin } from "../../components/DispatchMap";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -135,6 +136,8 @@ export default async function DispatchPage() {
     gpsRes,
     lifecycleRes,
     vansRes,
+    mapCustomersRes,
+    vanPositionsRes,
   ] = await Promise.all([
     // Today's appts (Chicago day, no cancels, no internal customers, no test customers)
     supa
@@ -209,9 +212,23 @@ export default async function DispatchPage() {
     // Vans (driver assignments, for the lane header pill)
     supa
       .from("vehicles_master")
-      .select("display_name, primary_driver_short_name, kind")
+      .select("display_name, primary_driver_short_name, kind, vin")
       .eq("is_active", true)
       .not("primary_driver_short_name", "is", null),
+    // Map: today's appts with geocoded customer lat/lng
+    supa
+      .from("appointment_location_v")
+      .select("appointment_id, hcp_job_id, customer_name, street, city, scheduled_start, status, tech_primary_name, cust_lat, cust_lng")
+      .gte("scheduled_start", todayStartUtc)
+      .lt("scheduled_start", todayEndUtc)
+      .not("cust_lat", "is", null)
+      .not("cust_lng", "is", null),
+    // Map: latest GPS pin per driver-assigned active vehicle (24h window).
+    // View handles the bouncie→vehicles_master join via VIN, see migration
+    // 20260513230000_vehicle_last_known_position_v.
+    supa
+      .from("vehicle_last_known_position_v")
+      .select("vehicle_id, display_name, driver_short_name, driver_full_name, lat, lng, last_seen_at"),
   ]);
 
   const todayRows = (todayRes.data ?? []) as Appt[];
@@ -241,6 +258,45 @@ export default async function DispatchPage() {
   );
 
   const formerSet = await getFormerTechNames();
+
+  // Map pin arrays — server-side shaping so the client component stays dumb.
+  const customerPins: CustomerPin[] = (
+    (mapCustomersRes.data ?? []) as Array<{
+      appointment_id: string | null; hcp_job_id: string | null;
+      customer_name: string | null; street: string | null; city: string | null;
+      scheduled_start: string; status: string | null; tech_primary_name: string | null;
+      cust_lat: number | null; cust_lng: number | null;
+    }>
+  )
+    .filter((r) => r.cust_lat != null && r.cust_lng != null)
+    .map((r) => ({
+      appointment_id: r.appointment_id,
+      hcp_job_id: r.hcp_job_id,
+      customer_name: r.customer_name,
+      street: r.street,
+      city: r.city,
+      scheduled_start: r.scheduled_start,
+      status: r.status,
+      tech_primary_name: r.tech_primary_name,
+      lat: Number(r.cust_lat),
+      lng: Number(r.cust_lng),
+    }));
+
+  const vanPins: VanPin[] = (
+    (vanPositionsRes.data ?? []) as Array<{
+      vehicle_id: string; display_name: string;
+      driver_short_name: string | null; driver_full_name: string | null;
+      lat: number; lng: number; last_seen_at: string;
+    }>
+  ).map((v) => ({
+    vehicle_id: v.vehicle_id,
+    display_name: v.display_name,
+    driver_short_name: v.driver_short_name,
+    driver_full_name: v.driver_full_name,
+    lat: Number(v.lat),
+    lng: Number(v.lng),
+    last_seen_at: v.last_seen_at,
+  }));
 
   // Top-strip metrics
   const scheduledLast24h = last24hRows.length;
@@ -318,6 +374,9 @@ export default async function DispatchPage() {
           <div className="text-xs text-emerald-700/80">paid invoices · gravy</div>
         </div>
       </div>
+
+      {/* MAP — customer pins + van pins, color-coded by tech */}
+      <DispatchMap customers={customerPins} vans={vanPins} />
 
       {/* LANES — column per tech */}
       <section className="mb-8">
