@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
+import { AppGuide } from "../../components/AppGuide";
 import { Table, Pagination, FilterBar, StatusPill, fmtDateShort, type Column } from "../../components/Table";
 import { StatCard } from "../../components/ui/StatCard";
 import { AckButton } from "../../components/AckButton";
@@ -208,6 +209,14 @@ export default async function CommsPage({
         <StatCard label="Texts" value={texts.toLocaleString()} tone={texts > 0 ? "green" : "neutral"} />
         <StatCard label="Needs follow-up" value={unacked.toLocaleString()} tone={unacked > 0 ? "amber" : "neutral"} hint={flagged > 0 ? `${flagged} flagged total` : undefined} />
       </section>
+
+      <div className="mb-5">
+        <AppGuide
+          compact
+          label="Find a job from a comm"
+          placeholder={"\"trotzuk\" / \"chaunce's open ar\" / \"galvanized\" / leave empty for today"}
+        />
+      </div>
 
       <FilterBar>
         {effective ? <input type="hidden" name="mine" value="1" /> : null}
