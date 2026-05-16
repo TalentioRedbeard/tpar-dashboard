@@ -151,10 +151,19 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
 
   if (q.length >= 2 && !isCurrentKeyword) {
     const safe = q.replace(/[%_]/g, "");
-    // Tokenize on whitespace so multi-word queries like "south jamestown"
-    // match candidates where ANY token appears. Substring match on the full
-    // query stays — if the user types a contiguous string, we want that too.
-    const tokens = safe.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
+    // Tokenize on whitespace. Drop direction + street-type stop-words —
+    // "south" or "ave" alone match thousands of rows in Tulsa and crowd
+    // specific tokens out of the 30-row candidate-pool cap. We keep the
+    // substring search on the FULL query so contiguous user-typed strings
+    // ("S Jamestown") still match exactly.
+    const STOP = new Set([
+      "south", "north", "east", "west", "the", "and", "of",
+      "st", "street", "ave", "avenue", "rd", "road", "blvd", "boulevard",
+      "dr", "drive", "ct", "court", "pl", "place", "ln", "lane", "way", "cir", "circle",
+    ]);
+    const tokens = safe.toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length >= 2 && !STOP.has(t));
 
     const customerInvoiceOr = [
       `customer_name.ilike.%${safe}%`,
