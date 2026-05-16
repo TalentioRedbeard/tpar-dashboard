@@ -13,6 +13,7 @@
 import { redirect } from "next/navigation";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
+import { AppGuide } from "../../components/AppGuide";
 import { Table, Pagination, FilterBar, StatusPill, fmtMoney, fmtPct, fmtDateShort, type Column } from "../../components/Table";
 import { StatCard } from "../../components/ui/StatCard";
 import { getEffectiveTechName } from "../../lib/current-tech";
@@ -258,6 +259,14 @@ export default async function JobsListPage({
         <StatCard label="Outstanding" value={fmtMoney(totalDue)} tone={totalDue > 0 ? "red" : "neutral"} />
         <StatCard label="Avg margin" value={avgMargin != null ? fmtPct(avgMargin) : "—"} tone={avgMargin != null && avgMargin >= 30 ? "green" : avgMargin != null && avgMargin >= 15 ? "amber" : "neutral"} hint={onTimePct != null ? `${fmtPct(onTimePct)} on-time` : undefined} />
       </section>
+
+      <div className="mb-5">
+        <AppGuide
+          compact
+          label="Find a job"
+          placeholder={"\"trotzuk\" / \"1342 east 25th\" / \"chaunce's open ar\" / \"galvanized\""}
+        />
+      </div>
 
       <FilterBar>
         {effective ? <input type="hidden" name="mine" value="1" /> : null}
