@@ -66,6 +66,16 @@ type FunctionRow = {
   last_fired: string;
 };
 
+type McpToolRow = {
+  server_slug: string;
+  tool_name: string;
+  intent: string | null;
+  reads_from: string[] | null;
+  writes_to: string[] | null;
+  notes: string | null;
+  last_called: string | null;
+};
+
 type EdgeFunctionRow = {
   slug: string;
   verify_jwt: boolean;
@@ -133,12 +143,13 @@ export default async function SystemMapPage() {
   // Pull the catalog rows first, then run one freshness query per table in
   // parallel (each table has a different timestamp column, so a single
   // SELECT can't fold them all together without dynamic SQL).
-  const [watchedRes, cronsRes, webhooksRes, functionsRes, edgeFnRes] = await Promise.all([
+  const [watchedRes, cronsRes, webhooksRes, functionsRes, edgeFnRes, mcpToolsRes] = await Promise.all([
     supa.from("system_table_freshness_v").select("table_name, ts_col, surface_intent, approx_rows"),
     supa.from("system_crons_v").select("*").order("jobname"),
     supa.from("system_webhook_activity_v").select("*").order("n_24h", { ascending: false }).limit(30),
     supa.from("system_function_activity_v").select("*").order("n_24h", { ascending: false }).limit(40),
     supa.from("system_edge_functions_v").select("*").order("slug"),
+    supa.from("system_mcp_tools_v").select("*").order("server_slug").order("tool_name"),
   ]);
 
   const watched: WatchedTable[] = (watchedRes.data ?? []) as WatchedTable[];
@@ -167,6 +178,7 @@ export default async function SystemMapPage() {
   const webhooks: WebhookRow[] = (webhooksRes.data ?? []) as WebhookRow[];
   const functions: FunctionRow[] = (functionsRes.data ?? []) as FunctionRow[];
   const edgeFns: EdgeFunctionRow[] = (edgeFnRes.data ?? []) as EdgeFunctionRow[];
+  const mcpTools: McpToolRow[] = (mcpToolsRes.data ?? []) as McpToolRow[];
   const mismatchCount = edgeFns.filter((f) => f.auth_mismatch).length;
   // Sort: mismatches first (so they're impossible to miss), then by 24h activity.
   edgeFns.sort((a, b) => {
@@ -393,6 +405,57 @@ export default async function SystemMapPage() {
               </tbody>
             </table>
           </div>
+        </Section>
+        <Section title={`MCP tools (${mcpTools.length})`}>
+          <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="border-b border-neutral-200 bg-neutral-50">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Server</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Tool</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Intent</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Reads</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Writes</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Last called</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {mcpTools.map((t) => (
+                  <tr key={`${t.server_slug}-${t.tool_name}`} className="hover:bg-neutral-50">
+                    <td className="px-4 py-2 font-mono text-xs text-neutral-700 align-top">{t.server_slug}</td>
+                    <td className="px-4 py-2 font-mono text-neutral-800 align-top">{t.tool_name}</td>
+                    <td className="px-4 py-2 text-xs text-neutral-700 leading-relaxed align-top max-w-md">{t.intent ?? "—"}</td>
+                    <td className="px-4 py-2 align-top">
+                      {t.reads_from && t.reads_from.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {t.reads_from.map((r) => (
+                            <span key={r} className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] text-neutral-700">{r}</span>
+                          ))}
+                        </div>
+                      ) : <span className="text-neutral-400">—</span>}
+                    </td>
+                    <td className="px-4 py-2 align-top">
+                      {t.writes_to && t.writes_to.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {t.writes_to.map((w) => (
+                            <span key={w} className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] text-neutral-700">{w}</span>
+                          ))}
+                        </div>
+                      ) : <span className="text-neutral-400">—</span>}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-xs text-neutral-500 align-top">
+                      {t.last_called
+                        ? new Date(t.last_called).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-neutral-500">
+            MCP tool manifest is hand-maintained in <code className="font-mono">public.system_mcp_tools</code>. The mcp-tpar server exposes these to Claude.ai mobile/web/desktop and Claude Code via Bearer MCP_TPAR_TOKEN.
+          </p>
         </Section>
       </div>
     </PageShell>
