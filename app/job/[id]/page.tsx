@@ -188,7 +188,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     }
   }
 
-  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes, provJobRawRes, provEstimateRes] = await Promise.all([
+  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes, provJobRawRes] = await Promise.all([
     customerId
       ? supabase
           .from("communication_events")
@@ -267,21 +267,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       section: "Voice notes",
       source_fn: "voice-note-upload",
       tables: ["tech_voice_notes"],
-      last_ts: voiceNotes[0]?.created_at ?? null,
+      last_ts: (voiceNotes[0] as { ts?: string } | undefined)?.ts ?? null,
       count: voiceNotes.length,
     },
     {
       section: "Shopping needs",
       source_fn: "slack-need + dashboard",
       tables: ["needs_log"],
-      last_ts: jobNeeds[0]?.created_at ?? null,
+      last_ts: (jobNeeds[0] as { created_at?: string } | undefined)?.created_at ?? null,
       count: jobNeeds.length,
     },
     {
       section: "Fired triggers (OMW/Start/Finish/etc)",
       source_fn: "fire-trigger",
       tables: ["job_lifecycle_events"],
-      last_ts: firedTriggers[0]?.occurred_at ?? null,
+      last_ts: (firedTriggers[0] as { occurred_at?: string; fired_at?: string } | undefined)?.occurred_at
+        ?? (firedTriggers[0] as { fired_at?: string } | undefined)?.fired_at
+        ?? null,
       count: firedTriggers.length,
     },
   ];
