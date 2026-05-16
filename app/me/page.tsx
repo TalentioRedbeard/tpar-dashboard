@@ -328,12 +328,12 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
               <span className="text-xs text-neutral-600">Record or upload audio</span>
             </Link>
             <Link
-              href="/jobs"
+              href="/find"
               className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
             >
-              <span className="text-2xl" aria-hidden>📋</span>
-              <span className="text-sm font-semibold text-neutral-900">Jobs</span>
-              <span className="text-xs text-neutral-600">Look up + estimate</span>
+              <span className="text-2xl" aria-hidden>🔎</span>
+              <span className="text-sm font-semibold text-neutral-900">Find a job</span>
+              <span className="text-xs text-neutral-600">Type, talk, or browse today</span>
             </Link>
             <Link
               href="/ask"
