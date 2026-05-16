@@ -45,6 +45,11 @@ const SECTIONS = [
     desc: "Auto-generated nightly Markdown snapshot of the entire system (every fn + cron + webhook + table). Downloadable, history-tracked. Stops the doc from drifting between sessions.",
   },
   {
+    href: "/admin/rates",
+    title: "Internal rates",
+    desc: "Source of truth for the numbers Madisson + leads quote in real time. $185/$215 service fees, $25 first-visit discount, after-hours multiplier. Customer-facing posture stays upfront pricing.",
+  },
+  {
     href: "/admin/queue",
     title: "Follow-up queue",
     desc: "The communication_events backlog needing triage. Per-item Done/Handled/Dismiss + bulk sweep for low-importance long tail. Phase 0 clearing before email ingest opens.",
