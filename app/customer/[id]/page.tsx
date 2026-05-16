@@ -14,6 +14,7 @@ import { StatCard } from "../../../components/ui/StatCard";
 import { Pill } from "../../../components/ui/Pill";
 import { EmptyState } from "../../../components/ui/EmptyState";
 import { LinkButton } from "../../../components/ui/Button";
+import { ProvenanceCard, type ProvenanceItem } from "../../../components/ui/ProvenanceCard";
 import { getCurrentMembership } from "../../membership/actions";
 
 export const dynamic = "force-dynamic";
@@ -68,7 +69,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     }
   }
 
-  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership, hcpJobNotesRes, hcpEstimateNotesRes] = await Promise.all([
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership, hcpJobNotesRes, hcpEstimateNotesRes, provCustRes, provCardRes, provJobsRes, provCommsRes] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -116,7 +117,61 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       .neq("hcp_notes", "")
       .order("last_synced_at", { ascending: false, nullsFirst: false })
       .limit(30),
+    // Provenance probes — small queries that surface "where did this come from?"
+    supabase.from("hcp_customers_raw").select("last_synced_at").eq("hcp_customer_id", id).maybeSingle(),
+    supabase.from("customer_cards_current_v1").select("updated_at").eq("hcp_customer_id", id).maybeSingle(),
+    supabase.from("hcp_jobs_raw").select("last_synced_at", { count: "exact", head: false }).eq("hcp_customer_id", id).order("last_synced_at", { ascending: false, nullsFirst: false }).limit(1),
+    supabase.from("communication_events").select("occurred_at", { count: "exact", head: false }).eq("hcp_customer_id", id).order("occurred_at", { ascending: false, nullsFirst: false }).limit(1),
   ]);
+
+  // Assemble provenance items for the bottom-of-page ProvenanceCard.
+  const userNoteLatest = (notesRes.data ?? [])[0] as { created_at?: string } | undefined;
+  const provenanceItems: ProvenanceItem[] = [
+    {
+      section: "Customer record",
+      source_fn: "hcp-webhook",
+      tables: ["hcp_customers_raw", "customers_master"],
+      last_ts: (provCustRes.data as { last_synced_at?: string } | null)?.last_synced_at ?? null,
+      count: provCustRes.data ? 1 : 0,
+      note: provCustRes.data ? undefined : "no raw row",
+    },
+    {
+      section: "Customer card (AI summary)",
+      source_fn: "build-customer-card",
+      tables: ["customer_cards_current_v1"],
+      last_ts: (provCardRes.data as { updated_at?: string } | null)?.updated_at ?? null,
+      count: provCardRes.data ? 1 : 0,
+      note: provCardRes.data ? undefined : "card never built — run build-customer-card",
+    },
+    {
+      section: "Recent jobs + invoices",
+      source_fn: "hcp-webhook",
+      tables: ["hcp_jobs_raw", "hcp_invoices_raw", "job_360"],
+      last_ts: (provJobsRes.data?.[0] as { last_synced_at?: string } | undefined)?.last_synced_at ?? null,
+      count: provJobsRes.count ?? (provJobsRes.data?.length ?? 0),
+    },
+    {
+      section: "Communications timeline",
+      source_fn: "hcp-webhook + transcribe-and-store-call + store-text-message + pull-gmail",
+      tables: ["communication_events", "text_messages", "call_transcripts", "emails_received"],
+      last_ts: (provCommsRes.data?.[0] as { occurred_at?: string } | undefined)?.occurred_at ?? null,
+      count: provCommsRes.count ?? (provCommsRes.data?.length ?? 0),
+    },
+    {
+      section: "HCP-mirrored notes",
+      source_fn: "hcp-webhook",
+      tables: ["hcp_jobs_raw.hcp_notes", "hcp_estimates_raw.hcp_notes"],
+      last_ts: null,
+      count: ((hcpJobNotesRes.data ?? []).length + (hcpEstimateNotesRes.data ?? []).length),
+    },
+    {
+      section: "User-authored customer notes",
+      source_fn: "dashboard",
+      tables: ["customer_notes"],
+      last_ts: userNoteLatest?.created_at ?? null,
+      count: (notesRes.data ?? []).length,
+    },
+  ];
   const notes = (notesRes.data ?? []) as CustomerNote[];
   const agreements = (agreementsRes.data ?? []) as Array<{
     id: number;
@@ -525,6 +580,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             );
           })()}
         </Section>
+
+        <ProvenanceCard items={provenanceItems} />
 
         <Section title="Recent communications">
           {recentComms.data && recentComms.data.length > 0 ? (
