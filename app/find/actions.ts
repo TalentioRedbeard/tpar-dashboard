@@ -141,16 +141,33 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
     if (c.hcp_job_id) candidateJobIds.add(c.hcp_job_id);
   }
 
-  // Free-text query → fuzzy-match on customer_name + street in job_360
+  // Free-text query → fuzzy-match on customer_name + invoice_number in job_360
+  // AND on street in appointments_master. Address fragments ("1342", "east 25th")
+  // are the most common way techs reference jobs, so the street search matters.
+  // Special keyword: "current" / "active" / "in progress" → started-not-finished.
   const q = (input.query ?? "").trim();
-  if (q.length >= 2) {
-    const { data: fuzzyRows } = await supa
-      .from("job_360")
-      .select("hcp_job_id")
-      .or(`customer_name.ilike.%${q.replace(/[%_]/g, "")}%,invoice_number.ilike.%${q.replace(/[%_]/g, "")}%`)
-      .order("job_date", { ascending: false, nullsFirst: false })
-      .limit(20);
-    for (const r of (fuzzyRows ?? []) as Array<{ hcp_job_id: string }>) {
+  const qLower = q.toLowerCase();
+  const isCurrentKeyword = ["current", "active", "in progress", "in-progress", "started", "now"].includes(qLower);
+
+  if (q.length >= 2 && !isCurrentKeyword) {
+    const safe = q.replace(/[%_]/g, "");
+    const [fuzzyJobs, fuzzyStreet] = await Promise.all([
+      supa.from("job_360")
+        .select("hcp_job_id")
+        .or(`customer_name.ilike.%${safe}%,invoice_number.ilike.%${safe}%`)
+        .order("job_date", { ascending: false, nullsFirst: false })
+        .limit(20),
+      supa.from("appointments_master")
+        .select("hcp_job_id")
+        .ilike("street", `%${safe}%`)
+        .not("hcp_job_id", "is", null)
+        .order("scheduled_start", { ascending: false, nullsFirst: false })
+        .limit(20),
+    ]);
+    for (const r of (fuzzyJobs.data ?? []) as Array<{ hcp_job_id: string }>) {
+      candidateJobIds.add(r.hcp_job_id);
+    }
+    for (const r of (fuzzyStreet.data ?? []) as Array<{ hcp_job_id: string }>) {
       candidateJobIds.add(r.hcp_job_id);
     }
   }
@@ -226,14 +243,30 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
     let score = 0;
     const reasons: string[] = [];
 
-    // (a) Free-text similarity
-    if (q.length >= 2) {
+    // (a) Free-text similarity — name, invoice, and street
+    if (q.length >= 2 && !isCurrentKeyword) {
       const name = String(j.customer_name ?? "");
       const inv  = String(j.invoice_number ?? "");
-      const sim = Math.max(jsSimilarity(q, name), inv ? jsSimilarity(q, inv) : 0);
+      const street = String(appt?.street ?? "");
+      const sim = Math.max(
+        jsSimilarity(q, name),
+        inv ? jsSimilarity(q, inv) : 0,
+        street ? jsSimilarity(q, street) : 0,
+      );
       if (sim > 0.2) {
         score += sim * 100;
         reasons.push(`matches "${q}" (${(sim * 100).toFixed(0)}%)`);
+      }
+    }
+
+    // Special "current" keyword: heavy bias toward started-not-finished
+    if (isCurrentKeyword) {
+      if (lifecycle.started_at && !lifecycle.finished_at) {
+        score += 100;
+        reasons.push("currently in progress");
+      } else {
+        // Not in progress → drop out of results for this query
+        continue;
       }
     }
 
