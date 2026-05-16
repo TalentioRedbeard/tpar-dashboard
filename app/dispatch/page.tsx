@@ -436,6 +436,9 @@ export default async function DispatchPage() {
         </Link>
       </div>
 
+      {/* MAP — customer pins + van pins, color-coded by tech */}
+      <DispatchMap customers={customerPins} vans={vanPins} />
+
       {/* AGED HIGH-IMP COMMS — customer follow-ups that have been waiting > 24h */}
       {agedHighImpTotal > 0 && (
         <details className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4" open={agedHighImpTotal >= 10}>
@@ -467,9 +470,6 @@ export default async function DispatchPage() {
           </p>
         </details>
       )}
-
-      {/* MAP — customer pins + van pins, color-coded by tech */}
-      <DispatchMap customers={customerPins} vans={vanPins} />
 
       {/* LANES — column per tech */}
       <section className="mb-8">
