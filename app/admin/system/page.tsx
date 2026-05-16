@@ -53,6 +53,8 @@ type WebhookRow = {
   n_24h: number;
   n_7d: number;
   most_recent: string;
+  handler_function: string | null;
+  writes_to: string[] | null;
 };
 
 type FunctionRow = {
@@ -324,7 +326,8 @@ export default async function SystemMapPage() {
                 <tr>
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">Source</th>
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">Event type</th>
-                  <th className="px-4 py-2 text-right font-medium text-neutral-600">1h</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Handler</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Writes to</th>
                   <th className="px-4 py-2 text-right font-medium text-neutral-600">24h</th>
                   <th className="px-4 py-2 text-right font-medium text-neutral-600">7d</th>
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">Most recent</th>
@@ -333,12 +336,23 @@ export default async function SystemMapPage() {
               <tbody className="divide-y divide-neutral-100">
                 {webhooks.map((w) => (
                   <tr key={`${w.source_system}-${w.event_type}`} className="hover:bg-neutral-50">
-                    <td className="px-4 py-2 text-neutral-700">{w.source_system}</td>
-                    <td className="px-4 py-2 font-mono text-neutral-800">{w.event_type}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{w.n_1h}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{w.n_24h}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-neutral-500">{w.n_7d}</td>
-                    <td className="px-4 py-2 font-mono text-neutral-500">
+                    <td className="px-4 py-2 text-neutral-700 align-top">{w.source_system}</td>
+                    <td className="px-4 py-2 font-mono text-neutral-800 align-top">{w.event_type}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-neutral-700 align-top">{w.handler_function ?? <span className="text-red-700">unmapped</span>}</td>
+                    <td className="px-4 py-2 align-top">
+                      {w.writes_to && w.writes_to.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {w.writes_to.map((t) => (
+                            <span key={t} className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] text-neutral-700">{t}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-neutral-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-neutral-700 align-top">{w.n_24h}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-neutral-500 align-top">{w.n_7d}</td>
+                    <td className="px-4 py-2 font-mono text-neutral-500 align-top">
                       {new Date(w.most_recent).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
                     </td>
                   </tr>
