@@ -99,14 +99,15 @@ export default async function AskPage({
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
-  // Fire both in parallel; prefer the structured one when it returns map/table with rows.
-  const [routeRes, textRes] = q
-    ? await Promise.all([routeQuery(q), askTpar(q)])
-    : [null, null];
+  // Call the structured router first (~6s). If it returns kind=map/table with
+  // rows, skip ask-tpar entirely (it's slow — the legacy 4k-line NL backend
+  // takes ~80s for the same question). Only fall through to ask-tpar when the
+  // router decided this is a text-only question.
+  const routeRes = q ? await routeQuery(q) : null;
   const preferStructured = !!(
     routeRes?.ok && routeRes.plan && (routeRes.plan.kind === "map" || routeRes.plan.kind === "table") && (routeRes.rows?.length ?? 0) > 0
   );
-  const result = textRes; // legacy var name preserved for the existing JSX below
+  const result = !preferStructured && q ? await askTpar(q) : null;
 
   return (
     <PageShell
