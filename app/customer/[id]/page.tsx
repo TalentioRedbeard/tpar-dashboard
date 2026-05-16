@@ -68,7 +68,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     }
   }
 
-  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership] = await Promise.all([
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership, hcpJobNotesRes, hcpEstimateNotesRes] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -98,6 +98,24 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       .order("status", { ascending: true })
       .order("starts_on", { ascending: false }),
     getCurrentMembership(id),
+    // HCP-mirrored notes (data comes in via hcp-webhook on job.* events).
+    // Surfaced here because the data is in the DB but no page renders it.
+    supabase
+      .from("hcp_jobs_raw")
+      .select("hcp_job_id, scheduled_start, hcp_notes")
+      .eq("hcp_customer_id", id)
+      .not("hcp_notes", "is", null)
+      .neq("hcp_notes", "")
+      .order("scheduled_start", { ascending: false, nullsFirst: false })
+      .limit(30),
+    supabase
+      .from("hcp_estimates_raw")
+      .select("hcp_estimate_id, scheduled_start, last_synced_at, hcp_notes")
+      .eq("hcp_customer_id", id)
+      .not("hcp_notes", "is", null)
+      .neq("hcp_notes", "")
+      .order("last_synced_at", { ascending: false, nullsFirst: false })
+      .limit(30),
   ]);
   const notes = (notesRes.data ?? []) as CustomerNote[];
   const agreements = (agreementsRes.data ?? []) as Array<{
@@ -460,6 +478,52 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           ) : (
             <EmptyState title="No jobs." />
           )}
+        </Section>
+
+        <Section title="HCP notes (from job + estimate webhooks)">
+          {(() => {
+            type HcpNoteRow = { kind: "job" | "estimate"; id: string; ts: string | null; body: string };
+            const jobRows: HcpNoteRow[] = (hcpJobNotesRes.data ?? []).map((j: Record<string, unknown>) => ({
+              kind: "job" as const,
+              id: j.hcp_job_id as string,
+              ts: (j.scheduled_start as string | null) ?? null,
+              body: String(j.hcp_notes ?? "").trim(),
+            }));
+            const estRows: HcpNoteRow[] = (hcpEstimateNotesRes.data ?? []).map((e: Record<string, unknown>) => ({
+              kind: "estimate" as const,
+              id: e.hcp_estimate_id as string,
+              ts: (e.scheduled_start as string | null) ?? (e.last_synced_at as string | null) ?? null,
+              body: String(e.hcp_notes ?? "").trim(),
+            }));
+            const merged = [...jobRows, ...estRows]
+              .filter((r) => r.body.length > 0)
+              .sort((a, b) => (b.ts ?? "").localeCompare(a.ts ?? ""));
+            if (merged.length === 0) {
+              return <EmptyState title="No HCP notes." description="Notes added on jobs or estimates in HCP land here via webhook." />;
+            }
+            return (
+              <ul className="space-y-2">
+                {merged.map((r) => (
+                  <li key={`${r.kind}-${r.id}`} className="rounded-2xl border border-neutral-200 bg-white p-4">
+                    <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                      <Pill tone={r.kind === "job" ? "slate" : "amber"}>{r.kind}</Pill>
+                      {r.ts ? (
+                        <span className="font-mono">
+                          {new Date(r.ts).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short" })}
+                        </span>
+                      ) : null}
+                      {r.kind === "job" ? (
+                        <Link href={`/job/${r.id}`} className="ml-auto text-neutral-500 hover:text-neutral-700 hover:underline">open job →</Link>
+                      ) : (
+                        <span className="ml-auto font-mono text-neutral-400">{r.id.slice(0, 12)}…</span>
+                      )}
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm text-neutral-800">{r.body}</p>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
         </Section>
 
         <Section title="Recent communications">
