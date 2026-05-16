@@ -134,6 +134,12 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
   // mentioned in recent comms. Then if query is non-trivial, query job_360
   // by customer_name fuzzy match.
   const candidateJobIds = new Set<string>();
+  // Jobs assigned to the compound-resolved tech (when query is "<tech>'s ...").
+  // Used to restrict the final pool to that tech's jobs only.
+  const compoundTechJobs = new Set<string>();
+  // Per-job content-search metadata so the scoring loop can boost notes/comms
+  // matches and surface a reason for them.
+  const contentMatchByJob = new Map<string, { src: string; score: number }>();
   for (const a of mineToday) {
     if (a.hcp_job_id) candidateJobIds.add(a.hcp_job_id);
   }
@@ -157,8 +163,41 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
   if (isOpenArKeyword) {
     input = { ...input, only_open_ar: true };
   }
-  // Text search runs unless the query is a pure keyword.
-  const skipTextSearch = isCurrentKeyword || isOpenArKeyword;
+
+  // Compound NL: "<tech_name>'s <filter>" — e.g. "chaunce's jobs", "danny's open ar",
+  // "madisson's active". Apostrophe is optional ("chaunces jobs" also works). Filter
+  // portion maps to: jobs/appts=any · open ar/unpaid/owed=only_open_ar ·
+  // active/in progress/current/started=only-started-not-finished · today=only-today.
+  // Curly + straight apostrophes both accepted.
+  let compound: { techShort: string; empId: string; filter: string } | null = null;
+  const COMPOUND_RE = /^\s*([a-z][a-z\-]+)[’']?s\s+(.+?)\s*$/i;
+  const cm = q.match(COMPOUND_RE);
+  if (cm) {
+    const techNameRaw = cm[1].trim();
+    const filterPart = cm[2].trim().toLowerCase();
+    const { data: techRow } = await supa
+      .from("tech_directory")
+      .select("tech_short_name, hcp_employee_id")
+      .eq("is_active", true)
+      .eq("is_test", false)
+      .ilike("tech_short_name", techNameRaw)
+      .not("hcp_employee_id", "is", null)
+      .maybeSingle();
+    if (techRow?.hcp_employee_id) {
+      compound = { techShort: techRow.tech_short_name, empId: techRow.hcp_employee_id, filter: filterPart };
+      // Apply secondary filter from the right-hand-side word(s)
+      if (["open ar", "open a/r", "unpaid", "owed", "open balance", "ar"].includes(filterPart)) {
+        input = { ...input, only_open_ar: true };
+      } else if (["today", "today's jobs", "todays jobs", "today's schedule"].includes(filterPart)) {
+        input = { ...input, date_window: "today" };
+      }
+      // "active"/"in progress"/"started"/etc enforced in scoring loop via compound.filter
+      // "jobs" / "appts" / "appointments" → any (no filter)
+    }
+  }
+
+  // Text search runs unless the query is a pure keyword OR a resolved compound NL.
+  const skipTextSearch = isCurrentKeyword || isOpenArKeyword || compound !== null;
 
   // For open-ar keyword: pull ALL open-AR jobs into the candidate pool so the
   // filter has rows to act on (otherwise candidates come only from today's
@@ -172,6 +211,26 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
       .limit(40);
     for (const r of (arRows ?? []) as Array<{ hcp_job_id: string }>) {
       candidateJobIds.add(r.hcp_job_id);
+    }
+  }
+
+  // Compound NL ("Chaunce's jobs") — pull this tech's recent appointments
+  // (last 60 days), filtered later by the secondary filter (open AR / started /
+  // today / all). We pull appointments_master directly because that's where the
+  // tech assignment lives in HCP pro_<id> form.
+  if (compound) {
+    const since = new Date(Date.now() - 60 * DAY_MS).toISOString();
+    const { data: rows } = await supa
+      .from("appointments_master")
+      .select("hcp_job_id, tech_primary_id, tech_all_ids, scheduled_start")
+      .or(`tech_primary_id.eq.${compound.empId},tech_all_ids.cs.{${compound.empId}}`)
+      .gte("scheduled_start", since)
+      .not("hcp_job_id", "is", null)
+      .order("scheduled_start", { ascending: false, nullsFirst: false })
+      .limit(80);
+    for (const r of (rows ?? []) as Array<{ hcp_job_id: string }>) {
+      candidateJobIds.add(r.hcp_job_id);
+      compoundTechJobs.add(r.hcp_job_id);
     }
   }
 
@@ -225,6 +284,22 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
     const { data: fuzzyRpcRows } = await supa.rpc("find_jobs_fuzzy", { q: safe, sim_threshold: 0.3, max_rows: 30 });
     for (const r of (fuzzyRpcRows ?? []) as Array<{ hcp_job_id: string }>) {
       candidateJobIds.add(r.hcp_job_id);
+    }
+
+    // Content-in-notes search. find_jobs_by_content RPC searches
+    // hcp_jobs_raw.hcp_notes + communication_events.summary for the query
+    // (ILIKE + pg_trgm). Catches "galvanized", "tankless", "sediment" etc. —
+    // material/method words in real notes. Skipped for very short queries.
+    if (safe.length >= 4) {
+      const { data: contentRpcRows } = await supa.rpc("find_jobs_by_content", {
+        q: safe,
+        sim_threshold: 0.3,
+        max_rows: 20,
+      });
+      for (const r of (contentRpcRows ?? []) as Array<{ hcp_job_id: string; src: string; score: number }>) {
+        candidateJobIds.add(r.hcp_job_id);
+        contentMatchByJob.set(r.hcp_job_id, { src: r.src, score: r.score });
+      }
     }
   }
 
@@ -287,6 +362,7 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
 
   // 4) Score each candidate
   const now = Date.now();
+  const compoundActiveOnly = compound && ["active", "in progress", "in-progress", "current", "started", "now"].includes(compound.filter);
   const candidates: FinderCandidate[] = [];
   for (const id of candidateJobIds) {
     const j = jobsById.get(id);
@@ -296,8 +372,21 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
     const custId = apptCustByJob.get(id);
     const loc = custId ? locByCust.get(custId) : undefined;
 
+    // Compound-NL: when query resolved a tech (e.g., "Chaunce's jobs"),
+    // restrict the final pool to jobs assigned to that tech. Drops the
+    // current user's today-bias + recent-comms entries that don't match.
+    if (compound && !compoundTechJobs.has(id)) continue;
+    // Compound "active" / "in progress" filter: must be started-not-finished.
+    if (compoundActiveOnly && !(lifecycle.started_at && !lifecycle.finished_at)) continue;
+
     let score = 0;
     const reasons: string[] = [];
+
+    // Compound-NL: surface a reason so the user knows the tech filter applied
+    if (compound) {
+      score += 30;
+      reasons.push(`${compound.techShort}'s job`);
+    }
 
     // (a) Free-text similarity — name, invoice, and street
     if (q.length >= 2 && !skipTextSearch) {
@@ -313,6 +402,17 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
         score += sim * 100;
         reasons.push(`matches "${q}" (${(sim * 100).toFixed(0)}%)`);
       }
+    }
+
+    // Content-in-notes match boost. find_jobs_by_content scored this candidate
+    // by ILIKE / pg_trgm similarity against hcp_notes or comms summary. Boost
+    // is proportional but capped so name matches still outrank content matches.
+    const contentMatch = contentMatchByJob.get(id);
+    if (contentMatch) {
+      const boost = Math.min(60, 30 + contentMatch.score * 30);
+      score += boost;
+      const srcLabel = contentMatch.src === "notes" ? "in job notes" : contentMatch.src === "comms" ? "in recent comms" : "in notes/comms";
+      reasons.push(`"${q}" mentioned ${srcLabel}`);
     }
 
     // Special "current" keyword: heavy bias toward started-not-finished
