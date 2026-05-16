@@ -151,18 +151,31 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
 
   if (q.length >= 2 && !isCurrentKeyword) {
     const safe = q.replace(/[%_]/g, "");
+    // Tokenize on whitespace so multi-word queries like "south jamestown"
+    // match candidates where ANY token appears. Substring match on the full
+    // query stays — if the user types a contiguous string, we want that too.
+    const tokens = safe.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
+
+    const customerInvoiceOr = [
+      `customer_name.ilike.%${safe}%`,
+      `invoice_number.ilike.%${safe}%`,
+      ...tokens.flatMap((t) => [`customer_name.ilike.%${t}%`, `invoice_number.ilike.%${t}%`]),
+    ].join(",");
+
+    const streetOrFilters = [`street.ilike.%${safe}%`, ...tokens.map((t) => `street.ilike.%${t}%`)].join(",");
+
     const [fuzzyJobs, fuzzyStreet] = await Promise.all([
       supa.from("job_360")
         .select("hcp_job_id")
-        .or(`customer_name.ilike.%${safe}%,invoice_number.ilike.%${safe}%`)
+        .or(customerInvoiceOr)
         .order("job_date", { ascending: false, nullsFirst: false })
-        .limit(20),
+        .limit(30),
       supa.from("appointments_master")
         .select("hcp_job_id")
-        .ilike("street", `%${safe}%`)
+        .or(streetOrFilters)
         .not("hcp_job_id", "is", null)
         .order("scheduled_start", { ascending: false, nullsFirst: false })
-        .limit(20),
+        .limit(30),
     ]);
     for (const r of (fuzzyJobs.data ?? []) as Array<{ hcp_job_id: string }>) {
       candidateJobIds.add(r.hcp_job_id);
