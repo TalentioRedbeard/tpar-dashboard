@@ -69,7 +69,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     }
   }
 
-  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership, hcpJobNotesRes, hcpEstimateNotesRes, provCustRes, provCardRes, provJobsRes, provCommsRes] = await Promise.all([
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership, hcpJobNotesRes, hcpEstimateNotesRes, provCustRes, provCardRes, provJobsRes, provCommsRes, openEstimatesRes, openInvoicesRes, ratesRes] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -122,7 +122,56 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     supabase.from("customer_cards_current_v1").select("updated_at").eq("hcp_customer_id", id).maybeSingle(),
     supabase.from("hcp_jobs_raw").select("last_synced_at", { count: "exact", head: false }).eq("hcp_customer_id", id).order("last_synced_at", { ascending: false, nullsFirst: false }).limit(1),
     supabase.from("communication_events").select("occurred_at", { count: "exact", head: false }).eq("hcp_customer_id", id).order("occurred_at", { ascending: false, nullsFirst: false }).limit(1),
+    // Pricing brief — what's pending action, what's owed, what to quote
+    supabase
+      .from("hcp_estimates_raw")
+      .select("hcp_estimate_id, status, scheduled_start, last_synced_at, raw")
+      .eq("hcp_customer_id", id)
+      .order("last_synced_at", { ascending: false, nullsFirst: false })
+      .limit(10),
+    supabase
+      .from("hcp_invoices_raw")
+      .select("hcp_invoice_id, invoice_number, status, amount, due_amount, sent_at, paid_at, hcp_job_id")
+      .eq("hcp_customer_id", id)
+      .gt("due_amount", 0)
+      .order("sent_at", { ascending: true, nullsFirst: false })
+      .limit(10),
+    supabase
+      .from("internal_rate_card")
+      .select("rate_key, category, display_name, unit, amount_cents, scope_notes")
+      .eq("is_active", true)
+      .in("category", ["service", "discount", "after_hours", "membership"])
+      .order("category")
+      .order("amount_cents", { ascending: false }),
   ]);
+
+  // Pricing-brief derived values
+  type EstRaw = { hcp_estimate_id: string; status: string | null; scheduled_start: string | null; last_synced_at: string; raw: Record<string, unknown> | null };
+  type InvRow = { hcp_invoice_id: string; invoice_number: string | null; status: string | null; amount: number | null; due_amount: number | null; sent_at: string | null; hcp_job_id: string | null };
+  type RateRow = { rate_key: string; category: string; display_name: string; unit: string; amount_cents: number; scope_notes: string | null };
+
+  const openEstimates: Array<{ id: string; status: string | null; value_cents: number; scheduled: string | null }> = (openEstimatesRes.data ?? [])
+    .map((e: Record<string, unknown>) => {
+      const raw = (e as EstRaw).raw ?? {};
+      const opts = Array.isArray(raw.options) ? raw.options as Array<Record<string, unknown>> : [];
+      const totalCents = opts.reduce((sum, o) => sum + (Number((o.total_amount as number | undefined) ?? 0) || 0), 0);
+      const status = String(e.status ?? raw.work_status ?? "");
+      return { id: e.hcp_estimate_id as string, status, value_cents: totalCents, scheduled: e.scheduled_start as string | null };
+    })
+    .filter((e) => /^(pending|sent|draft|approved)$/i.test(e.status ?? ""));
+
+  const openInvoices = (openInvoicesRes.data ?? []) as InvRow[];
+  const totalDueCents = openInvoices.reduce((s, inv) => s + Number(inv.due_amount ?? 0), 0);
+  const rates = (ratesRes.data ?? []) as RateRow[];
+
+  function fmtRate(r: RateRow): string {
+    if (r.unit === "percent") return `${r.amount_cents}%`;
+    const d = r.amount_cents / 100;
+    if (r.unit === "flat") return `$${d.toFixed(0)}`;
+    if (r.unit === "hour") return `$${d.toFixed(0)}/hr`;
+    return `$${d.toFixed(2)}`;
+  }
+  function fmtDollars(cents: number): string { return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`; }
 
   // Assemble provenance items for the bottom-of-page ProvenanceCard.
   const userNoteLatest = (notesRes.data ?? [])[0] as { created_at?: string } | undefined;
@@ -246,6 +295,81 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       backLabel="All customers"
     >
       <div className="space-y-10">
+        {/* Pricing brief — mid-call reference for Madisson + leads. Internal only. */}
+        {(openEstimates.length > 0 || openInvoices.length > 0 || rates.length > 0) && (
+          <Section title="Pricing brief">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {/* Open AR for this customer */}
+              <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+                <div className="text-xs uppercase tracking-wide text-neutral-500">Open AR</div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
+                  {totalDueCents > 0 ? fmtDollars(totalDueCents) : "—"}
+                </div>
+                {openInvoices.length > 0 ? (
+                  <ul className="mt-2 space-y-0.5 text-xs text-neutral-600">
+                    {openInvoices.slice(0, 5).map((inv) => (
+                      <li key={inv.hcp_invoice_id} className="flex items-baseline justify-between gap-2">
+                        <Link href={inv.hcp_job_id ? `/job/${inv.hcp_job_id}` : "#"} className="font-mono text-neutral-700 hover:underline">
+                          #{inv.invoice_number ?? inv.hcp_invoice_id.slice(0, 8)}
+                        </Link>
+                        <span className="tabular-nums text-neutral-800">{fmtDollars(Number(inv.due_amount ?? 0))}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mt-2 text-xs text-neutral-500">no open balance</div>
+                )}
+              </div>
+
+              {/* Open estimates */}
+              <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+                <div className="text-xs uppercase tracking-wide text-neutral-500">Open estimates</div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
+                  {openEstimates.length > 0 ? openEstimates.length : "—"}
+                </div>
+                {openEstimates.length > 0 ? (
+                  <ul className="mt-2 space-y-0.5 text-xs text-neutral-600">
+                    {openEstimates.slice(0, 5).map((e) => (
+                      <li key={e.id} className="flex items-baseline justify-between gap-2">
+                        <span className="font-mono text-neutral-700">{e.id.slice(0, 12)}…</span>
+                        <span className="tabular-nums text-neutral-800">
+                          {e.value_cents > 0 ? fmtDollars(e.value_cents) : "—"}
+                          {e.status ? <Pill tone="slate">{e.status}</Pill> : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mt-2 text-xs text-neutral-500">none pending</div>
+                )}
+              </div>
+
+              {/* Rate card snapshot */}
+              <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+                <div className="flex items-baseline justify-between">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Current rates</div>
+                  <Link href="/admin/rates" className="text-[10px] text-neutral-500 hover:text-neutral-700 hover:underline">manage →</Link>
+                </div>
+                {rates.length > 0 ? (
+                  <ul className="mt-2 space-y-0.5 text-xs text-neutral-700">
+                    {rates.slice(0, 6).map((r) => (
+                      <li key={r.rate_key} className="flex items-baseline justify-between gap-2">
+                        <span>{r.display_name}</span>
+                        <span className="font-mono tabular-nums font-medium text-neutral-900">{fmtRate(r)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mt-2 text-xs text-neutral-500">no rates configured</div>
+                )}
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] text-neutral-400">
+              Customer-facing posture stays upfront pricing. These numbers are internal — Madisson reads them off, doesn't quote each line item.
+            </p>
+          </Section>
+        )}
+
         <Section title="Membership">
           {currentMembership && currentMembership.status === "active" ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
