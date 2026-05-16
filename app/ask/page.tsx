@@ -8,14 +8,16 @@ import { PageShell } from "../../components/PageShell";
 import { Section } from "../../components/ui/Section";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Pill } from "../../components/ui/Pill";
+import { AskResult, type RoutePlan } from "../../components/AskResult";
 import { supabaseServer } from "../../lib/supabase-server";
 
 export const metadata = { title: "Ask · TPAR-DB" };
 export const dynamic = "force-dynamic";
 
 const ASK_TPAR_URL = `${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ask-tpar`;
+const ROUTE_URL = `${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/appguide-route`;
 
-type AskResult = {
+type AskTparResult = {
   ok: boolean;
   intent?: string;
   answer?: string;
@@ -23,7 +25,15 @@ type AskResult = {
   error?: string;
 };
 
-async function askTpar(question: string): Promise<AskResult> {
+type RouteResult = {
+  ok: boolean;
+  plan?: RoutePlan;
+  rows?: Record<string, unknown>[];
+  sql_error?: string;
+  error?: string;
+};
+
+async function askTpar(question: string): Promise<AskTparResult> {
   const supa = await supabaseServer();
   const { data: sessionData } = await supa.auth.getSession();
   const accessToken = sessionData.session?.access_token ?? null;
@@ -42,7 +52,7 @@ async function askTpar(question: string): Promise<AskResult> {
     if (!res.ok) {
       return { ok: false, error: json?.error ?? `ask-tpar ${res.status}` };
     }
-    return json as AskResult;
+    return json as AskTparResult;
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -63,6 +73,25 @@ function renderAnswer(text: string): string {
     .replace(/(^|\s)_([^_\n]+)_(\s|[.,;:!?]|$)/g, '$1<em>$2</em>$3');
 }
 
+async function routeQuery(question: string): Promise<RouteResult> {
+  const supa = await supabaseServer();
+  const { data: sessionData } = await supa.auth.getSession();
+  const accessToken = sessionData.session?.access_token ?? null;
+  if (!accessToken) return { ok: false, error: "not signed in" };
+  try {
+    const res = await fetch(ROUTE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
+      body: JSON.stringify({ question }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: json?.error ?? `appguide-route ${res.status}` };
+    return json as RouteResult;
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export default async function AskPage({
   searchParams,
 }: {
@@ -70,7 +99,14 @@ export default async function AskPage({
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
-  const result = q ? await askTpar(q) : null;
+  // Fire both in parallel; prefer the structured one when it returns map/table with rows.
+  const [routeRes, textRes] = q
+    ? await Promise.all([routeQuery(q), askTpar(q)])
+    : [null, null];
+  const preferStructured = !!(
+    routeRes?.ok && routeRes.plan && (routeRes.plan.kind === "map" || routeRes.plan.kind === "table") && (routeRes.rows?.length ?? 0) > 0
+  );
+  const result = textRes; // legacy var name preserved for the existing JSX below
 
   return (
     <PageShell
@@ -109,7 +145,13 @@ export default async function AskPage({
         </div>
       )}
 
-      {q && result && (
+      {q && preferStructured && routeRes?.plan && (
+        <Section>
+          <AskResult plan={routeRes.plan} rows={routeRes.rows ?? []} sqlError={routeRes.sql_error ?? null} />
+        </Section>
+      )}
+
+      {q && result && !preferStructured && (
         <Section>
           {result.ok && result.answer ? (
             <div className="rounded-2xl border border-neutral-200 bg-white p-5">
