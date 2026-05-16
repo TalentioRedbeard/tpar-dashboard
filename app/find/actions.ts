@@ -316,7 +316,7 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
         .select("hcp_job_id, street, city, scheduled_start, status")
         .in("hcp_job_id", Array.from(candidateJobIds)),
     supa.from("job_lifecycle_events")
-        .select("hcp_job_id, trigger_number, occurred_at")
+        .select("hcp_job_id, trigger_number, fired_at")
         .in("hcp_job_id", Array.from(candidateJobIds)),
   ]);
 
@@ -331,11 +331,11 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
     }
   }
   const lifecycleByJob = new Map<string, { started_at: string | null; finished_at: string | null; omw_at: string | null }>();
-  for (const e of (lifecycleRes.data ?? []) as Array<{ hcp_job_id: string; trigger_number: number; occurred_at: string }>) {
+  for (const e of (lifecycleRes.data ?? []) as Array<{ hcp_job_id: string; trigger_number: number; fired_at: string }>) {
     const prev = lifecycleByJob.get(e.hcp_job_id) ?? { started_at: null, finished_at: null, omw_at: null };
-    if (e.trigger_number === 2) prev.omw_at = e.occurred_at;
-    if (e.trigger_number === 3) prev.started_at = maxIso(prev.started_at, e.occurred_at);
-    if (e.trigger_number === 6) prev.finished_at = maxIso(prev.finished_at, e.occurred_at);
+    if (e.trigger_number === 2) prev.omw_at = e.fired_at;
+    if (e.trigger_number === 3) prev.started_at = maxIso(prev.started_at, e.fired_at);
+    if (e.trigger_number === 6) prev.finished_at = maxIso(prev.finished_at, e.fired_at);
     lifecycleByJob.set(e.hcp_job_id, prev);
   }
 
