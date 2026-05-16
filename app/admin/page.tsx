@@ -40,6 +40,11 @@ const SECTIONS = [
     desc: "Live introspection: per-table freshness with stale flags, all crons + 24h fire history, webhook event types, edge-function activity. The page that answers \"where does this data come from?\" without grepping code.",
   },
   {
+    href: "/admin/ontology",
+    title: "System ontology",
+    desc: "Auto-generated nightly Markdown snapshot of the entire system (every fn + cron + webhook + table). Downloadable, history-tracked. Stops the doc from drifting between sessions.",
+  },
+  {
     href: "/admin/queue",
     title: "Follow-up queue",
     desc: "The communication_events backlog needing triage. Per-item Done/Handled/Dismiss + bulk sweep for low-importance long tail. Phase 0 clearing before email ingest opens.",
