@@ -40,6 +40,7 @@ type CronRow = {
   schedule: string;
   active: boolean;
   command_preview: string;
+  target_url: string | null;
   last_logged_fire: string | null;
   fires_24h: number;
   errors_24h: number;
@@ -68,6 +69,9 @@ type EdgeFunctionRow = {
   verify_jwt: boolean;
   expected_auth: string | null;
   auth_mismatch: boolean;
+  intent: string | null;
+  writes_to: string[] | null;
+  triggered_by: string | null;
   notes: string | null;
   last_synced_at: string;
   n_1h: number | null;
@@ -220,29 +224,43 @@ export default async function SystemMapPage() {
               <thead className="border-b border-neutral-200 bg-neutral-50">
                 <tr>
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">Function</th>
-                  <th className="px-4 py-2 text-left font-medium text-neutral-600">verify_jwt</th>
-                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Expected auth</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Trigger</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Intent</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Writes to</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">JWT</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Auth</th>
                   <th className="px-4 py-2 text-right font-medium text-neutral-600">24h</th>
-                  <th className="px-4 py-2 text-right font-medium text-neutral-600">Err 24h</th>
-                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Last fired</th>
+                  <th className="px-4 py-2 text-right font-medium text-neutral-600">Err</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {edgeFns.map((f) => (
                   <tr key={f.slug} className={f.auth_mismatch ? "bg-red-50 hover:bg-red-100" : "hover:bg-neutral-50"}>
-                    <td className="px-4 py-2 font-mono text-neutral-800">{f.slug}</td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 font-mono text-neutral-800 align-top">{f.slug}</td>
+                    <td className="px-4 py-2 align-top">
+                      {f.triggered_by ? <Pill tone="slate">{f.triggered_by}</Pill> : <span className="text-neutral-400">—</span>}
+                    </td>
+                    <td className="px-4 py-2 text-neutral-700 align-top max-w-md">
+                      {f.intent ? <span className="text-xs leading-relaxed">{f.intent}</span> : <span className="text-neutral-400 text-xs">—</span>}
+                    </td>
+                    <td className="px-4 py-2 align-top">
+                      {f.writes_to && f.writes_to.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {f.writes_to.map((t) => (
+                            <span key={t} className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] text-neutral-700">{t}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-neutral-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 align-top">
                       {f.verify_jwt ? <Pill tone={f.auth_mismatch ? "red" : "slate"}>true</Pill> : <Pill tone="green">false</Pill>}
                     </td>
-                    <td className="px-4 py-2 font-mono text-neutral-700">{f.expected_auth ?? "—"}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{f.n_24h ?? "—"}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">
+                    <td className="px-4 py-2 font-mono text-xs text-neutral-700 align-top">{f.expected_auth ?? "—"}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-neutral-700 align-top">{f.n_24h ?? "—"}</td>
+                    <td className="px-4 py-2 text-right tabular-nums align-top">
                       {(f.errors_24h ?? 0) > 0 ? <span className="text-red-700">{f.errors_24h}</span> : <span className="text-neutral-400">0</span>}
-                    </td>
-                    <td className="px-4 py-2 font-mono text-neutral-500">
-                      {f.last_fired
-                        ? new Date(f.last_fired).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })
-                        : "—"}
                     </td>
                   </tr>
                 ))}
@@ -261,6 +279,7 @@ export default async function SystemMapPage() {
                 <tr>
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">Job</th>
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">Schedule</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Target</th>
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">Last fire</th>
                   <th className="px-4 py-2 text-right font-medium text-neutral-600">24h</th>
                   <th className="px-4 py-2 text-right font-medium text-neutral-600">Err 24h</th>
@@ -272,6 +291,13 @@ export default async function SystemMapPage() {
                   <tr key={c.jobid} className="hover:bg-neutral-50">
                     <td className="px-4 py-2 font-mono text-neutral-800">{c.jobname}</td>
                     <td className="px-4 py-2 font-mono text-neutral-700">{c.schedule}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-neutral-600">
+                      {c.target_url
+                        ? c.target_url.replace(/^https?:\/\/[^/]+\/(functions\/v1\/)?/, "")
+                        : c.command_preview.includes("public.")
+                          ? c.command_preview.match(/public\.\w+/)?.[0] ?? "—"
+                          : "—"}
+                    </td>
                     <td className="px-4 py-2 font-mono text-neutral-500">
                       {c.last_logged_fire
                         ? new Date(c.last_logged_fire).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })
