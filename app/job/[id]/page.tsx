@@ -310,6 +310,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       description={description}
       backHref="/jobs"
       backLabel="All jobs"
+      help={{
+        intent: "Everything tied to this one job. Trigger buttons (OMW/Start/Finish), notes, photos, voice notes, the estimate, the customer's other history.",
+        actions: [
+          "Trigger pills (top): OMW when leaving, Start when on-site, Finish when done. HCP + customer notifications fire automatically.",
+          "Add a job note when the customer says something Danny should know later. They show on this page + the customer page.",
+          "Voice notes: tap, talk, walk away. Auto-transcribed; we use them to build estimates.",
+          "+ Multi-option estimate opens the estimate builder if the scope grew on-site.",
+          "Customer 360 link top-right takes you to everything we know about THIS customer.",
+        ],
+        stuck: <>Trigger button doesn&apos;t change color? Wait 10 sec then refresh. Still stuck — text Danny with the job number.</>,
+      }}
       actions={
         canWrite ? (
           <div className="flex flex-wrap gap-2">

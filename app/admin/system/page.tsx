@@ -190,7 +190,21 @@ export default async function SystemMapPage() {
   });
 
   return (
-    <PageShell kicker="Admin" title="System Map" backHref="/admin" backLabel="Admin">
+    <PageShell
+      kicker="Admin"
+      title="System Map"
+      backHref="/admin"
+      backLabel="Admin"
+      help={{
+        intent: "The map of all the gears. Tables, crons, edge functions, webhooks, MCP tools. Open this when something feels stale or broken.",
+        actions: [
+          "Pipeline freshness up top: red = stale → something's wrong upstream.",
+          "Edge functions: red row = verify_jwt auth_mismatch — the failure mode from May 15. Fix is a redeploy with verify_jwt:false.",
+          "Crons: 0 fires in 24h on something you expected? Check the schedule column.",
+          "Sync now buttons re-run the manifest + ontology immediately (don't have to wait for nightly).",
+        ],
+      }}
+    >
       <div className="space-y-6">
         <SyncButtons />
 

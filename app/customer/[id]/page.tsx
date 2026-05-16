@@ -293,6 +293,17 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       }
       backHref="/customers"
       backLabel="All customers"
+      help={{
+        intent: "Everything we know about this customer in one place. Open this BEFORE you call them so you're not flying blind.",
+        actions: [
+          "Pricing brief (top) shows open AR + open estimates + current rates. Read off, don't invent.",
+          "Recent jobs lists every job with revenue + AR — click any to drill in.",
+          "Recent communications shows the last 30 calls/texts/emails with AI summary + sentiment.",
+          "HCP notes section pulls every job/estimate note HCP has on this customer.",
+          "Customer notes (you write these) live separately and persist forever.",
+        ],
+        stuck: <>Page looks empty? Customer-card may not be built yet — admin can fire it from /admin/system.</>,
+      }}
     >
       <div className="space-y-10">
         {/* Pricing brief — mid-call reference for Madisson + leads. Internal only. */}

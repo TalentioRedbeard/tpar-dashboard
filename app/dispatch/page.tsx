@@ -396,6 +396,16 @@ export default async function DispatchPage() {
     <PageShell
       title="Dispatch"
       description={`Today · ${todayRows.length} appt${todayRows.length === 1 ? "" : "s"} across ${laneByTech.size} lane${laneByTech.size === 1 ? "" : "s"}`}
+      help={{
+        intent: "Today's flight deck. Where everyone is, what's open, what's owed. Map + per-tech lanes + the dollars side of the day.",
+        actions: [
+          "Map shows van pins (Bouncie) + customer pins (today's jobs). Click a pin for details.",
+          "Tech lanes show each tech's day vertically — clicking a job opens the full /job page.",
+          "Top strip = intake to triage / today's revenue / open AR. Each tile is a link.",
+          "If a customer is unreachable or running long, ping Madisson via Slack DM.",
+        ],
+        stuck: <>Map blank? GPS pipeline likely paused; check /admin/system pipeline freshness or text Danny.</>,
+      }}
     >
       {/* TOP STRIP — intake + scheduling + revenue conversion + AR */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

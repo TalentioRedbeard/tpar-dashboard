@@ -1,9 +1,14 @@
 // PageShell — shared layout primitive for the unified app. Provides a
 // page header (title + optional kicker + description + actions) and a
 // content area with consistent vertical rhythm.
+//
+// Also: every page gets a floating ? help button bottom-right. Pages
+// pass page-aware HelpContent via the `help` prop; if omitted, the
+// bubble renders a generic placeholder.
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { HelpBubble, type HelpContent } from "./HelpBubble";
 
 export function PageShell({
   title,
@@ -14,6 +19,7 @@ export function PageShell({
   backLabel = "Back",
   children,
   contentClassName = "",
+  help,
 }: {
   title: string;
   description?: ReactNode;
@@ -24,6 +30,9 @@ export function PageShell({
   backLabel?: string;
   children?: ReactNode;
   contentClassName?: string;
+  /** Optional page-aware help content. Floating "?" button always shows
+   *  regardless — passing this just makes the content specific. */
+  help?: HelpContent;
 }) {
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 md:py-8">
@@ -52,6 +61,7 @@ export function PageShell({
         {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </header>
       <main className={contentClassName}>{children}</main>
+      <HelpBubble content={help} />
     </div>
   );
 }

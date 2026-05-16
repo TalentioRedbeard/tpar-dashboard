@@ -196,6 +196,16 @@ export default async function CoachingPage() {
       description="Your last 10 calls, your conversion this week, and the moves to add."
       backHref="/me"
       backLabel="My day"
+      help={{
+        intent: "Your own mirror. Recent calls + this week's numbers + the teaching tape. Optional, not required.",
+        actions: [
+          "Top strip shows this-week vs. last-week conversion. Up is good, down is a nudge.",
+          "Teaching tape is Danny's Velvet Taco call — listen to the 5 moves.",
+          "Rate card foldable: read off the real numbers when a customer asks. Don't invent.",
+          "Recent calls list links to /comms/{id} for the full transcript + audio.",
+        ],
+        stuck: <>Conversion looks weirdly low? Could be calls not linked to appointments yet — they catch up overnight.</>,
+      }}
     >
       {/* TOP STRIP — conversion + aged + drift */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

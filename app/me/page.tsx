@@ -243,6 +243,17 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     <PageShell
       title={`Hi, ${techName}`}
       description={`${viewingAs ? `(viewing as ${viewingAs}) ` : ""}Your day. ${appts.length} appointment${appts.length === 1 ? "" : "s"} today.`}
+      help={{
+        intent: "Your home base. Today's jobs in order, plus the buttons you'll hit during a job: clock in, OMW, Start, Finish.",
+        actions: [
+          "Tap a job in your schedule to open it — that's where notes + photos live.",
+          "Hit OMW when you leave the shop / last stop. Customer gets a text automatically.",
+          "Hit Start when you walk in the door. Finish when you leave.",
+          "Snap photos via /receipt for parts receipts — the system figures out which job.",
+          "My coaching shows your recent calls + this week's numbers. Look when you want to.",
+        ],
+        stuck: <>If a button doesn&apos;t do anything, text Danny. Don&apos;t restart anything — he&apos;ll know what went wrong.</>,
+      }}
       actions={
         <div className="flex flex-wrap gap-2">
           <Link
