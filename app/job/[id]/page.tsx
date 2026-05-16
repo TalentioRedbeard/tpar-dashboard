@@ -20,6 +20,7 @@ import { Pill } from "../../../components/ui/Pill";
 import { EmptyState } from "../../../components/ui/EmptyState";
 import { LinkButton } from "../../../components/ui/Button";
 import { TechName } from "../../../components/ui/TechName";
+import { ProvenanceCard, type ProvenanceItem } from "../../../components/ui/ProvenanceCard";
 import { getCurrentTech } from "../../../lib/current-tech";
 import { getFormerTechNames } from "../../../lib/former-techs";
 
@@ -187,7 +188,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     }
   }
 
-  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes] = await Promise.all([
+  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes, provJobRawRes, provEstimateRes] = await Promise.all([
     customerId
       ? supabase
           .from("communication_events")
@@ -206,7 +207,84 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     getNeedsForJob(id),
     getFiredTriggersForJob(id),
     listVoiceNotesForJob(id),
+    // Provenance probe — single hcp_jobs_raw row gives us last_synced_at +
+    // whether HCP notes are present + the linked original_estimate_id.
+    supabase.from("hcp_jobs_raw").select("last_synced_at, hcp_notes, original_estimate_id").eq("hcp_job_id", id).maybeSingle(),
   ]);
+
+  // Resolve the linked estimate row if the job came from one.
+  const linkedEstimateId = (provJobRawRes.data as { original_estimate_id?: string } | null)?.original_estimate_id ?? null;
+  const linkedEstimateRes = linkedEstimateId
+    ? await supabase.from("hcp_estimates_raw").select("hcp_estimate_id, last_synced_at, hcp_notes").eq("hcp_estimate_id", linkedEstimateId).maybeSingle()
+    : { data: null };
+
+  const jobRaw = provJobRawRes.data as { last_synced_at?: string; hcp_notes?: string | null; original_estimate_id?: string | null } | null;
+  const estRaw = linkedEstimateRes.data as { hcp_estimate_id?: string; last_synced_at?: string; hcp_notes?: string | null } | null;
+  const provenanceItems: ProvenanceItem[] = [
+    {
+      section: "Job record",
+      source_fn: "hcp-webhook",
+      tables: ["hcp_jobs_raw", "job_360"],
+      last_ts: jobRaw?.last_synced_at ?? null,
+      count: jobRaw ? 1 : 0,
+    },
+    ...(linkedEstimateId
+      ? [{
+          section: "Linked estimate",
+          source_fn: "hcp-webhook",
+          tables: ["hcp_estimates_raw"],
+          last_ts: estRaw?.last_synced_at ?? null,
+          count: estRaw ? 1 : 0,
+          note: estRaw ? `${linkedEstimateId} (carries estimate-side notes the job inherited from)` : "estimate row missing despite link",
+        } as ProvenanceItem]
+      : []),
+    {
+      section: "Customer communications",
+      source_fn: "hcp-webhook + transcribe-and-store-call + store-text-message + pull-gmail",
+      tables: ["communication_events"],
+      last_ts: (comms ?? [])[0]
+        ? ((comms ?? [])[0] as { occurred_at?: string }).occurred_at ?? null
+        : null,
+      count: (comms ?? []).length,
+    },
+    {
+      section: "HCP-mirrored notes",
+      source_fn: "hcp-webhook",
+      tables: ["hcp_jobs_raw.hcp_notes", "hcp_estimates_raw.hcp_notes"],
+      last_ts: jobRaw?.last_synced_at ?? estRaw?.last_synced_at ?? null,
+      count: ((jobRaw?.hcp_notes ? 1 : 0) + (estRaw?.hcp_notes ? 1 : 0)),
+    },
+    {
+      section: "User-authored job notes",
+      source_fn: "dashboard",
+      tables: ["job_notes"],
+      last_ts: (notesRes.data ?? [])[0]
+        ? ((notesRes.data ?? [])[0] as { created_at?: string }).created_at ?? null
+        : null,
+      count: (notesRes.data ?? []).length,
+    },
+    {
+      section: "Voice notes",
+      source_fn: "voice-note-upload",
+      tables: ["tech_voice_notes"],
+      last_ts: voiceNotes[0]?.created_at ?? null,
+      count: voiceNotes.length,
+    },
+    {
+      section: "Shopping needs",
+      source_fn: "slack-need + dashboard",
+      tables: ["needs_log"],
+      last_ts: jobNeeds[0]?.created_at ?? null,
+      count: jobNeeds.length,
+    },
+    {
+      section: "Fired triggers (OMW/Start/Finish/etc)",
+      source_fn: "fire-trigger",
+      tables: ["job_lifecycle_events"],
+      last_ts: firedTriggers[0]?.occurred_at ?? null,
+      count: firedTriggers.length,
+    },
+  ];
   const notes = (notesRes.data ?? []) as JobNote[];
   const openJobNeeds = jobNeeds.filter((n) => n.status !== "fulfilled" && n.status !== "cancelled");
 
@@ -595,6 +673,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <EmptyState title="No communications." />
           )}
         </Section>
+
+        <ProvenanceCard items={provenanceItems} />
       </div>
     </PageShell>
   );
