@@ -7,6 +7,7 @@ import { redirect, notFound } from "next/navigation";
 import { db } from "../../../lib/supabase";
 import { PageShell } from "../../../components/PageShell";
 import { getCurrentTech } from "../../../lib/current-tech";
+import { ProvenanceCard, type ProvenanceItem } from "../../../components/ui/ProvenanceCard";
 
 export const dynamic = "force-dynamic";
 
@@ -161,6 +162,55 @@ export default async function CommDetailPage({ params }: { params: Promise<{ id:
           <pre className="mt-2 overflow-auto text-xs text-neutral-700">{JSON.stringify(e.raw_metadata, null, 2)}</pre>
         </details>
       )}
+
+      <div className="mt-6">
+        <ProvenanceCard
+          items={[
+            {
+              section: "communication_events row",
+              source_fn: e.source_table === "call_transcripts"
+                ? "transcribe-and-store-call"
+                : e.source_table === "text_messages"
+                  ? "store-text-message"
+                  : e.source_table === "emails_received"
+                    ? "pull-gmail"
+                    : "summarize-communication-events",
+              tables: ["communication_events"],
+              last_ts: e.occurred_at,
+              count: 1,
+              note: e.source_table ? `mirrored from ${e.source_table} #${e.source_id}` : undefined,
+            },
+            ...(e.source_table === "call_transcripts"
+              ? [{
+                  section: "Underlying call transcript",
+                  source_fn: "transcribe-and-store-call",
+                  tables: ["call_transcripts"],
+                  last_ts: e.occurred_at,
+                  count: 1,
+                  note: audioUrl ? "Whisper transcript + HCP-mirrored audio URL" : "Whisper transcript",
+                } as ProvenanceItem]
+              : []),
+            ...(e.source_table === "text_messages"
+              ? [{
+                  section: "Underlying Sendbird text",
+                  source_fn: "store-text-message",
+                  tables: ["text_messages"],
+                  last_ts: e.occurred_at,
+                  count: 1,
+                  note: "captured by tpar-hcp-bot extract-texts",
+                } as ProvenanceItem]
+              : []),
+            {
+              section: "AI summary + sentiment + flags",
+              source_fn: "summarize-communication-events",
+              tables: ["communication_events"],
+              last_ts: e.summary ? e.occurred_at : null,
+              count: e.summary ? 1 : 0,
+              note: e.summary ? undefined : "not yet summarized",
+            },
+          ]}
+        />
+      </div>
     </PageShell>
   );
 }
