@@ -9,8 +9,10 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { HelpBubble, type HelpContent } from "./HelpBubble";
+import { ImpersonationBar } from "./ImpersonationBar";
+import { getCurrentTech } from "../lib/current-tech";
 
-export function PageShell({
+export async function PageShell({
   title,
   description,
   kicker,
@@ -34,8 +36,15 @@ export function PageShell({
    *  regardless — passing this just makes the content specific. */
   help?: HelpContent;
 }) {
+  // When the viewer is impersonating another tech, render a sticky amber
+  // banner with their name + a Refresh button (since the page doesn't
+  // auto-poll) + an Exit link.
+  const me = await getCurrentTech().catch(() => null);
+  const impersonating = me?.isImpersonating ? { techName: me.tech?.tech_short_name ?? "?", realEmail: me.realEmail } : null;
+
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 md:py-8">
+      {impersonating ? <ImpersonationBar techName={impersonating.techName} realEmail={impersonating.realEmail} /> : null}
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           {backHref ? (
