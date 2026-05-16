@@ -35,6 +35,11 @@ const SECTIONS = [
     desc: "Upstream-data freshness across HCP, SalesAsk, Bouncie, texts, calls, embeddings. 24h history + alert log. Source of truth = the data tables themselves, not cron-firing logs.",
   },
   {
+    href: "/admin/system",
+    title: "System map",
+    desc: "Live introspection: per-table freshness with stale flags, all crons + 24h fire history, webhook event types, edge-function activity. The page that answers \"where does this data come from?\" without grepping code.",
+  },
+  {
     href: "/admin/queue",
     title: "Follow-up queue",
     desc: "The communication_events backlog needing triage. Per-item Done/Handled/Dismiss + bulk sweep for low-importance long tail. Phase 0 clearing before email ingest opens.",
