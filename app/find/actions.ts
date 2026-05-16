@@ -86,8 +86,8 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
   // 1) Ambient: van last known GPS + today's appointments + recent comms
   const [vanRes, schedRes, recentCommsRes] = await Promise.all([
     supa.from("vehicle_last_known_position_v")
-        .select("display_name, tech_short_name, lat, lng, ended_at")
-        .eq("tech_short_name", techShort)
+        .select("display_name, driver_short_name, lat, lng, last_seen_at")
+        .eq("driver_short_name", techShort)
         .maybeSingle(),
     // Today + tomorrow (so a tech checking near midnight still gets next-day)
     supa.from("appointments_master")
@@ -104,15 +104,17 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
         .limit(20),
   ]);
 
-  const van = vanRes.data as { lat?: number; lng?: number; ended_at?: string; display_name?: string } | null;
+  const van = vanRes.data as { lat?: number; lng?: number; last_seen_at?: string; display_name?: string } | null;
   const allAppts = (schedRes.data ?? []) as Array<{ hcp_job_id: string; hcp_customer_id: string; customer_name: string | null; street: string | null; city: string | null; scheduled_start: string; status: string | null; tech_primary_id: string | null; tech_all_ids: string[] | null }>;
   const recentComms = (recentCommsRes.data ?? []) as Array<{ hcp_job_id: string | null; hcp_customer_id: string | null; customer_name: string | null; occurred_at: string; summary: string | null; importance: number | null }>;
 
-  // Filter appointments to ones THIS tech is on (primary or in tech_all_ids).
-  const myTechId = me.tech.tech_id ?? null;
+  // Filter appointments to ones THIS tech is on. appointments_master uses
+  // HCP employee_id (pro_<hex>) in tech_primary_id + tech_all_ids — NOT the
+  // tech_directory.tech_id short slug. Compare to hcp_employee_id.
+  const myHcpEmpId = me.tech.hcp_employee_id ?? null;
   const mineToday = allAppts.filter((a) => {
-    if (!myTechId) return true; // fail-open if tech_id missing
-    return a.tech_primary_id === myTechId || (a.tech_all_ids ?? []).includes(myTechId);
+    if (!myHcpEmpId) return true; // fail-open for techs without HCP mapping
+    return a.tech_primary_id === myHcpEmpId || (a.tech_all_ids ?? []).includes(myHcpEmpId);
   });
 
   const ambient: AmbientSnapshot = {
@@ -120,7 +122,7 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
       label: van.display_name ?? null,
       lat: typeof van.lat === "number" ? van.lat : null,
       lng: typeof van.lng === "number" ? van.lng : null,
-      stopped_at: van.ended_at ?? null,
+      stopped_at: van.last_seen_at ?? null,
     } : null,
     today_count: mineToday.filter((a) => isToday(a.scheduled_start)).length,
     recent_call_customer: recentComms[0]?.customer_name ?? null,
