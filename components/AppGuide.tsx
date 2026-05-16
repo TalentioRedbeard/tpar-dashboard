@@ -1,35 +1,55 @@
 "use client";
 
-// JobFinder — "What job(s) are you looking for?" text/voice resolver with
-// ambient-signal-biased scoring. Two render modes:
-//   - mode="picker"  → top candidate gets action buttons (Estimate, Receipt, …).
-//                       Used on /find and embeds.
-//   - mode="filter"  → returns a flat list, no action buttons. Caller decides
-//                       what to do (e.g. render a custom list below).
+// AppGuide — "What job(s) / thing(s) are you looking for?" text + voice
+// resolver. The canonical "what do you need?" surface that fronts every
+// action-needing page — Danny's "human-router."
+//
+// Today resolves to jobs with ambient-signal-biased scoring (van GPS +
+// today's schedule + recent comms + lifecycle state) and surfaces
+// behavior nudges ("you haven't hit Start yet"). Future scopes
+// (customers, page nav, help intents) plug into the same input.
+//
+// Two render modes:
+//   - mode="picker"  → top candidate gets action buttons (OMW, Start,
+//                       Finish, Estimate, Receipt, Photo, Voice note,
+//                       Job media, Open). Used on /find and embedded
+//                       at the top of action pages.
+//   - mode="filter"  → flat list, no action buttons. Caller renders below.
 //
 // Voice input: WebKit SpeechRecognition (Chrome on Android, Safari iOS).
 // Falls back gracefully if unavailable.
 
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { findJobs, type FinderCandidate, type AmbientSnapshot } from "../app/find/actions";
+import { fireLifecycleTrigger } from "../app/me/lifecycle-actions";
 
 type Mode = "picker" | "filter";
 
-type ActionTarget =
+export type ActionTarget =
+  | "omw"        // fire trigger 2
+  | "start"      // fire trigger 3
+  | "finish"     // fire trigger 6
   | "estimate"   // /job/{id}/estimate/new
   | "receipt"    // /receipt?job={id}
-  | "photo"      // /photos/new?job={id}  (fallback /job/{id} if route absent)
+  | "photo"      // /job/{id}#photos
   | "voice"      // /voice-notes/new?job={id}
+  | "media"      // /job/{id}#media
   | "open";      // /job/{id}
 
 const ACTION_LABELS: Record<ActionTarget, string> = {
+  omw:      "OMW",
+  start:    "Start",
+  finish:   "Finish",
   estimate: "Estimate",
   receipt:  "Receipt",
   photo:    "Photo",
   voice:    "Voice note",
+  media:    "Job media",
   open:     "Open job",
 };
+
+const TRIGGER_ACTIONS: ReadonlySet<ActionTarget> = new Set(["omw", "start", "finish"]);
 
 function actionHref(action: ActionTarget, hcp_job_id: string): string {
   switch (action) {
@@ -37,9 +57,24 @@ function actionHref(action: ActionTarget, hcp_job_id: string): string {
     case "receipt":  return `/receipt?job=${hcp_job_id}`;
     case "photo":    return `/job/${hcp_job_id}#photos`;
     case "voice":    return `/voice-notes/new?job=${hcp_job_id}`;
+    case "media":    return `/job/${hcp_job_id}#media`;
     case "open":     return `/job/${hcp_job_id}`;
+    default:         return `/job/${hcp_job_id}`;
   }
 }
+
+function isTriggerAlreadyFired(action: ActionTarget, cand: FinderCandidate): boolean {
+  if (action === "omw")    return !!cand.omw_at;
+  if (action === "start")  return !!cand.started_at;
+  if (action === "finish") return !!cand.finished_at;
+  return false;
+}
+
+const TRIGGER_NUMBER: Record<"omw" | "start" | "finish", 2 | 3 | 6> = {
+  omw: 2,
+  start: 3,
+  finish: 6,
+};
 
 function fmtChi(iso: string | null): string {
   if (!iso) return "—";
@@ -71,12 +106,15 @@ type SpeechWindow = Window & {
   SpeechRecognition?: SpeechRecCtor;
 };
 
-export function JobFinder({
+export function AppGuide({
   mode = "picker",
-  actions = ["estimate", "receipt", "photo", "voice", "open"],
+  actions = ["omw", "start", "finish", "estimate", "receipt", "photo", "voice", "media", "open"],
   initialQuery = "",
   onSelect,
   showAmbient = true,
+  label = "What job(s) are you looking for?",
+  placeholder = '"trotzuk" / "1342 east 25th" / "current" / leave empty for today',
+  compact = false,
 }: {
   mode?: Mode;
   actions?: ActionTarget[];
@@ -87,6 +125,12 @@ export function JobFinder({
   /** Toggle the "where you are / today / last call" header. Off when used
    *  as an inline filter on /jobs (saves space). */
   showAmbient?: boolean;
+  /** Page-specific text above the input (e.g. "Which job is this
+   *  receipt for?"). */
+  label?: string;
+  placeholder?: string;
+  /** Smaller layout for top-of-page embeds. Hides ambient by default. */
+  compact?: boolean;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [candidates, setCandidates] = useState<FinderCandidate[]>([]);
@@ -147,9 +191,9 @@ export function JobFinder({
   return (
     <div className="space-y-4">
       {/* Input bar */}
-      <div className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
-        <label htmlFor="jobfinder-q" className="mb-2 block text-xs font-medium text-neutral-500">
-          What job(s) are you looking for?
+      <div className={`rounded-2xl border border-neutral-200 bg-white shadow-sm ${compact ? "p-2" : "p-3"}`}>
+        <label htmlFor="jobfinder-q" className={`mb-2 block font-medium text-neutral-500 ${compact ? "text-[11px]" : "text-xs"}`}>
+          {label}
         </label>
         <div className="flex items-center gap-2">
           <input
@@ -157,16 +201,15 @@ export function JobFinder({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder='"trotzuk" / "1342 east 25th" / "current" / leave empty for today'
-            className="flex-1 rounded-md border border-neutral-300 px-3 py-2 text-base text-neutral-800 placeholder:text-neutral-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200"
+            placeholder={placeholder}
+            className={`flex-1 rounded-md border border-neutral-300 px-3 text-neutral-800 placeholder:text-neutral-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200 ${compact ? "py-1.5 text-sm" : "py-2 text-base"}`}
             autoComplete="off"
-            autoFocus
           />
           <button
             type="button"
             onClick={toggleVoice}
             aria-label={listening ? "Stop listening" : "Talk to find a job"}
-            className={`h-10 w-10 shrink-0 rounded-md text-xl ${listening ? "bg-red-100 text-red-700 animate-pulse" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"}`}
+            className={`shrink-0 rounded-md text-xl ${compact ? "h-8 w-8 text-base" : "h-10 w-10"} ${listening ? "bg-red-100 text-red-700 animate-pulse" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"}`}
           >
             {listening ? "●" : "🎙"}
           </button>
@@ -174,7 +217,7 @@ export function JobFinder({
       </div>
 
       {/* Ambient strip */}
-      {showAmbient && ambient ? (
+      {showAmbient && !compact && ambient ? (
         <div className="rounded-xl border border-neutral-200 bg-neutral-50/60 p-3 text-xs text-neutral-700">
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {ambient.van ? (
@@ -289,6 +332,37 @@ function ActionButton({
   cand: FinderCandidate;
   onSelect?: (cand: FinderCandidate, action: ActionTarget) => void;
 }) {
+  const [pending, startTransition] = useTransition();
+  const isTrigger = TRIGGER_ACTIONS.has(action);
+  const alreadyFired = isTrigger && isTriggerAlreadyFired(action, cand);
+
+  if (isTrigger) {
+    const triggerNum = TRIGGER_NUMBER[action as "omw" | "start" | "finish"];
+    return (
+      <button
+        type="button"
+        disabled={alreadyFired || pending}
+        onClick={() => {
+          if (alreadyFired) return;
+          if (onSelect) { onSelect(cand, action); return; }
+          startTransition(async () => {
+            const r = await fireLifecycleTrigger({ trigger_number: triggerNum, hcp_job_id: cand.hcp_job_id });
+            if (!r.ok) alert(`${ACTION_LABELS[action]} failed: ${r.error}`);
+          });
+        }}
+        className={
+          alreadyFired
+            ? "rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 cursor-default"
+            : pending
+              ? "rounded-md border border-brand-300 bg-brand-100 px-3 py-1.5 text-sm font-medium text-brand-700 opacity-70"
+              : "rounded-md border border-brand-300 bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+        }
+      >
+        {alreadyFired ? `${ACTION_LABELS[action]} ✓` : pending ? `${ACTION_LABELS[action]}…` : ACTION_LABELS[action]}
+      </button>
+    );
+  }
+
   const href = actionHref(action, cand.hcp_job_id);
   if (onSelect) {
     return (

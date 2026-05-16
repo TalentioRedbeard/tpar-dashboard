@@ -12,6 +12,7 @@ import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { getCurrentTech } from "../../lib/current-tech";
 import { PageShell } from "../../components/PageShell";
+import { AppGuide } from "../../components/AppGuide";
 import { ClockButton } from "../../components/ClockButton";
 import { StartAppointmentButton } from "../../components/StartAppointmentButton";
 import { ClockSuggestionBanner } from "../../components/ClockSuggestionBanner";
@@ -308,6 +309,17 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       {/* Quick-action tiles for capture surfaces. Linked surfaces have the
           same gestures available standalone (without an active appointment) —
           useful for gas-station receipts, drive-time voice notes, etc. */}
+      {/* Job finder — chat bar at top of page, under banner. */}
+      {!viewingAs && me.tech ? (
+        <section className="mb-6">
+          <AppGuide
+            label="What job are you on?"
+            placeholder='"trotzuk" / "1342 east 25th" / "current" / leave empty for today'
+            compact
+          />
+        </section>
+      ) : null}
+
       {!viewingAs && me.tech ? (
         <section className="mb-8">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">

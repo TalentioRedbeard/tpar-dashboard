@@ -1,6 +1,6 @@
 "use server";
 
-// Server action backing JobFinder. Returns ranked candidates given a
+// Server action backing AppGuide. Returns ranked candidates given a
 // (possibly empty) free-text query, biased by ambient signals:
 //   - tech's van last-known GPS (vehicle_last_known_position_v)
 //   - today's appointments for this tech

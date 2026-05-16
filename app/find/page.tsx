@@ -7,7 +7,7 @@
 
 import { redirect } from "next/navigation";
 import { PageShell } from "../../components/PageShell";
-import { JobFinder } from "../../components/JobFinder";
+import { AppGuide } from "../../components/AppGuide";
 import { getCurrentTech } from "../../lib/current-tech";
 
 export const metadata = { title: "Find a job · TPAR-DB" };
@@ -45,7 +45,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         stuck: <>System can&apos;t find the customer? Search by street instead. Or open <a href="/jobs" className="underline">/jobs</a> and scroll.</>,
       }}
     >
-      <JobFinder initialQuery={initialQuery} actions={actions} />
+      <AppGuide initialQuery={initialQuery} actions={actions} />
     </PageShell>
   );
 }
