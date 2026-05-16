@@ -253,7 +253,7 @@ export default async function SystemMapPage() {
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {edgeFns.map((f) => (
-                  <tr key={f.slug} className={f.auth_mismatch ? "bg-red-50 hover:bg-red-100" : "hover:bg-neutral-50"}>
+                  <tr key={f.slug} id={f.slug} className={f.auth_mismatch ? "bg-red-50 hover:bg-red-100 scroll-mt-20" : "hover:bg-neutral-50 scroll-mt-20"}>
                     <td className="px-4 py-2 font-mono text-neutral-800 align-top">{f.slug}</td>
                     <td className="px-4 py-2 align-top">
                       {f.triggered_by ? <Pill tone="slate">{f.triggered_by}</Pill> : <span className="text-neutral-400">—</span>}
