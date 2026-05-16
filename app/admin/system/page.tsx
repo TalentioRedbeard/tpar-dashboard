@@ -84,6 +84,8 @@ type EdgeFunctionRow = {
   intent: string | null;
   writes_to: string[] | null;
   triggered_by: string | null;
+  version: number | null;
+  last_deployed_at: string | null;
   notes: string | null;
   last_synced_at: string;
   n_1h: number | null;
@@ -243,6 +245,8 @@ export default async function SystemMapPage() {
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">Writes to</th>
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">JWT</th>
                   <th className="px-4 py-2 text-left font-medium text-neutral-600">Auth</th>
+                  <th className="px-4 py-2 text-right font-medium text-neutral-600">v</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Deployed</th>
                   <th className="px-4 py-2 text-right font-medium text-neutral-600">24h</th>
                   <th className="px-4 py-2 text-right font-medium text-neutral-600">Err</th>
                 </tr>
@@ -272,6 +276,12 @@ export default async function SystemMapPage() {
                       {f.verify_jwt ? <Pill tone={f.auth_mismatch ? "red" : "slate"}>true</Pill> : <Pill tone="green">false</Pill>}
                     </td>
                     <td className="px-4 py-2 font-mono text-xs text-neutral-700 align-top">{f.expected_auth ?? "—"}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-neutral-500 align-top">{f.version ?? "—"}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-neutral-500 align-top">
+                      {f.last_deployed_at
+                        ? new Date(f.last_deployed_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short" })
+                        : "—"}
+                    </td>
                     <td className="px-4 py-2 text-right tabular-nums text-neutral-700 align-top">{f.n_24h ?? "—"}</td>
                     <td className="px-4 py-2 text-right tabular-nums align-top">
                       {(f.errors_24h ?? 0) > 0 ? <span className="text-red-700">{f.errors_24h}</span> : <span className="text-neutral-400">0</span>}
