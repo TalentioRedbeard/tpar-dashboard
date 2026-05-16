@@ -36,13 +36,14 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
       help={{
         intent: "Tell the system what you're looking for — by name, address, or just leave it empty for today's schedule. It uses your van GPS + your schedule + recent calls to put the right job at the top.",
         actions: [
-          "Type a customer name or street — it filters live.",
+          "Type a customer name, street, or invoice — it filters live. Typos OK (\"trotzik\" still finds Trotzuk).",
           "Tap 🎙 to say it instead of type.",
           "Leave empty and the system shows today's jobs sorted by what's most likely current.",
+          "Keywords: \"current\" / \"now\" → in-progress jobs · \"open ar\" / \"owed\" → unpaid invoices.",
           "Each candidate shows nudges — \"you haven't hit Start\" — read them.",
           "Click an action button on the top result to jump to that page with the job pre-filled.",
         ],
-        stuck: <>System can&apos;t find the customer? Search by street instead. Or open <a href="/jobs" className="underline">/jobs</a> and scroll.</>,
+        stuck: <>Time language (\&quot;yesterday\&quot;, \&quot;last week\&quot;) isn&apos;t supported yet — type the customer or address instead. Or open <a href="/jobs" className="underline">/jobs</a> and scroll by date.</>,
       }}
     >
       <AppGuide initialQuery={initialQuery} actions={actions} />

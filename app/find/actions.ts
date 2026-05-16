@@ -144,12 +144,38 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
   // Free-text query → fuzzy-match on customer_name + invoice_number in job_360
   // AND on street in appointments_master. Address fragments ("1342", "east 25th")
   // are the most common way techs reference jobs, so the street search matters.
-  // Special keyword: "current" / "active" / "in progress" → started-not-finished.
+  //
+  // Two keyword classes:
+  //   - "current" / "active" / "in progress" / "started" / "now" → filter to
+  //     started-not-finished. Set on the candidate-side (no text search).
+  //   - "open ar" / "unpaid" / "owed" → filter to due_amount > 0. Sets
+  //     input.only_open_ar so the per-candidate filter applies.
   const q = (input.query ?? "").trim();
   const qLower = q.toLowerCase();
   const isCurrentKeyword = ["current", "active", "in progress", "in-progress", "started", "now"].includes(qLower);
+  const isOpenArKeyword = ["open ar", "open a/r", "unpaid", "owed", "open balance", "ar"].includes(qLower);
+  if (isOpenArKeyword) {
+    input = { ...input, only_open_ar: true };
+  }
+  // Text search runs unless the query is a pure keyword.
+  const skipTextSearch = isCurrentKeyword || isOpenArKeyword;
 
-  if (q.length >= 2 && !isCurrentKeyword) {
+  // For open-ar keyword: pull ALL open-AR jobs into the candidate pool so the
+  // filter has rows to act on (otherwise candidates come only from today's
+  // appts + recent comms, which is too narrow).
+  if (isOpenArKeyword) {
+    const { data: arRows } = await supa
+      .from("job_360")
+      .select("hcp_job_id")
+      .gt("due_amount", 0)
+      .order("job_date", { ascending: false, nullsFirst: false })
+      .limit(40);
+    for (const r of (arRows ?? []) as Array<{ hcp_job_id: string }>) {
+      candidateJobIds.add(r.hcp_job_id);
+    }
+  }
+
+  if (q.length >= 2 && !skipTextSearch) {
     const safe = q.replace(/[%_]/g, "");
     // Tokenize on whitespace. Drop direction + street-type stop-words —
     // "south" or "ave" alone match thousands of rows in Tulsa and crowd
@@ -190,6 +216,14 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
       candidateJobIds.add(r.hcp_job_id);
     }
     for (const r of (fuzzyStreet.data ?? []) as Array<{ hcp_job_id: string }>) {
+      candidateJobIds.add(r.hcp_job_id);
+    }
+
+    // Trigram fallback for typos. find_jobs_fuzzy RPC returns hcp_job_ids
+    // where pg_trgm similarity(customer_name, q) or similarity(invoice, q)
+    // exceeds 0.3. Catches "trotzik" → Jane Trotzuk, etc.
+    const { data: fuzzyRpcRows } = await supa.rpc("find_jobs_fuzzy", { q: safe, sim_threshold: 0.3, max_rows: 30 });
+    for (const r of (fuzzyRpcRows ?? []) as Array<{ hcp_job_id: string }>) {
       candidateJobIds.add(r.hcp_job_id);
     }
   }
@@ -266,7 +300,7 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
     const reasons: string[] = [];
 
     // (a) Free-text similarity — name, invoice, and street
-    if (q.length >= 2 && !isCurrentKeyword) {
+    if (q.length >= 2 && !skipTextSearch) {
       const name = String(j.customer_name ?? "");
       const inv  = String(j.invoice_number ?? "");
       const street = String(appt?.street ?? "");
@@ -289,6 +323,16 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
       } else {
         // Not in progress → drop out of results for this query
         continue;
+      }
+    }
+
+    // Special "open ar" / "unpaid" / "owed" keyword: rank by dollars owed.
+    // Note: only_open_ar filter (set above) drops candidates without due.
+    if (isOpenArKeyword) {
+      const due = Number(j.due_amount ?? 0);
+      if (due > 0) {
+        score += 50 + due / 100; // baseline + $1-per-$100-owed
+        reasons.push(`$${Math.round(due)} owed`);
       }
     }
 
