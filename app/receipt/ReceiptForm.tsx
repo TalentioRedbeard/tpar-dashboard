@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { uploadReceipt } from "./actions";
+import { AppGuide } from "../../components/AppGuide";
 
 export function ReceiptForm({ techShortName, canWrite }: { techShortName: string; canWrite: boolean }) {
   const [photo, setPhoto] = useState<File | null>(null);
@@ -90,44 +91,64 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
   }
 
   return (
-    <form
-      className="space-y-5"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setError(null);
-        if (!photo) { setError("Snap a photo of the receipt."); return; }
-        const fd = new FormData();
-        fd.set("photo", photo);
-        fd.set("invoice_number", invoiceNumber);
-        fd.set("amount", amount);
-        fd.set("vendor", vendor);
-        fd.set("notes", notes);
-        // Snapshot the form values + local preview BEFORE the request so the
-        // success card can show them back to the tech (instant visual proof).
-        const snapshot = {
-          amount: amount.trim(),
-          vendor: vendor.trim(),
-          invoice: invoiceNumber.trim(),
-          notes: notes.trim(),
-          localPreview: photoPreview,
-        };
-        startTransition(async () => {
-          const res = await uploadReceipt(fd);
-          if (res.ok) {
-            setSuccess({
-              receipt_id: res.receipt_id,
-              photo_url: res.photo_url,
-              ...snapshot,
-            });
-          } else {
-            setError(res.error);
+    <div className="space-y-5">
+      {/* AppGuide — picks the job for this receipt and fills the invoice field.
+       *  Lives above the form (under the page banner per Danny's 2026-05-16 spec). */}
+      <AppGuide
+        label="Which job is this receipt for?"
+        placeholder='"trotzuk" / "1342 east 25th" / "current" / leave empty for today'
+        actions={["use"]}
+        compact
+        showAmbient={false}
+        onSelect={(cand) => {
+          if (cand.invoice_number) {
+            setInvoiceNumber(cand.invoice_number);
+            if (typeof document !== "undefined") {
+              const el = document.querySelector('input[type="file"]') as HTMLElement | null;
+              el?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
           }
-        });
-      }}
-    >
-      {/* Photo capture */}
-      <section>
-        <label className="mb-2 block text-sm font-medium text-neutral-700">Receipt photo *</label>
+        }}
+      />
+
+      <form
+        className="space-y-5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          if (!photo) { setError("Snap a photo of the receipt."); return; }
+          const fd = new FormData();
+          fd.set("photo", photo);
+          fd.set("invoice_number", invoiceNumber);
+          fd.set("amount", amount);
+          fd.set("vendor", vendor);
+          fd.set("notes", notes);
+          // Snapshot the form values + local preview BEFORE the request so the
+          // success card can show them back to the tech (instant visual proof).
+          const snapshot = {
+            amount: amount.trim(),
+            vendor: vendor.trim(),
+            invoice: invoiceNumber.trim(),
+            notes: notes.trim(),
+            localPreview: photoPreview,
+          };
+          startTransition(async () => {
+            const res = await uploadReceipt(fd);
+            if (res.ok) {
+              setSuccess({
+                receipt_id: res.receipt_id,
+                photo_url: res.photo_url,
+                ...snapshot,
+              });
+            } else {
+              setError(res.error);
+            }
+          });
+        }}
+      >
+        {/* Photo capture */}
+        <section>
+          <label className="mb-2 block text-sm font-medium text-neutral-700">Receipt photo *</label>
         <input
           type="file"
           accept="image/*"
@@ -208,6 +229,7 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
         </button>
         {error ? <span className="text-sm text-red-700">{error}</span> : null}
       </div>
-    </form>
+      </form>
+    </div>
   );
 }

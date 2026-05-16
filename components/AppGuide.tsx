@@ -35,7 +35,8 @@ export type ActionTarget =
   | "photo"      // /job/{id}#photos
   | "voice"      // /voice-notes/new?job={id}
   | "media"      // /job/{id}#media
-  | "open";      // /job/{id}
+  | "open"       // /job/{id}
+  | "use";       // generic "I picked this one" — only meaningful with onSelect
 
 const ACTION_LABELS: Record<ActionTarget, string> = {
   omw:      "OMW",
@@ -47,6 +48,7 @@ const ACTION_LABELS: Record<ActionTarget, string> = {
   voice:    "Voice note",
   media:    "Job media",
   open:     "Open job",
+  use:      "Use this job",
 };
 
 const TRIGGER_ACTIONS: ReadonlySet<ActionTarget> = new Set(["omw", "start", "finish"]);

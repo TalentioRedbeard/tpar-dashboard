@@ -8,6 +8,7 @@ import { getCurrentTech } from "@/lib/current-tech";
 import { db } from "@/lib/supabase";
 import { PageShell } from "@/components/PageShell";
 import { VoiceNoteRecorder, TECH_INTENTS, LEADERSHIP_INTENTS } from "../VoiceNoteRecorder";
+import { VoiceNoteJobPicker } from "./VoiceNoteJobPicker";
 import { resolveJobIdentifier } from "@/lib/typed-db/job-360";
 
 export const metadata = { title: "New voice note · TPAR-DB" };
@@ -76,6 +77,14 @@ export default async function NewVoiceNotePage({
         )
       }
     >
+      {/* AppGuide — picks the job for the voice note when not already attached.
+       *  Hidden when ?job= already resolved (the description above shows attachment). */}
+      {!attached ? (
+        <div className="mb-5">
+          <VoiceNoteJobPicker />
+        </div>
+      ) : null}
+
       <VoiceNoteRecorder
         hcpJobId={hcpJobId}
         hcpCustomerId={hcpCustomerId}
