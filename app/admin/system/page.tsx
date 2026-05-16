@@ -63,6 +63,20 @@ type FunctionRow = {
   last_fired: string;
 };
 
+type EdgeFunctionRow = {
+  slug: string;
+  verify_jwt: boolean;
+  expected_auth: string | null;
+  auth_mismatch: boolean;
+  notes: string | null;
+  last_synced_at: string;
+  n_1h: number | null;
+  n_24h: number | null;
+  n_7d: number | null;
+  errors_24h: number | null;
+  last_fired: string | null;
+};
+
 function ageHours(iso: string | null): number | null {
   if (!iso) return null;
   return (Date.now() - new Date(iso).getTime()) / 3_600_000;
@@ -113,11 +127,12 @@ export default async function SystemMapPage() {
   // Pull the catalog rows first, then run one freshness query per table in
   // parallel (each table has a different timestamp column, so a single
   // SELECT can't fold them all together without dynamic SQL).
-  const [watchedRes, cronsRes, webhooksRes, functionsRes] = await Promise.all([
+  const [watchedRes, cronsRes, webhooksRes, functionsRes, edgeFnRes] = await Promise.all([
     supa.from("system_table_freshness_v").select("table_name, ts_col, surface_intent, approx_rows"),
     supa.from("system_crons_v").select("*").order("jobname"),
     supa.from("system_webhook_activity_v").select("*").order("n_24h", { ascending: false }).limit(30),
     supa.from("system_function_activity_v").select("*").order("n_24h", { ascending: false }).limit(40),
+    supa.from("system_edge_functions_v").select("*").order("slug"),
   ]);
 
   const watched: WatchedTable[] = (watchedRes.data ?? []) as WatchedTable[];
@@ -145,6 +160,13 @@ export default async function SystemMapPage() {
   const crons: CronRow[] = (cronsRes.data ?? []) as CronRow[];
   const webhooks: WebhookRow[] = (webhooksRes.data ?? []) as WebhookRow[];
   const functions: FunctionRow[] = (functionsRes.data ?? []) as FunctionRow[];
+  const edgeFns: EdgeFunctionRow[] = (edgeFnRes.data ?? []) as EdgeFunctionRow[];
+  const mismatchCount = edgeFns.filter((f) => f.auth_mismatch).length;
+  // Sort: mismatches first (so they're impossible to miss), then by 24h activity.
+  edgeFns.sort((a, b) => {
+    if (a.auth_mismatch !== b.auth_mismatch) return a.auth_mismatch ? -1 : 1;
+    return (b.n_24h ?? 0) - (a.n_24h ?? 0);
+  });
 
   return (
     <PageShell kicker="Admin" title="System Map" backHref="/admin" backLabel="Admin">
@@ -185,6 +207,51 @@ export default async function SystemMapPage() {
               </tbody>
             </table>
           </div>
+        </Section>
+
+        <Section title={`Edge functions (${edgeFns.length}${mismatchCount > 0 ? ` · ${mismatchCount} auth mismatch` : ""})`}>
+          {mismatchCount > 0 ? (
+            <p className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <strong>{mismatchCount} function{mismatchCount === 1 ? "" : "s"}</strong> have <code className="font-mono">verify_jwt: true</code> but use a non-JWT auth scheme. The Supabase gateway will 401 every caller before the function code runs. This is the failure mode from 2026-05-15 (store-text-message, transcribe-and-store-call).
+            </p>
+          ) : null}
+          <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="border-b border-neutral-200 bg-neutral-50">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Function</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">verify_jwt</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Expected auth</th>
+                  <th className="px-4 py-2 text-right font-medium text-neutral-600">24h</th>
+                  <th className="px-4 py-2 text-right font-medium text-neutral-600">Err 24h</th>
+                  <th className="px-4 py-2 text-left font-medium text-neutral-600">Last fired</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {edgeFns.map((f) => (
+                  <tr key={f.slug} className={f.auth_mismatch ? "bg-red-50 hover:bg-red-100" : "hover:bg-neutral-50"}>
+                    <td className="px-4 py-2 font-mono text-neutral-800">{f.slug}</td>
+                    <td className="px-4 py-2">
+                      {f.verify_jwt ? <Pill tone={f.auth_mismatch ? "red" : "slate"}>true</Pill> : <Pill tone="green">false</Pill>}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-neutral-700">{f.expected_auth ?? "—"}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-neutral-700">{f.n_24h ?? "—"}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {(f.errors_24h ?? 0) > 0 ? <span className="text-red-700">{f.errors_24h}</span> : <span className="text-neutral-400">0</span>}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-neutral-500">
+                      {f.last_fired
+                        ? new Date(f.last_fired).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-neutral-500">
+            verify_jwt + expected_auth are hand-maintained in <code className="font-mono">public.system_edge_functions</code>. Sync by re-running the seed against the live Management API state — drift between this table and actual is the regression we're trying to surface.
+          </p>
         </Section>
 
         <Section title={`Crons (${crons.length})`}>
