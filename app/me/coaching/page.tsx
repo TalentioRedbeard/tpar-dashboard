@@ -77,6 +77,7 @@ export default async function CoachingPage() {
     lastWeekCallsRes,
     agedUnackedRes,
     teachingTapeRes,
+    ratesRes,
   ] = await Promise.all([
     // Last 10 calls (any channel, any direction, real customer comms only)
     supa
@@ -126,6 +127,14 @@ export default async function CoachingPage() {
       .select("id, occurred_at, customer_name, summary, importance")
       .eq("id", TEACHING_TAPE_ID)
       .maybeSingle(),
+
+    // Internal rate card snapshot — read-off reference for mid-call moments.
+    supa
+      .from("internal_rate_card")
+      .select("rate_key, category, display_name, unit, amount_cents, scope_notes")
+      .eq("is_active", true)
+      .order("category")
+      .order("amount_cents", { ascending: false }),
   ]);
 
   const recentCalls = (recentCallsRes.data ?? []) as CommRow[];
@@ -133,6 +142,15 @@ export default async function CoachingPage() {
   const lastWeekCalls = (lastWeekCallsRes.data ?? []) as Array<{ occurred_at: string; hcp_customer_id: string }>;
   const agedRows = (agedUnackedRes.data ?? []) as Array<{ id: number; occurred_at: string; customer_name: string | null; importance: number; summary: string | null }>;
   const teachingTape = teachingTapeRes.data as { id: number; occurred_at: string; customer_name: string | null; summary: string | null; importance: number } | null;
+  const rates = (ratesRes.data ?? []) as Array<{ rate_key: string; category: string; display_name: string; unit: "flat"|"hour"|"percent"|"each"; amount_cents: number; scope_notes: string | null }>;
+
+  function fmtRate(unit: "flat"|"hour"|"percent"|"each", cents: number): string {
+    if (unit === "percent") return `${cents}%`;
+    const d = cents / 100;
+    if (unit === "flat") return `$${d.toFixed(0)}`;
+    if (unit === "hour") return `$${d.toFixed(0)}/hr`;
+    return `$${d.toFixed(2)}`;
+  }
 
   // Compute conversion: did an appointment get scheduled for the customer within 48h of the call?
   async function conversionFor(rows: Array<{ occurred_at: string; hcp_customer_id: string }>): Promise<{ total: number; converted: number; pct: number }> {
@@ -226,6 +244,32 @@ export default async function CoachingPage() {
             Listen to the full call: <Link href={`/comms/${teachingTape.id}`} className="font-medium underline">/comms/{teachingTape.id}</Link>
           </p>
         </section>
+      )}
+
+      {/* RATE CARD — mid-call quick reference (admin-edits at /admin/rates) */}
+      {rates.length > 0 && (
+        <details className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4" open>
+          <summary className="cursor-pointer text-sm font-semibold text-neutral-800">
+            💵 Rate card — read off, don&apos;t invent
+            <span className="ml-2 text-xs font-normal text-neutral-500">internal-only</span>
+          </summary>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {rates.map((r) => (
+              <div key={r.rate_key} className="rounded-xl border border-neutral-200 bg-neutral-50/40 p-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-medium text-neutral-900">{r.display_name}</span>
+                  <span className="font-mono tabular-nums text-base font-semibold text-neutral-900">{fmtRate(r.unit, r.amount_cents)}</span>
+                </div>
+                {r.scope_notes ? (
+                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-600">{r.scope_notes}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-neutral-500">
+            Customer-facing posture stays upfront pricing. Madisson reads off the number — doesn&apos;t quote each line item. Edits at <Link href="/admin/rates" className="underline hover:text-neutral-700">/admin/rates</Link>.
+          </p>
+        </details>
       )}
 
       {/* DIAGNOSTIC LADDER + PRICE RANGES (printable) */}

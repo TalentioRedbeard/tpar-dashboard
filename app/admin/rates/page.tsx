@@ -12,24 +12,13 @@ import { redirect } from "next/navigation";
 import { db } from "../../../lib/supabase";
 import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
-import { Pill } from "../../../components/ui/Pill";
 import { getCurrentTech } from "../../../lib/current-tech";
+import { RateEditRow, type RateRow } from "./RateEditRow";
 
 export const metadata = { title: "Internal Rates · Admin · TPAR-DB" };
 export const dynamic = "force-dynamic";
 
-type Rate = {
-  rate_key: string;
-  category: string;
-  display_name: string;
-  unit: "flat" | "hour" | "percent" | "each";
-  amount_cents: number;
-  is_active: boolean;
-  scope_notes: string | null;
-  effective_since: string;
-  updated_by: string | null;
-  updated_at: string;
-};
+type Rate = RateRow;
 
 type HistoryRow = {
   id: number;
@@ -40,33 +29,13 @@ type HistoryRow = {
   changed_at: string;
 };
 
-function fmtValue(unit: Rate["unit"], cents: number): string {
-  if (unit === "percent") return `${cents}%`;
-  const dollars = cents / 100;
-  if (unit === "flat") return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
-  if (unit === "hour") return `$${dollars.toFixed(0)}/hr`;
-  if (unit === "each") return `$${dollars.toFixed(2)} ea`;
-  return `${cents}¢`;
-}
-
-function categoryTone(cat: string): "green" | "amber" | "violet" | "brand" | "slate" {
-  switch (cat) {
-    case "service":     return "brand";
-    case "labor":       return "violet";
-    case "travel":      return "slate";
-    case "after_hours": return "amber";
-    case "discount":    return "green";
-    case "membership":  return "violet";
-    default:            return "slate";
-  }
-}
-
 export default async function RatesPage() {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/admin/rates");
   // Leads + admin + manager see rates. Helpers don't (for now).
   const canSee = me.isAdmin || me.isManager || me.tech?.is_lead === true;
   if (!canSee) redirect("/me");
+  const canEdit = me.isAdmin;
 
   const supa = db();
   const [ratesRes, historyRes] = await Promise.all([
@@ -103,28 +72,12 @@ export default async function RatesPage() {
                     <th className="px-4 py-2 text-right font-medium text-neutral-600">Value</th>
                     <th className="px-4 py-2 text-left font-medium text-neutral-600">When to apply</th>
                     <th className="px-4 py-2 text-left font-medium text-neutral-600">Updated</th>
+                    <th className="px-4 py-2" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
                   {items.map((r) => (
-                    <tr key={r.rate_key} className={r.is_active ? "hover:bg-neutral-50" : "bg-neutral-50/50 text-neutral-400"}>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-neutral-900">{r.display_name}</span>
-                          <Pill tone={categoryTone(r.category)}>{r.category}</Pill>
-                          {!r.is_active ? <Pill tone="slate">inactive</Pill> : null}
-                        </div>
-                        <div className="mt-0.5 font-mono text-[10px] text-neutral-400">{r.rate_key}</div>
-                      </td>
-                      <td className="px-4 py-2 text-right font-mono tabular-nums text-base font-semibold text-neutral-900">
-                        {fmtValue(r.unit, r.amount_cents)}
-                      </td>
-                      <td className="px-4 py-2 text-xs leading-relaxed text-neutral-700 max-w-md">{r.scope_notes ?? "—"}</td>
-                      <td className="px-4 py-2 font-mono text-xs text-neutral-500">
-                        {new Date(r.updated_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short" })}
-                        {r.updated_by ? <div className="text-[10px] text-neutral-400">by {r.updated_by}</div> : null}
-                      </td>
-                    </tr>
+                    <RateEditRow key={r.rate_key} r={r} canEdit={canEdit} />
                   ))}
                 </tbody>
               </table>
