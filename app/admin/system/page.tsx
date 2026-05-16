@@ -18,6 +18,7 @@ import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
 import { Pill } from "../../../components/ui/Pill";
 import { getCurrentTech } from "../../../lib/current-tech";
+import { SyncButtons } from "./SyncButtons";
 
 export const metadata = { title: "System Map · Admin · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -191,6 +192,8 @@ export default async function SystemMapPage() {
   return (
     <PageShell kicker="Admin" title="System Map" backHref="/admin" backLabel="Admin">
       <div className="space-y-6">
+        <SyncButtons />
+
         <Section title={`Pipeline freshness${staleCount > 0 ? ` · ${staleCount} stale` : ""}`}>
           <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
             <table className="w-full text-sm">
