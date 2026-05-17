@@ -31,6 +31,10 @@ const PUBLIC_PREFIXES = [
   // can register it. The SW does not bypass middleware for protected routes;
   // it just caches responses the user already had access to.
   "/sw.js",
+  // Public-facing chatbot. No auth required — customers land here from
+  // tulsapar.com, social posts, ads, etc. Backend is public-chat-route edge
+  // function, which has its own rate limits + origin checks.
+  "/chat",
 ];
 
 function isAllowed(email: string | null | undefined): boolean {
