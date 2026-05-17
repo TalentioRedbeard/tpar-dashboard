@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-const TPAR_PHONE_DISPLAY = "(918) 215-4774"; // TODO: confirm public number
+const TPAR_PHONE_DISPLAY = "(918) 800-4426";
 
 export default function ChatPage() {
   return (
