@@ -15,7 +15,7 @@ export type KeyResult =
 // send arbitrary keystrokes, do it from the laptop itself.
 const ALLOWED = new Set([
   "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
-  "{ENTER}", "{ESC}", "{BACKSPACE}", "{TAB}",
+  "{ENTER}", "{ESC}", "{BACKSPACE}", "{TAB}", "+{TAB}",
   "y", "n", "Y", "N",
 ]);
 

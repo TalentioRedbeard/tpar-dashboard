@@ -21,6 +21,10 @@ const KEYPAD: Array<{ label: string; key: string; tone?: "neutral" | "brand" | "
   { label: "Esc", key: "{ESC}", tone: "red" },
   { label: "0", key: "0", tone: "neutral" },
   { label: "Enter", key: "{ENTER}", tone: "green" },
+  // Navigation row — for stepping through AskUserQuestion prompts, form fields, etc.
+  { label: "⇧Tab", key: "+{TAB}", tone: "neutral" },
+  { label: "Tab", key: "{TAB}", tone: "brand" },
+  { label: "Bksp", key: "{BACKSPACE}", tone: "neutral" },
 ];
 
 const TONE_CLS: Record<string, string> = {
@@ -94,7 +98,8 @@ export function Numpad() {
       </div>
 
       <div className="mt-3 text-center text-[11px] text-neutral-500">
-        1/Enter are styled for the common Claude Code prompt: 1 = approve · Enter = confirm · Esc = abort
+        1/Enter for the common Claude Code prompt: 1 = approve · Enter = confirm · Esc = abort.
+        Tab / ⇧Tab for navigating between fields or AskUserQuestion options.
       </div>
     </div>
   );
