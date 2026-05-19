@@ -306,6 +306,28 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       }}
     >
       <div className="space-y-10">
+        {/* Quick comms — text or queue a callback. Lands in customer 360 automatically. */}
+        {canWrite && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-neutral-500 pl-1">Comms:</span>
+            <Link
+              href={`/comms/new?customer=${id}&type=customer`}
+              className="rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-800 hover:bg-brand-100"
+            >
+              💬 Text
+            </Link>
+            <Link
+              href={`/comms/new?customer=${id}&type=customer`}
+              className="rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100"
+            >
+              📞 Queue callback
+            </Link>
+            <span className="ml-auto text-[10px] text-neutral-400">
+              Both land in this customer&apos;s comms thread.
+            </span>
+          </div>
+        )}
+
         {/* Pricing brief — mid-call reference for Madisson + leads. Internal only. */}
         {(openEstimates.length > 0 || openInvoices.length > 0 || rates.length > 0) && (
           <Section title="Pricing brief">
