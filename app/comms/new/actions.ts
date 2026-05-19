@@ -68,7 +68,9 @@ export async function sendComms(_prev: SendResult, formData: FormData): Promise<
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Trigger-Secret": process.env.SEND_SMS_SECRET ?? "",
+        // Dashboard never has SEND_SMS_SECRET in env; service-role Bearer is the
+        // pattern used by all other cross-fn calls from server actions.
+        "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""}`,
       },
       body: JSON.stringify({
         to: phone.e164,
