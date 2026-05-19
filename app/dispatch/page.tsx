@@ -18,9 +18,20 @@ import { TechName } from "../../components/ui/TechName";
 import { getFormerTechNames } from "../../lib/former-techs";
 import { getCurrentTech } from "../../lib/current-tech";
 import { DispatchMap, type CustomerPin, type VanPin } from "../../components/DispatchMap";
+import { DispatchAck } from "./DispatchAck";
+import type { DispatchAckStatus, DispatchItemType } from "./actions";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
 export const dynamic = "force-dynamic";
+
+type AckRow = {
+  item_type: string;
+  item_id: string;
+  status: DispatchAckStatus;
+  note: string | null;
+  set_by_short_name: string | null;
+  set_at: string;
+};
 
 type Appt = {
   appointment_id: string | null;
@@ -69,6 +80,16 @@ function chicagoDateLabel(key: string): string {
 function chicagoTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", { timeZone: CHI, hour: "numeric", minute: "2-digit" });
 }
+function ackBorder(status: DispatchAckStatus | undefined): string {
+  switch (status) {
+    case "addressed":      return "border-emerald-300";
+    case "needs_followup": return "border-amber-300";
+    case "needs_review":   return "border-sky-300";
+    case "needs_advise":   return "border-violet-300";
+    default:               return "border-neutral-200";
+  }
+}
+
 function statusTone(status: string | null): string {
   switch ((status ?? "").toLowerCase()) {
     case "complete":
@@ -107,10 +128,18 @@ function techStateLabel(state: string): string {
        : state === "✓"  ? "Finished" : "—";
 }
 
-export default async function DispatchPage() {
+export default async function DispatchPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ hide_addressed?: string }>;
+}) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/dispatch");
   if (!me.isAdmin && !me.isManager) redirect("/me");
+
+  const { hide_addressed } = await searchParams;
+  const hideAddressed = hide_addressed === "1";
+  const canWriteAck = me.isAdmin || me.isManager || !!me.tech?.is_lead;
 
   const supa = db();
 
@@ -119,11 +148,21 @@ export default async function DispatchPage() {
   const todayEndUtc = new Date(new Date(`${nowCtKey}T00:00:00-05:00`).getTime() + 86_400_000).toISOString();
   const weekEndUtc = new Date(new Date(`${nowCtKey}T00:00:00-05:00`).getTime() + 7 * 86_400_000).toISOString();
   const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const sixtyDaysAgo = new Date(Date.now() - 60 * 86_400_000).toISOString();
   const last24hAgo = new Date(Date.now() - 86_400_000).toISOString();
 
-  const customerExcludeSql = '("Tulsa Plumbing and Remodeling","TPAR","Spam","DMG","System")';
+  // Internal-placeholder customers — pinned by hcp_customer_id, NOT customer_name.
+  // The customer_name field is unreliable: 288 real HCP customers have empty first/last
+  // names with company_name set to "Tulsa Plumbing and Remodeling" (template-default
+  // bug at HCP creation time), which leaks into appointments_master.customer_name via
+  // hcp-sync-appointments' company_name fallback. Name-matching would falsely flag 78
+  // real-customer appointments as internal. Use customer_id allowlist instead.
+  //
+  // cus_051289... = TPAR On-Call placeholder (1515 E 6th St). Add new internal IDs here.
+  const INTERNAL_CUSTOMER_IDS = new Set(["cus_051289f5b070471bbbe475ddc9e60a18"]);
   const testCustomerSql = '("cus_9cf8cc5b02e1430a85288b034763cc19","cus_386a644b8054483788825c86c1b13b9c")';
   const cancelStatusSql = '("pro canceled","user canceled","cancelled","canceled","Pro Canceled","User Canceled","Cancelled","Canceled")';
+  const isInternalAppt = (hcp_customer_id?: string | null) => !!hcp_customer_id && INTERNAL_CUSTOMER_IDS.has(hcp_customer_id);
 
   const [
     todayRes,
@@ -141,32 +180,38 @@ export default async function DispatchPage() {
     openArRes,
     agedHighImpRes,
     agedHighImpCountRes,
+    needsSchedulingRes,
+    acksRes,
   ] = await Promise.all([
-    // Today's appts (Chicago day, no cancels, no internal customers, no test customers)
+    // Today's appts (Chicago day, no cancels, no test customers). Internal placeholders
+    // (Tulsa Plumbing and Remodeling, etc.) are KEPT and tagged via isInternalAppt — they
+    // represent real internal work (HQ tasks, training, equipment) techs do during the day.
     supa
       .from("appointments_master")
       .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags")
       .gte("scheduled_start", todayStartUtc)
       .lt("scheduled_start", todayEndUtc)
       .not("status", "in", cancelStatusSql)
-      .not("customer_name", "in", customerExcludeSql)
       .not("hcp_customer_id", "in", testCustomerSql)
       .order("scheduled_start", { ascending: true }),
-    // Week ahead (tomorrow → +7d) — preserved from v0-pre
+    // Week ahead (tomorrow → +7d) — internal placeholders included + tagged
     supa
       .from("appointments_master")
       .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags")
       .gte("scheduled_start", todayEndUtc)
       .lt("scheduled_start", weekEndUtc)
       .not("status", "in", cancelStatusSql)
-      .not("customer_name", "in", customerExcludeSql)
       .not("hcp_customer_id", "in", testCustomerSql)
       .order("scheduled_start", { ascending: true }),
-    // Stale appointments (operational debt)
+    // Stale appointments (operational debt): 7-60d window only. >60d items are
+    // legacy invoice-segment IDs that don't exist in hcp_jobs_raw anymore — they
+    // never re-sync, so their status is frozen and useless as a signal. Cap to
+    // actionable age.
     supa
       .from("appointments_master")
       .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, status, tech_primary_name, customer_name, street, city")
       .lt("scheduled_start", sevenDaysAgo)
+      .gte("scheduled_start", sixtyDaysAgo)
       .in("status", ["scheduled", "Scheduled", "needs scheduling", "Needs Scheduling"])
       .not("hcp_customer_id", "in", testCustomerSql)
       .order("scheduled_start", { ascending: false })
@@ -263,7 +308,32 @@ export default async function DispatchPage() {
       .lt("occurred_at", new Date(Date.now() - 24 * 3600_000).toISOString())
       .gte("occurred_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
       .or("direction.is.null,direction.neq.internal"),
+    // Unscheduled backlog: HCP jobs with status='needs scheduling' and no scheduled_start.
+    // Madisson's actionable queue. We pull from hcp_jobs_raw because these jobs never
+    // make it into appointments_master (no schedule = no row). Excludes the 333 dead
+    // jobs (pro-cancelled / completed) that also have null scheduled_start.
+    supa
+      .from("hcp_jobs_raw")
+      .select("hcp_job_id, hcp_customer_id, status, raw, hcp_notes, last_synced_at")
+      .is("scheduled_start", null)
+      .eq("status", "needs scheduling")
+      .limit(100),
+    // All dispatch_acks — small table, fetch all and bucket client-side
+    supa
+      .from("dispatch_acks")
+      .select("item_type, item_id, status, note, set_by_short_name, set_at"),
   ]);
+
+  const ackRows = (acksRes.data ?? []) as AckRow[];
+  const ackByKey = new Map<string, AckRow>();
+  for (const a of ackRows) ackByKey.set(`${a.item_type}:${a.item_id}`, a);
+  function getAck(item_type: DispatchItemType, item_id: string | null | undefined): AckRow | null {
+    if (!item_id) return null;
+    return ackByKey.get(`${item_type}:${item_id}`) ?? null;
+  }
+  function isAddressed(item_type: DispatchItemType, item_id: string | null | undefined): boolean {
+    return getAck(item_type, item_id)?.status === "addressed";
+  }
 
   const todayRows = (todayRes.data ?? []) as Appt[];
   const weekRows = (weekRes.data ?? []) as Appt[];
@@ -272,6 +342,31 @@ export default async function DispatchPage() {
     scheduled_start: string; status: string | null; tech_primary_name: string | null;
     customer_name: string | null; street: string | null; city: string | null;
   }>;
+  type NeedsSchedRow = {
+    hcp_job_id: string; hcp_customer_id: string | null; status: string;
+    raw: Record<string, unknown>; hcp_notes: string | null; last_synced_at: string;
+  };
+  const needsSchedulingRows = ((needsSchedulingRes.data ?? []) as NeedsSchedRow[])
+    .map((r) => {
+      const raw = (r.raw ?? {}) as Record<string, unknown>;
+      const customer = (raw.customer ?? {}) as Record<string, unknown>;
+      const address = (raw.address ?? {}) as Record<string, unknown>;
+      const createdAt = typeof raw.created_at === "string" ? raw.created_at : null;
+      const firstName = typeof customer.first_name === "string" ? customer.first_name : "";
+      const lastName = typeof customer.last_name === "string" ? customer.last_name : "";
+      const fullName = `${firstName} ${lastName}`.trim() || (typeof customer.company === "string" ? customer.company : "") || "(no customer)";
+      return {
+        hcp_job_id: r.hcp_job_id,
+        hcp_customer_id: r.hcp_customer_id,
+        customer_name: fullName,
+        street: typeof address.street === "string" ? address.street : "",
+        city: typeof address.city === "string" ? address.city : "",
+        created_at: createdAt,
+        age_days: createdAt ? Math.round((Date.now() - new Date(createdAt).getTime()) / 86_400_000) : null,
+        notes_preview: (r.hcp_notes ?? "").slice(0, 140),
+      };
+    })
+    .sort((a, b) => (b.age_days ?? 0) - (a.age_days ?? 0)); // oldest first — most overdue
   const last24hRows = (last24hRes.data ?? []) as Array<{ total_amount: number | null }>;
   const intakeCount = intakeRes.count ?? 0;
   const paidToday = (paidTodayRes.data ?? []) as Array<{ hcp_job_id: string; amount: number }>;
@@ -407,6 +502,34 @@ export default async function DispatchPage() {
         stuck: <>Map blank? GPS pipeline likely paused; check /admin/system pipeline freshness or text Danny.</>,
       }}
     >
+      {/* STICKY ACTION BAR — 5 dispatch actions */}
+      <div className="sticky top-0 z-30 -mx-4 mb-4 flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
+        <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">Actions:</span>
+        <Link href="/ask" className="rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-800 hover:bg-brand-100">
+          Ask /ask
+        </Link>
+        <Link href="/dispatch/new-event" className="rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100">
+          + Create event
+        </Link>
+        <Link href="/dispatch/new-job" className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100">
+          + Create job
+        </Link>
+        <Link href="/dispatch/new-estimate" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100">
+          + Create estimate
+        </Link>
+        <button type="button" disabled title="Coming soon — needs bot endpoint for assignment (HCP API doesn't expose it)" className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-400">
+          Assign tech (soon)
+        </button>
+        <span className="ml-auto" />
+        <Link
+          href={hideAddressed ? "/dispatch" : "/dispatch?hide_addressed=1"}
+          className={`rounded-md border px-3 py-1.5 text-xs font-medium ${hideAddressed ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"}`}
+          title={hideAddressed ? "Currently hiding addressed items. Click to show all." : "Hide items marked addressed."}
+        >
+          {hideAddressed ? "✓ Hiding addressed" : "Hide addressed"}
+        </Link>
+      </div>
+
       {/* TOP STRIP — intake + scheduling + revenue conversion + AR */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Link href="/admin/queue" className="rounded-2xl border border-neutral-200 bg-white p-3 hover:border-neutral-400 hover:shadow-sm">
@@ -448,18 +571,23 @@ export default async function DispatchPage() {
           </summary>
           <ul className="mt-3 space-y-2">
             {agedHighImpRows.map((c) => {
+              const ack = getAck("comm_event", String(c.id));
+              if (hideAddressed && ack?.status === "addressed") return null;
+              const dimmed = ack?.status === "addressed";
               const hours = Math.floor((Date.now() - new Date(c.occurred_at).getTime()) / 3_600_000);
               const ageLabel = hours >= 24 ? `${Math.floor(hours / 24)}d` : `${hours}h`;
               return (
-                <li key={c.id} className="rounded-xl bg-white p-2 text-sm">
+                <li key={c.id} className={`rounded-xl border bg-white p-2 text-sm ${ackBorder(ack?.status)} ${dimmed ? "opacity-60" : ""}`}>
                   <div className="flex items-baseline gap-2 text-xs text-red-900/70">
                     <span className="font-mono font-semibold">{ageLabel} old</span>
                     <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800">imp {c.importance}</span>
                     <span className="uppercase">{c.channel ?? "—"}{c.direction ? ` · ${c.direction}` : ""}</span>
-                    {c.tech_short_name ? <span className="ml-auto text-neutral-600">{c.tech_short_name}</span> : null}
+                    {c.tech_short_name ? <span className="text-neutral-600">{c.tech_short_name}</span> : null}
+                    <span className="ml-auto"><DispatchAck itemType="comm_event" itemId={String(c.id)} existing={ack} canWrite={canWriteAck} /></span>
                   </div>
                   <div className="mt-1 font-medium text-neutral-900">{c.customer_name ?? "—"}</div>
                   <div className="text-xs text-neutral-700">{c.summary ?? "—"}</div>
+                  {ack?.note ? <div className="mt-1 text-[11px] italic text-neutral-700">“{ack.note}”</div> : null}
                 </li>
               );
             })}
@@ -507,19 +635,25 @@ export default async function DispatchPage() {
                       const gps = a.appointment_id ? gpsByAppt.get(a.appointment_id) : undefined;
                       const lifecycleEvents = a.hcp_job_id ? (lifecycleByJob.get(a.hcp_job_id) ?? []) : [];
                       const state = techStateFromEvents(lifecycleEvents);
+                      const ack = getAck("appointment", a.appointment_id);
+                      if (hideAddressed && ack?.status === "addressed") return null;
+                      const dimmed = ack?.status === "addressed";
                       return (
-                        <div key={a.appointment_id ?? a.hcp_job_id ?? Math.random()} className="rounded-xl border border-neutral-200 bg-neutral-50 p-2">
+                        <div key={a.appointment_id ?? a.hcp_job_id ?? Math.random()} className={`rounded-xl border bg-neutral-50 p-2 ${ackBorder(ack?.status)} ${dimmed ? "opacity-60" : ""}`}>
                           <div className="flex items-baseline justify-between gap-2">
                             <span className="font-mono text-xs font-medium text-neutral-700">{chicagoTime(a.scheduled_start)}</span>
                             <span title={techStateLabel(state)} className="text-sm">{state}</span>
                           </div>
-                          <div className="mt-1">
+                          <div className="mt-1 flex items-baseline gap-1.5">
                             {a.hcp_job_id ? (
-                              <Link href={`/job/${a.hcp_job_id}`} className="block text-sm font-medium text-neutral-900 hover:underline">
+                              <Link href={`/job/${a.hcp_job_id}`} className="text-sm font-medium text-neutral-900 hover:underline">
                                 {a.customer_name ?? "—"}
                               </Link>
                             ) : (
-                              <span className="block text-sm font-medium text-neutral-900">{a.customer_name ?? "—"}</span>
+                              <span className="text-sm font-medium text-neutral-900">{a.customer_name ?? "—"}</span>
+                            )}
+                            {isInternalAppt(a.hcp_customer_id) && (
+                              <span className="rounded-md bg-violet-100 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-violet-800">internal</span>
                             )}
                           </div>
                           {a.street ? (
@@ -534,9 +668,13 @@ export default async function DispatchPage() {
                                     className="text-[10px] text-emerald-700">📍 GPS</span>
                             ) : null}
                             {(Number(a.total_amount) || 0) > 0 ? (
-                              <span className="ml-auto text-xs font-medium text-neutral-700">{fmtMoney((Number(a.total_amount) || 0) / 100)}</span>
+                              <span className="text-xs font-medium text-neutral-700">{fmtMoney((Number(a.total_amount) || 0) / 100)}</span>
+                            ) : null}
+                            {a.appointment_id ? (
+                              <span className="ml-auto"><DispatchAck itemType="appointment" itemId={a.appointment_id} existing={ack} canWrite={canWriteAck} /></span>
                             ) : null}
                           </div>
+                          {ack?.note ? <div className="mt-1 text-[11px] italic text-neutral-700">“{ack.note}”</div> : null}
                           {a.tech_all_names && a.tech_all_names.length > 1 ? (
                             <div className="mt-1 text-[10px] text-neutral-500">+ {a.tech_all_names.filter((n) => n !== a.tech_primary_name).join(", ")}</div>
                           ) : null}
@@ -555,14 +693,17 @@ export default async function DispatchPage() {
       {staleRows.length > 0 && (
         <details className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <summary className="cursor-pointer text-sm font-semibold text-amber-900">
-            Stale: {staleRows.length} appointment{staleRows.length === 1 ? "" : "s"} more than 7 days past with status still &quot;scheduled&quot; / &quot;needs scheduling&quot;
+            Stale: {staleRows.length} appointment{staleRows.length === 1 ? "" : "s"} 7-60 days past with status still &quot;scheduled&quot; / &quot;needs scheduling&quot;
             <span className="ml-2 font-normal text-amber-900/70">(click to expand)</span>
           </summary>
           <ul className="mt-3 space-y-1 text-sm">
             {staleRows.map((s) => {
+              const ack = getAck("stale_appointment", s.appointment_id);
+              if (hideAddressed && ack?.status === "addressed") return null;
+              const dimmed = ack?.status === "addressed";
               const ageDays = Math.round((Date.now() - new Date(s.scheduled_start).getTime()) / 86_400_000);
               return (
-                <li key={s.appointment_id ?? s.hcp_job_id ?? s.scheduled_start} className="flex flex-wrap items-baseline gap-2">
+                <li key={s.appointment_id ?? s.hcp_job_id ?? s.scheduled_start} className={`flex flex-wrap items-baseline gap-2 ${dimmed ? "opacity-60" : ""}`}>
                   <span className="font-mono text-xs text-amber-900/70">{ageDays}d ago</span>
                   {s.hcp_job_id ? (
                     <Link href={`/job/${s.hcp_job_id}`} className="font-medium text-amber-900 hover:underline">{s.customer_name ?? "—"}</Link>
@@ -574,6 +715,49 @@ export default async function DispatchPage() {
                     {s.street ? ` · ${s.street}${s.city ? ", " + s.city : ""}` : ""}
                     · status: {s.status}
                   </span>
+                  {s.appointment_id ? (
+                    <span className="ml-auto"><DispatchAck itemType="stale_appointment" itemId={s.appointment_id} existing={ack} canWrite={canWriteAck} /></span>
+                  ) : null}
+                  {ack?.note ? <span className="w-full pl-12 text-[11px] italic text-amber-900/80">“{ack.note}”</span> : null}
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
+
+      {/* NEEDS SCHEDULING — Madisson's actionable queue */}
+      {needsSchedulingRows.length > 0 && (
+        <details className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-4" open>
+          <summary className="cursor-pointer text-sm font-semibold text-sky-900">
+            Needs scheduling · {needsSchedulingRows.length} job{needsSchedulingRows.length === 1 ? "" : "s"}
+            <span className="ml-2 font-normal text-sky-900/70">(HCP status = needs scheduling, no calendar entry yet)</span>
+          </summary>
+          <ul className="mt-3 space-y-1.5 text-sm">
+            {needsSchedulingRows.map((j) => {
+              const ack = getAck("needs_scheduling", j.hcp_job_id);
+              if (hideAddressed && ack?.status === "addressed") return null;
+              const dimmed = ack?.status === "addressed";
+              return (
+                <li key={j.hcp_job_id} className={`flex flex-wrap items-baseline gap-2 ${dimmed ? "opacity-60" : ""}`}>
+                  <span className="font-mono text-xs text-sky-900/70">{j.age_days != null ? `${j.age_days}d ago` : "—"}</span>
+                  {j.hcp_customer_id ? (
+                    <Link href={`/customer/${j.hcp_customer_id}`} className="font-medium text-sky-900 hover:underline">{j.customer_name}</Link>
+                  ) : (
+                    <span className="font-medium text-sky-900">{j.customer_name}</span>
+                  )}
+                  {j.street ? (
+                    <span className="text-xs text-sky-900/80">· {j.street}{j.city ? `, ${j.city}` : ""}</span>
+                  ) : (
+                    <span className="text-xs text-sky-900/60">· (no address)</span>
+                  )}
+                  <Link href={`/job/${j.hcp_job_id}`} className="font-mono text-[10px] text-sky-700 hover:underline">{j.hcp_job_id.slice(0, 12)}…</Link>
+                  <span className="ml-auto"><DispatchAck itemType="needs_scheduling" itemId={j.hcp_job_id} existing={ack} canWrite={canWriteAck} /></span>
+                  {(j.notes_preview || ack?.note) ? (
+                    <span className="w-full pl-12 text-xs italic text-sky-900/70">
+                      {ack?.note ? `“${ack.note}”` : `“${j.notes_preview}”`}
+                    </span>
+                  ) : null}
                 </li>
               );
             })}
@@ -617,27 +801,42 @@ export default async function DispatchPage() {
                         <th className="px-3 py-2 text-left font-medium text-neutral-600">Address</th>
                         <th className="px-3 py-2 text-left font-medium text-neutral-600">Status</th>
                         <th className="px-3 py-2 text-right font-medium text-neutral-600">$</th>
+                        <th className="px-3 py-2 text-right font-medium text-neutral-600">Ack</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
-                      {dayRows.map((r) => (
-                        <tr key={r.appointment_id ?? r.hcp_job_id ?? Math.random()} className="hover:bg-neutral-50">
-                          <td className="px-3 py-2 align-top whitespace-nowrap font-mono text-xs text-neutral-700">{chicagoTime(r.scheduled_start)}</td>
-                          <td className="px-3 py-2 align-top"><TechName name={r.tech_primary_name} formerSet={formerSet} /></td>
-                          <td className="px-3 py-2 align-top">
-                            {r.hcp_customer_id ? (
-                              <Link href={`/customer/${r.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">{r.customer_name ?? "—"}</Link>
-                            ) : (
-                              <span className="font-medium text-neutral-900">{r.customer_name ?? "—"}</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 align-top text-neutral-700">{[r.street, r.city].filter(Boolean).join(", ") || "—"}</td>
-                          <td className="px-3 py-2 align-top">
-                            <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${statusTone(r.status)}`}>{r.status ?? "—"}</span>
-                          </td>
-                          <td className="px-3 py-2 align-top text-right font-medium text-neutral-700">{(Number(r.total_amount) || 0) > 0 ? fmtMoney((Number(r.total_amount) || 0) / 100) : ""}</td>
-                        </tr>
-                      ))}
+                      {dayRows.map((r) => {
+                        const ack = getAck("appointment", r.appointment_id);
+                        if (hideAddressed && ack?.status === "addressed") return null;
+                        const dimmed = ack?.status === "addressed";
+                        return (
+                          <tr key={r.appointment_id ?? r.hcp_job_id ?? Math.random()} className={`hover:bg-neutral-50 ${dimmed ? "opacity-60" : ""}`}>
+                            <td className="px-3 py-2 align-top whitespace-nowrap font-mono text-xs text-neutral-700">{chicagoTime(r.scheduled_start)}</td>
+                            <td className="px-3 py-2 align-top"><TechName name={r.tech_primary_name} formerSet={formerSet} /></td>
+                            <td className="px-3 py-2 align-top">
+                              <span className="flex items-baseline gap-2">
+                                {r.hcp_customer_id ? (
+                                  <Link href={`/customer/${r.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">{r.customer_name ?? "—"}</Link>
+                                ) : (
+                                  <span className="font-medium text-neutral-900">{r.customer_name ?? "—"}</span>
+                                )}
+                                {isInternalAppt(r.hcp_customer_id) && (
+                                  <span className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-800">internal</span>
+                                )}
+                              </span>
+                              {ack?.note ? <div className="mt-0.5 text-[11px] italic text-neutral-700">“{ack.note}”</div> : null}
+                            </td>
+                            <td className="px-3 py-2 align-top text-neutral-700">{[r.street, r.city].filter(Boolean).join(", ") || "—"}</td>
+                            <td className="px-3 py-2 align-top">
+                              <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${statusTone(r.status)}`}>{r.status ?? "—"}</span>
+                            </td>
+                            <td className="px-3 py-2 align-top text-right font-medium text-neutral-700">{(Number(r.total_amount) || 0) > 0 ? fmtMoney((Number(r.total_amount) || 0) / 100) : ""}</td>
+                            <td className="px-3 py-2 align-top text-right">
+                              {r.appointment_id ? <DispatchAck itemType="appointment" itemId={r.appointment_id} existing={ack} canWrite={canWriteAck} /> : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
