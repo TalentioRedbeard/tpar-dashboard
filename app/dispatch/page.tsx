@@ -562,42 +562,58 @@ export default async function DispatchPage({
       {/* MAP — customer pins + van pins, color-coded by tech */}
       <DispatchMap customers={customerPins} vans={vanPins} />
 
-      {/* AGED HIGH-IMP COMMS — customer follow-ups that have been waiting > 24h */}
-      {agedHighImpTotal > 0 && (
-        <details className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4" open={agedHighImpTotal >= 10}>
-          <summary className="cursor-pointer text-sm font-semibold text-red-900">
-            ⚠ {agedHighImpTotal} high-importance follow-up{agedHighImpTotal === 1 ? "" : "s"} waiting &gt; 24h
-            <span className="ml-2 font-normal text-red-900/70">click to expand · these need a human</span>
-          </summary>
-          <ul className="mt-3 space-y-2">
-            {agedHighImpRows.map((c) => {
-              const ack = getAck("comm_event", String(c.id));
-              if (hideAddressed && ack?.status === "addressed") return null;
-              const dimmed = ack?.status === "addressed";
-              const hours = Math.floor((Date.now() - new Date(c.occurred_at).getTime()) / 3_600_000);
-              const ageLabel = hours >= 24 ? `${Math.floor(hours / 24)}d` : `${hours}h`;
-              return (
-                <li key={c.id} className={`rounded-xl border bg-white p-2 text-sm ${ackBorder(ack?.status)} ${dimmed ? "opacity-60" : ""}`}>
-                  <div className="flex items-baseline gap-2 text-xs text-red-900/70">
-                    <span className="font-mono font-semibold">{ageLabel} old</span>
-                    <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800">imp {c.importance}</span>
-                    <span className="uppercase">{c.channel ?? "—"}{c.direction ? ` · ${c.direction}` : ""}</span>
-                    {c.tech_short_name ? <span className="text-neutral-600">{c.tech_short_name}</span> : null}
-                    <span className="ml-auto"><DispatchAck itemType="comm_event" itemId={String(c.id)} existing={ack} canWrite={canWriteAck} /></span>
-                  </div>
-                  <div className="mt-1 font-medium text-neutral-900">{c.customer_name ?? "—"}</div>
-                  <div className="text-xs text-neutral-700">{c.summary ?? "—"}</div>
-                  {ack?.note ? <div className="mt-1 text-[11px] italic text-neutral-700">“{ack.note}”</div> : null}
-                </li>
-              );
-            })}
-          </ul>
-          <p className="mt-3 text-xs text-red-900/70">
-            Showing top {agedHighImpRows.length} of {agedHighImpTotal} —
-            <Link href="/admin/queue" className="ml-1 font-medium underline">open full queue →</Link>
-          </p>
-        </details>
-      )}
+      {/* AGED HIGH-IMP COMMS — Layer 2 decay: split <7d (visible) vs 7+d (collapsed) */}
+      {agedHighImpTotal > 0 && (() => {
+        const SEVEN_DAYS_MS = 7 * 86_400_000;
+        const renderComm = (c: typeof agedHighImpRows[number]) => {
+          const ack = getAck("comm_event", String(c.id));
+          if (hideAddressed && ack?.status === "addressed") return null;
+          const dimmed = ack?.status === "addressed";
+          const hours = Math.floor((Date.now() - new Date(c.occurred_at).getTime()) / 3_600_000);
+          const ageLabel = hours >= 24 ? `${Math.floor(hours / 24)}d` : `${hours}h`;
+          return (
+            <li key={c.id} className={`rounded-xl border bg-white p-2 text-sm ${ackBorder(ack?.status)} ${dimmed ? "opacity-60" : ""}`}>
+              <div className="flex items-baseline gap-2 text-xs text-red-900/70">
+                <span className="font-mono font-semibold">{ageLabel} old</span>
+                <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800">imp {c.importance}</span>
+                <span className="uppercase">{c.channel ?? "—"}{c.direction ? ` · ${c.direction}` : ""}</span>
+                {c.tech_short_name ? <span className="text-neutral-600">{c.tech_short_name}</span> : null}
+                <span className="ml-auto"><DispatchAck itemType="comm_event" itemId={String(c.id)} existing={ack} canWrite={canWriteAck} /></span>
+              </div>
+              <div className="mt-1 font-medium text-neutral-900">{c.customer_name ?? "—"}</div>
+              <div className="text-xs text-neutral-700">{c.summary ?? "—"}</div>
+              {ack?.note ? <div className="mt-1 text-[11px] italic text-neutral-700">“{ack.note}”</div> : null}
+            </li>
+          );
+        };
+        const fresh = agedHighImpRows.filter(c => (Date.now() - new Date(c.occurred_at).getTime()) < SEVEN_DAYS_MS);
+        const older = agedHighImpRows.filter(c => (Date.now() - new Date(c.occurred_at).getTime()) >= SEVEN_DAYS_MS);
+        return (
+          <details className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4" open={fresh.length >= 5}>
+            <summary className="cursor-pointer text-sm font-semibold text-red-900">
+              ⚠ {agedHighImpTotal} high-importance follow-up{agedHighImpTotal === 1 ? "" : "s"} waiting &gt; 24h
+              <span className="ml-2 font-normal text-red-900/70">{fresh.length} recent (≤7d) · {older.length} older (7+d) · click to expand</span>
+            </summary>
+            <ul className="mt-3 space-y-2">
+              {fresh.map(renderComm)}
+            </ul>
+            {older.length > 0 && (
+              <details className="mt-3 rounded-xl border border-red-300 bg-red-100/50 p-2">
+                <summary className="cursor-pointer text-xs font-medium text-red-900">
+                  Older (7+ days · {older.length}) — collapsed by default
+                </summary>
+                <ul className="mt-2 space-y-2">
+                  {older.map(renderComm)}
+                </ul>
+              </details>
+            )}
+            <p className="mt-3 text-xs text-red-900/70">
+              Showing top {agedHighImpRows.length} of {agedHighImpTotal} —
+              <Link href="/admin/queue" className="ml-1 font-medium underline">open full queue →</Link>
+            </p>
+          </details>
+        );
+      })()}
 
       {/* LANES — column per tech */}
       <section className="mb-8">
@@ -689,81 +705,112 @@ export default async function DispatchPage({
         )}
       </section>
 
-      {/* STALE — operational debt */}
-      {staleRows.length > 0 && (
-        <details className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-amber-900">
-            Stale: {staleRows.length} appointment{staleRows.length === 1 ? "" : "s"} 7-60 days past with status still &quot;scheduled&quot; / &quot;needs scheduling&quot;
-            <span className="ml-2 font-normal text-amber-900/70">(click to expand)</span>
-          </summary>
-          <ul className="mt-3 space-y-1 text-sm">
-            {staleRows.map((s) => {
-              const ack = getAck("stale_appointment", s.appointment_id);
-              if (hideAddressed && ack?.status === "addressed") return null;
-              const dimmed = ack?.status === "addressed";
-              const ageDays = Math.round((Date.now() - new Date(s.scheduled_start).getTime()) / 86_400_000);
-              return (
-                <li key={s.appointment_id ?? s.hcp_job_id ?? s.scheduled_start} className={`flex flex-wrap items-baseline gap-2 ${dimmed ? "opacity-60" : ""}`}>
-                  <span className="font-mono text-xs text-amber-900/70">{ageDays}d ago</span>
-                  {s.hcp_job_id ? (
-                    <Link href={`/job/${s.hcp_job_id}`} className="font-medium text-amber-900 hover:underline">{s.customer_name ?? "—"}</Link>
-                  ) : (
-                    <span className="font-medium text-amber-900">{s.customer_name ?? "—"}</span>
-                  )}
-                  <span className="text-xs text-amber-900/70">
-                    · {s.tech_primary_name ?? "—"}
-                    {s.street ? ` · ${s.street}${s.city ? ", " + s.city : ""}` : ""}
-                    · status: {s.status}
-                  </span>
-                  {s.appointment_id ? (
-                    <span className="ml-auto"><DispatchAck itemType="stale_appointment" itemId={s.appointment_id} existing={ack} canWrite={canWriteAck} /></span>
-                  ) : null}
-                  {ack?.note ? <span className="w-full pl-12 text-[11px] italic text-amber-900/80">“{ack.note}”</span> : null}
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      )}
+      {/* STALE — Layer 2 decay: split <14d vs 14+d */}
+      {staleRows.length > 0 && (() => {
+        const FOURTEEN_DAYS_MS = 14 * 86_400_000;
+        const renderStale = (s: typeof staleRows[number]) => {
+          const ack = getAck("stale_appointment", s.appointment_id);
+          if (hideAddressed && ack?.status === "addressed") return null;
+          const dimmed = ack?.status === "addressed";
+          const ageDays = Math.round((Date.now() - new Date(s.scheduled_start).getTime()) / 86_400_000);
+          return (
+            <li key={s.appointment_id ?? s.hcp_job_id ?? s.scheduled_start} className={`flex flex-wrap items-baseline gap-2 ${dimmed ? "opacity-60" : ""}`}>
+              <span className="font-mono text-xs text-amber-900/70">{ageDays}d ago</span>
+              {s.hcp_job_id ? (
+                <Link href={`/job/${s.hcp_job_id}`} className="font-medium text-amber-900 hover:underline">{s.customer_name ?? "—"}</Link>
+              ) : (
+                <span className="font-medium text-amber-900">{s.customer_name ?? "—"}</span>
+              )}
+              <span className="text-xs text-amber-900/70">
+                · {s.tech_primary_name ?? "—"}
+                {s.street ? ` · ${s.street}${s.city ? ", " + s.city : ""}` : ""}
+                · status: {s.status}
+              </span>
+              {s.appointment_id ? (
+                <span className="ml-auto"><DispatchAck itemType="stale_appointment" itemId={s.appointment_id} existing={ack} canWrite={canWriteAck} /></span>
+              ) : null}
+              {ack?.note ? <span className="w-full pl-12 text-[11px] italic text-amber-900/80">“{ack.note}”</span> : null}
+            </li>
+          );
+        };
+        const fresh = staleRows.filter(s => (Date.now() - new Date(s.scheduled_start).getTime()) < FOURTEEN_DAYS_MS);
+        const older = staleRows.filter(s => (Date.now() - new Date(s.scheduled_start).getTime()) >= FOURTEEN_DAYS_MS);
+        return (
+          <details className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-amber-900">
+              Stale: {staleRows.length} appointment{staleRows.length === 1 ? "" : "s"} (7-60d past, still &quot;scheduled&quot; / &quot;needs scheduling&quot;)
+              <span className="ml-2 font-normal text-amber-900/70">{fresh.length} recent (≤14d) · {older.length} older (14+d) · click to expand</span>
+            </summary>
+            <ul className="mt-3 space-y-1 text-sm">
+              {fresh.map(renderStale)}
+            </ul>
+            {older.length > 0 && (
+              <details className="mt-3 rounded-xl border border-amber-300 bg-amber-100/50 p-2">
+                <summary className="cursor-pointer text-xs font-medium text-amber-900">
+                  Older (14+ days · {older.length}) — collapsed by default
+                </summary>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {older.map(renderStale)}
+                </ul>
+              </details>
+            )}
+          </details>
+        );
+      })()}
 
-      {/* NEEDS SCHEDULING — Madisson's actionable queue */}
-      {needsSchedulingRows.length > 0 && (
-        <details className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-4" open>
-          <summary className="cursor-pointer text-sm font-semibold text-sky-900">
-            Needs scheduling · {needsSchedulingRows.length} job{needsSchedulingRows.length === 1 ? "" : "s"}
-            <span className="ml-2 font-normal text-sky-900/70">(HCP status = needs scheduling, no calendar entry yet)</span>
-          </summary>
-          <ul className="mt-3 space-y-1.5 text-sm">
-            {needsSchedulingRows.map((j) => {
-              const ack = getAck("needs_scheduling", j.hcp_job_id);
-              if (hideAddressed && ack?.status === "addressed") return null;
-              const dimmed = ack?.status === "addressed";
-              return (
-                <li key={j.hcp_job_id} className={`flex flex-wrap items-baseline gap-2 ${dimmed ? "opacity-60" : ""}`}>
-                  <span className="font-mono text-xs text-sky-900/70">{j.age_days != null ? `${j.age_days}d ago` : "—"}</span>
-                  {j.hcp_customer_id ? (
-                    <Link href={`/customer/${j.hcp_customer_id}`} className="font-medium text-sky-900 hover:underline">{j.customer_name}</Link>
-                  ) : (
-                    <span className="font-medium text-sky-900">{j.customer_name}</span>
-                  )}
-                  {j.street ? (
-                    <span className="text-xs text-sky-900/80">· {j.street}{j.city ? `, ${j.city}` : ""}</span>
-                  ) : (
-                    <span className="text-xs text-sky-900/60">· (no address)</span>
-                  )}
-                  <Link href={`/job/${j.hcp_job_id}`} className="font-mono text-[10px] text-sky-700 hover:underline">{j.hcp_job_id.slice(0, 12)}…</Link>
-                  <span className="ml-auto"><DispatchAck itemType="needs_scheduling" itemId={j.hcp_job_id} existing={ack} canWrite={canWriteAck} /></span>
-                  {(j.notes_preview || ack?.note) ? (
-                    <span className="w-full pl-12 text-xs italic text-sky-900/70">
-                      {ack?.note ? `“${ack.note}”` : `“${j.notes_preview}”`}
-                    </span>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      )}
+      {/* NEEDS SCHEDULING — Layer 2 decay: split <30d vs 30+d (Madisson's actionable queue) */}
+      {needsSchedulingRows.length > 0 && (() => {
+        const renderNeed = (j: typeof needsSchedulingRows[number]) => {
+          const ack = getAck("needs_scheduling", j.hcp_job_id);
+          if (hideAddressed && ack?.status === "addressed") return null;
+          const dimmed = ack?.status === "addressed";
+          return (
+            <li key={j.hcp_job_id} className={`flex flex-wrap items-baseline gap-2 ${dimmed ? "opacity-60" : ""}`}>
+              <span className="font-mono text-xs text-sky-900/70">{j.age_days != null ? `${j.age_days}d ago` : "—"}</span>
+              {j.hcp_customer_id ? (
+                <Link href={`/customer/${j.hcp_customer_id}`} className="font-medium text-sky-900 hover:underline">{j.customer_name}</Link>
+              ) : (
+                <span className="font-medium text-sky-900">{j.customer_name}</span>
+              )}
+              {j.street ? (
+                <span className="text-xs text-sky-900/80">· {j.street}{j.city ? `, ${j.city}` : ""}</span>
+              ) : (
+                <span className="text-xs text-sky-900/60">· (no address)</span>
+              )}
+              <Link href={`/job/${j.hcp_job_id}`} className="font-mono text-[10px] text-sky-700 hover:underline">{j.hcp_job_id.slice(0, 12)}…</Link>
+              <span className="ml-auto"><DispatchAck itemType="needs_scheduling" itemId={j.hcp_job_id} existing={ack} canWrite={canWriteAck} /></span>
+              {(j.notes_preview || ack?.note) ? (
+                <span className="w-full pl-12 text-xs italic text-sky-900/70">
+                  {ack?.note ? `“${ack.note}”` : `“${j.notes_preview}”`}
+                </span>
+              ) : null}
+            </li>
+          );
+        };
+        const fresh = needsSchedulingRows.filter(j => (j.age_days ?? 0) < 30);
+        const older = needsSchedulingRows.filter(j => (j.age_days ?? 0) >= 30);
+        return (
+          <details className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-4" open>
+            <summary className="cursor-pointer text-sm font-semibold text-sky-900">
+              Needs scheduling · {needsSchedulingRows.length} job{needsSchedulingRows.length === 1 ? "" : "s"}
+              <span className="ml-2 font-normal text-sky-900/70">{fresh.length} recent (≤30d) · {older.length} older (30+d) · no calendar entry yet</span>
+            </summary>
+            <ul className="mt-3 space-y-1.5 text-sm">
+              {fresh.map(renderNeed)}
+            </ul>
+            {older.length > 0 && (
+              <details className="mt-3 rounded-xl border border-sky-300 bg-sky-100/50 p-2">
+                <summary className="cursor-pointer text-xs font-medium text-sky-900">
+                  Older (30+ days · {older.length}) — collapsed by default
+                </summary>
+                <ul className="mt-2 space-y-1.5 text-sm">
+                  {older.map(renderNeed)}
+                </ul>
+              </details>
+            )}
+          </details>
+        );
+      })()}
 
       {/* WEEK AHEAD */}
       <details className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4" open>
