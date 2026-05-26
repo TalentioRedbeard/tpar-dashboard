@@ -8,7 +8,7 @@ import { PageShell } from "../../components/PageShell";
 import { Section } from "../../components/ui/Section";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Pill } from "../../components/ui/Pill";
-import { AskResult, type RoutePlan } from "../../components/AskResult";
+import { AskResult, type RoutePlan, type RouteScope } from "../../components/AskResult";
 import { supabaseServer } from "../../lib/supabase-server";
 
 export const metadata = { title: "Ask · TPAR-DB" };
@@ -30,6 +30,7 @@ type RouteResult = {
   plan?: RoutePlan;
   rows?: Record<string, unknown>[];
   sql_error?: string;
+  scope?: RouteScope;
   error?: string;
 };
 
@@ -99,13 +100,17 @@ export default async function AskPage({
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
-  // Call the structured router first (~6s). If it returns kind=map/table with
-  // rows, skip ask-tpar entirely (it's slow — the legacy 4k-line NL backend
-  // takes ~80s for the same question). Only fall through to ask-tpar when the
-  // router decided this is a text-only question.
+  // Call the structured router first (~6s). If it returns a structured kind
+  // (map/table with rows, or synthesis which always carries a grounded narrative),
+  // skip ask-tpar entirely — it's the slow 4k-line legacy NL backend (~80s).
+  // Only fall through to ask-tpar when the router returned kind=text (pure
+  // narrative, no DB pull) and we want the legacy intent-routed answer instead.
   const routeRes = q ? await routeQuery(q) : null;
   const preferStructured = !!(
-    routeRes?.ok && routeRes.plan && (routeRes.plan.kind === "map" || routeRes.plan.kind === "table") && (routeRes.rows?.length ?? 0) > 0
+    routeRes?.ok && routeRes.plan && (
+      ((routeRes.plan.kind === "map" || routeRes.plan.kind === "table") && (routeRes.rows?.length ?? 0) > 0) ||
+      routeRes.plan.kind === "synthesis"
+    )
   );
   const result = !preferStructured && q ? await askTpar(q) : null;
 
@@ -148,7 +153,7 @@ export default async function AskPage({
 
       {q && preferStructured && routeRes?.plan && (
         <Section>
-          <AskResult plan={routeRes.plan} rows={routeRes.rows ?? []} sqlError={routeRes.sql_error ?? null} />
+          <AskResult plan={routeRes.plan} rows={routeRes.rows ?? []} sqlError={routeRes.sql_error ?? null} scope={routeRes.scope ?? null} />
         </Section>
       )}
 

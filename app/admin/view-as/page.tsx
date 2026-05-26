@@ -9,7 +9,6 @@ import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { PageShell } from "@/components/PageShell";
 import { Section } from "@/components/ui/Section";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { setViewAsTech, clearViewAsTech } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -18,11 +17,7 @@ export default async function ViewAsPage() {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/admin/view-as");
   if (!me.isAdmin && !me.isManager && me.realRole !== "admin" && me.realRole !== "manager" && me.realRole !== "production_manager") {
-    return (
-      <PageShell title="Admin only" description="View-as is for leadership review.">
-        <EmptyState title="Not authorized." />
-      </PageShell>
-    );
+    redirect("/me");
   }
 
   const supa = db();

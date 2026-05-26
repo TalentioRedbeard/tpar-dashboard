@@ -29,13 +29,7 @@ function fmtRel(iso: string | null): string {
 export default async function CatalogPage() {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/admin/catalog");
-  if (!me.isAdmin && !me.isManager) {
-    return (
-      <PageShell title="Admin only" description="Catalog is for leadership.">
-        <EmptyState title="Not authorized." />
-      </PageShell>
-    );
-  }
+  if (!me.isAdmin && !me.isManager) redirect("/me");
 
   const activeEdgeFns = await getActiveEdgeFns();
 

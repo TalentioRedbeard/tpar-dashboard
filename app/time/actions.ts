@@ -15,17 +15,22 @@ import { getCurrentTech } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
 
 // HCP mirror — TPAR is source of truth for hours; HCP becomes a downstream
-// mirror because HCP's REST has no time-tracking writes. Fire-and-forget;
-// outcome lands in maintenance_logs (source='hcp-clock-action'). 2026-05-14.
+// mirror because HCP's REST has no time-tracking writes. Fire-and-forget.
+// Design 2026-05-14 (post-DOM-probe): the mirror records a COMPLETE entry
+// (start + end), so it only fires on clock-OUT. Clock-in is a TPAR-only
+// event until the matching clock-out arrives.
 async function fireHcpClockMirror(payload: {
   tech_short_name: string;
   hcp_employee_id: string | null;
-  action: "in" | "out";
+  start_at: string;
+  end_at: string;
   tech_time_entry_id: string;
+  compensation_type?: string;
 }): Promise<void> {
+  if (!payload.hcp_employee_id) return; // No HCP employee → nothing to mirror to.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) return; // Quietly skip if not configured (local dev w/o secrets)
+  if (!supabaseUrl || !serviceKey) return;
   try {
     await fetch(`${supabaseUrl}/functions/v1/hcp-clock-action`, {
       method: "POST",
@@ -33,7 +38,7 @@ async function fireHcpClockMirror(payload: {
       body: JSON.stringify(payload),
     });
   } catch {
-    // Never block the user's clock-in/out on the mirror — bot can be down, retries are fine.
+    // Mirror failures must never block the user — bot can be down, retries are fine.
   }
 }
 
@@ -189,13 +194,8 @@ export async function clockIn(input: {
   revalidatePath("/me");
   revalidatePath("/time");
 
-  // Fire HCP mirror — fire-and-forget, user is not blocked.
-  void fireHcpClockMirror({
-    tech_short_name: me.tech_short_name,
-    hcp_employee_id: (await getCurrentTech())?.tech?.hcp_employee_id ?? null,
-    action: "in",
-    tech_time_entry_id: data.id as string,
-  });
+  // Clock-in is TPAR-only — the HCP mirror waits for the matching clock-out
+  // so it can write a complete time-entry record in one shot.
 
   return {
     ok: true,
@@ -255,11 +255,15 @@ export async function clockOut(input: {
   revalidatePath("/me");
   revalidatePath("/time");
 
+  // Fire HCP mirror with the COMPLETE pair (start=current.clocked_in_at, end=this clock-out).
+  // Single atomic time entry — no half-state to babysit. Fire-and-forget; user isn't blocked.
   void fireHcpClockMirror({
     tech_short_name: me.tech_short_name,
     hcp_employee_id: (await getCurrentTech())?.tech?.hcp_employee_id ?? null,
-    action: "out",
+    start_at: current.clocked_in_at,
+    end_at: data.ts as string,
     tech_time_entry_id: data.id as string,
+    compensation_type: "Regular",
   });
 
   return {

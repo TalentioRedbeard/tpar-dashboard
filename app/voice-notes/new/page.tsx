@@ -7,7 +7,7 @@ import Link from "next/link";
 import { getCurrentTech } from "@/lib/current-tech";
 import { db } from "@/lib/supabase";
 import { PageShell } from "@/components/PageShell";
-import { VoiceNoteRecorder, TECH_INTENTS, LEADERSHIP_INTENTS } from "../VoiceNoteRecorder";
+import { VoiceNoteRecorder, TECH_INTENTS, LEADERSHIP_INTENTS, PRIMARY_INTENTS } from "../VoiceNoteRecorder";
 import { VoiceNoteJobPicker } from "./VoiceNoteJobPicker";
 import { resolveJobIdentifier } from "@/lib/typed-db/job-360";
 
@@ -16,7 +16,7 @@ export const metadata = { title: "New voice note · TPAR-DB" };
 export default async function NewVoiceNotePage({
   searchParams,
 }: {
-  searchParams: Promise<{ job?: string; customer?: string }>;
+  searchParams: Promise<{ job?: string; customer?: string; intent?: string }>;
 }) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/voice-notes/new");
@@ -24,6 +24,13 @@ export default async function NewVoiceNotePage({
   const params = await searchParams;
   const jobInput = params.job?.trim();
   const hcpCustomerId = params.customer?.trim();
+  // Accept ?intent=diagnostic|change-order|billing|other from the /me tile or
+  // anywhere else that wants to pre-tag the recording. If not provided, the
+  // primary-intent picker is shown at the top of the page so the user picks
+  // one before recording.
+  const intentParam = params.intent?.trim().toLowerCase();
+  const validIntents = new Set(PRIMARY_INTENTS.map((o) => o.value));
+  const preselectedIntent = intentParam && validIntents.has(intentParam) ? intentParam : null;
 
   // The `job` query param may be an actual hcp_job_id (job_xxx...) or, more
   // commonly, an invoice number the tech typed. Resolve via the canonical
@@ -77,6 +84,40 @@ export default async function NewVoiceNotePage({
         )
       }
     >
+      {/* Primary-intent picker — surfaced at the top so the user explicitly
+       *  picks WHAT this recording is for before recording starts. When the
+       *  URL already includes ?intent=, this section auto-confirms and the
+       *  recorder is shown below. */}
+      {!preselectedIntent ? (
+        <div className="mb-5 rounded-2xl border border-brand-200 bg-brand-50/50 p-4">
+          <div className="mb-2 text-sm font-semibold text-brand-900">What kind of voice note?</div>
+          <div className="mb-3 text-xs text-brand-900/80">Pick one — this tags the recording so it lands in the right review queue.</div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {PRIMARY_INTENTS.map((opt) => {
+              const qp = new URLSearchParams();
+              if (jobInput)        qp.set("job", jobInput);
+              if (hcpCustomerId)   qp.set("customer", hcpCustomerId);
+              qp.set("intent", opt.value);
+              return (
+                <Link
+                  key={opt.value}
+                  href={`/voice-notes/new?${qp.toString()}`}
+                  className="rounded-md border border-brand-300 bg-white px-3 py-2 text-sm font-medium text-brand-900 hover:bg-brand-100"
+                >
+                  {opt.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-900">
+          Recording as: <span className="font-medium">{PRIMARY_INTENTS.find((o) => o.value === preselectedIntent)?.label ?? preselectedIntent}</span>
+          {" · "}
+          <Link href={`/voice-notes/new${jobInput ? `?job=${jobInput}` : ""}`} className="underline">change</Link>
+        </div>
+      )}
+
       {/* AppGuide — picks the job for the voice note when not already attached.
        *  Hidden when ?job= already resolved (the description above shows attachment). */}
       {!attached ? (
@@ -88,7 +129,7 @@ export default async function NewVoiceNotePage({
       <VoiceNoteRecorder
         hcpJobId={hcpJobId}
         hcpCustomerId={hcpCustomerId}
-        defaultIntentTag="estimate-context"
+        defaultIntentTag={preselectedIntent ?? "diagnostic"}
         intentOptions={(me.isAdmin || me.isManager) ? LEADERSHIP_INTENTS : TECH_INTENTS}
         showNeedsDiscussion={me.isAdmin || me.isManager}
       />

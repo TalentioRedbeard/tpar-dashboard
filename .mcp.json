@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "tpar": {
+      "type": "http",
+      "url": "https://bwpoqsfrygyopwxmegax.supabase.co/functions/v1/mcp-tpar",
+      "headers": {
+        "Authorization": "Bearer ${MCP_TPAR_TOKEN}"
+      }
+    },
+    "tpar-browser": {
+      "type": "http",
+      "url": "https://tpar-browser-mcp.fly.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer ${BROWSER_MCP_TOKEN}"
+      }
+    }
+  }
+}

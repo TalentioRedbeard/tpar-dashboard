@@ -48,13 +48,7 @@ const INTENT_TONE: Record<string, string> = {
 export default async function ConcernsPage() {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/admin/concerns");
-  if (!me.isAdmin && !me.isManager) {
-    return (
-      <PageShell title="Leadership only">
-        <EmptyState title="Not authorized." />
-      </PageShell>
-    );
-  }
+  if (!me.isAdmin && !me.isManager) redirect("/me");
 
   const [open, resolved] = await Promise.all([
     listOpenConcerns(),

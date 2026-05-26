@@ -8,7 +8,7 @@ import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from "@vis.gl/react
 import { useMemo, useState } from "react";
 
 export type RoutePlan = {
-  kind: "text" | "map" | "table";
+  kind: "text" | "map" | "table" | "synthesis";
   title: string;
   narrative: string;
   sql?: string;
@@ -16,13 +16,20 @@ export type RoutePlan = {
   columns?: string[];
 };
 
+export type RouteScope = {
+  role?: string | null;
+  tech_short_name?: string | null;
+  rows_dropped_by_scope?: number;
+};
+
 type Props = {
   plan: RoutePlan;
   rows: Record<string, unknown>[];
   sqlError?: string | null;
+  scope?: RouteScope | null;
 };
 
-export function AskResult({ plan, rows, sqlError }: Props) {
+export function AskResult({ plan, rows, sqlError, scope }: Props) {
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
       <div className="mb-3 flex items-baseline gap-2">
@@ -32,7 +39,7 @@ export function AskResult({ plan, rows, sqlError }: Props) {
         </span>
       </div>
       {plan.narrative && (
-        <p className="mb-4 text-sm leading-relaxed text-neutral-700">{plan.narrative}</p>
+        <p className="mb-4 whitespace-pre-wrap text-sm leading-relaxed text-neutral-700">{plan.narrative}</p>
       )}
 
       {sqlError ? (
@@ -47,6 +54,20 @@ export function AskResult({ plan, rows, sqlError }: Props) {
       {plan.kind === "table" && !sqlError && (
         <RouteTable rows={rows} columns={plan.columns ?? null} />
       )}
+      {plan.kind === "synthesis" && !sqlError && (
+        <details className="rounded-md border border-neutral-200 bg-neutral-50 p-2 text-xs">
+          <summary className="cursor-pointer text-neutral-600">
+            Evidence ({rows.length} row{rows.length === 1 ? "" : "s"})
+          </summary>
+          <div className="mt-2"><RouteTable rows={rows} columns={null} /></div>
+        </details>
+      )}
+
+      {scope && scope.role === "tech" && typeof scope.rows_dropped_by_scope === "number" && scope.rows_dropped_by_scope > 0 ? (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900">
+          {scope.rows_dropped_by_scope} row{scope.rows_dropped_by_scope === 1 ? "" : "s"} hidden by tech scope (you only see {scope.tech_short_name}&apos;s data).
+        </div>
+      ) : null}
 
       {plan.sql ? (
         <details className="mt-4 rounded-md bg-neutral-50 p-2 text-xs">

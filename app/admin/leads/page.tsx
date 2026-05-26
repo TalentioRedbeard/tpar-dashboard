@@ -123,13 +123,7 @@ function LeadCard({ lead, isHandled }: { lead: Lead; isHandled: boolean }) {
 export default async function LeadsPage() {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/admin/leads");
-  if (!me.isAdmin && !me.isManager) {
-    return (
-      <PageShell title="Leadership only">
-        <EmptyState title="Not authorized." />
-      </PageShell>
-    );
-  }
+  if (!me.isAdmin && !me.isManager) redirect("/me");
 
   const [open, handled] = await Promise.all([
     listOpenLeads(),

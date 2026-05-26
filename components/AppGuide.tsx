@@ -197,25 +197,46 @@ export function AppGuide({
         <label htmlFor="jobfinder-q" className={`mb-2 block font-medium text-neutral-500 ${compact ? "text-[11px]" : "text-xs"}`}>
           {label}
         </label>
-        <div className="flex items-center gap-2">
-          <input
-            id="jobfinder-q"
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={placeholder}
-            className={`flex-1 rounded-md border border-neutral-300 px-3 text-neutral-800 placeholder:text-neutral-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200 ${compact ? "py-1.5 text-sm" : "py-2 text-base"}`}
-            autoComplete="off"
-          />
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            // The input is debounce-searched as the user types, so this just
+            // forces an immediate refresh and removes focus (helpful on mobile).
+            e.preventDefault();
+            (e.currentTarget.querySelector("input") as HTMLInputElement | null)?.blur();
+          }}
+        >
+          <div className="relative flex-1">
+            <input
+              id="jobfinder-q"
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={placeholder}
+              className={`w-full rounded-md border border-neutral-300 pr-10 text-neutral-800 placeholder:text-neutral-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200 ${compact ? "py-1.5 pl-3 text-sm" : "py-2 pl-3 text-base"}`}
+              autoComplete="off"
+            />
+            {/* Voice-to-text: dictates straight into the input above. Does NOT
+                start a voice-note recording — that's a separate flow at
+                /voice-notes/new. Sits inside the input so users read it as
+                "speak instead of typing." */}
+            <button
+              type="button"
+              onClick={toggleVoice}
+              aria-label={listening ? "Stop dictation" : "Dictate into the search box"}
+              title={listening ? "Stop dictation" : "Dictate into the search box (voice-to-text, not a voice-note recording)"}
+              className={`absolute inset-y-0 right-1 my-auto flex items-center justify-center rounded ${compact ? "h-6 w-7 text-xs" : "h-7 w-8 text-sm"} ${listening ? "bg-red-100 text-red-700 animate-pulse" : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"}`}
+            >
+              {listening ? "●" : "🎙"}
+            </button>
+          </div>
           <button
-            type="button"
-            onClick={toggleVoice}
-            aria-label={listening ? "Stop listening" : "Talk to find a job"}
-            className={`shrink-0 rounded-md text-xl ${compact ? "h-8 w-8 text-base" : "h-10 w-10"} ${listening ? "bg-red-100 text-red-700 animate-pulse" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"}`}
+            type="submit"
+            className={`shrink-0 rounded-md bg-brand-700 font-medium text-white hover:bg-brand-800 ${compact ? "px-3 py-1.5 text-sm" : "px-4 py-2 text-sm"}`}
           >
-            {listening ? "●" : "🎙"}
+            Search
           </button>
-        </div>
+        </form>
       </div>
 
       {/* Ambient strip */}

@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 import { getCurrentTech } from "@/lib/current-tech";
 import { PageShell } from "@/components/PageShell";
 import { Section } from "@/components/ui/Section";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { getRecordings } from "./actions";
 import { RecordingRow } from "./RecordingRow";
 
@@ -15,13 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function SalesAskAdminPage() {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/admin/salesask");
-  if (!me.isAdmin && !me.isManager) {
-    return (
-      <PageShell title="Admin only" description="SalesAsk binding review is for leadership.">
-        <EmptyState title="Not authorized." />
-      </PageShell>
-    );
-  }
+  if (!me.isAdmin && !me.isManager) redirect("/me");
 
   const recordings = await getRecordings();
 

@@ -337,7 +337,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
             >
               <span className="text-2xl" aria-hidden>🎙️</span>
               <span className="text-sm font-semibold text-neutral-900">Voice note</span>
-              <span className="text-xs text-neutral-600">Record or upload audio</span>
+              <span className="text-xs text-neutral-600">Diagnostic, change order, billing, other</span>
             </Link>
             <Link
               href="/find"

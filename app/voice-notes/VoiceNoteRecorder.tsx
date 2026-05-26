@@ -29,14 +29,27 @@ type Props = {
   showNeedsDiscussion?: boolean;
 };
 
+// Voice-note intents. The first four (diagnostic / change-order / billing / other)
+// are the primary "what kind of voice note is this?" categories per Danny — they're
+// the contexts a tech is most likely recording in the field. The remaining options
+// stay available for less-common uses (estimate context, leadership notes, etc.)
+// but get sorted below the primary four.
+const PRIMARY_INTENT_OPTIONS: IntentOption[] = [
+  { value: "diagnostic",     label: "Diagnostic (what's wrong, what you found)" },
+  { value: "change-order",   label: "Change order conversation (scope/price shift)" },
+  { value: "billing",        label: "Billing (payment, invoice, dispute)" },
+  { value: "other",          label: "Other" },
+];
+
 const TECH_INTENT_OPTIONS: IntentOption[] = [
+  ...PRIMARY_INTENT_OPTIONS,
   { value: "estimate-context", label: "Estimate context (use as Based-on… reference)" },
   { value: "job-note",         label: "Job note (general info, decisions on site)" },
   { value: "process-doc",      label: "Process documentation" },
-  { value: "other",            label: "Other" },
 ];
 
 const LEADERSHIP_INTENT_OPTIONS: IntentOption[] = [
+  ...PRIMARY_INTENT_OPTIONS,
   { value: "estimate-context",   label: "Estimate context (use as Based-on… reference)" },
   { value: "scheduling-issue",   label: "Scheduling issue / dispatch concern" },
   { value: "process-concern",    label: "Process concern (workflow, system, organization)" },
@@ -45,8 +58,9 @@ const LEADERSHIP_INTENT_OPTIONS: IntentOption[] = [
   { value: "leadership-note",    label: "Leadership note (general — discuss later)" },
   { value: "job-note",           label: "Job note (general info, decisions)" },
   { value: "process-doc",        label: "Process documentation" },
-  { value: "other",              label: "Other" },
 ];
+
+export const PRIMARY_INTENTS = PRIMARY_INTENT_OPTIONS;
 
 export const TECH_INTENTS = TECH_INTENT_OPTIONS;
 export const LEADERSHIP_INTENTS = LEADERSHIP_INTENT_OPTIONS;
