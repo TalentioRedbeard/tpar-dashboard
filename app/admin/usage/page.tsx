@@ -42,13 +42,7 @@ function fmtAbs(iso: string | null): string {
 export default async function UsagePage() {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/admin/usage");
-  if (!me.isAdmin && !me.isManager) {
-    return (
-      <PageShell title="Admin only" description="Usage analytics is for leadership.">
-        <EmptyState title="Not authorized." />
-      </PageShell>
-    );
-  }
+  if (!me.isAdmin && !me.isManager) redirect("/me");
 
   const [users, paths, breakdown] = await Promise.all([
     getUserSummary(WINDOW_DAYS),
