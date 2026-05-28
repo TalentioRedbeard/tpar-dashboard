@@ -6,7 +6,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/supabase";
-import { getCurrentTech } from "@/lib/current-tech";
+import { getCurrentTech, requireOwner } from "@/lib/current-tech";
 import { isOwner } from "@/lib/admin";
 
 export type Recipient = { email: string; label: string };
@@ -135,6 +135,75 @@ export async function markWhiteboardSeen(): Promise<{ ok: boolean }> {
   return { ok: true };
 }
 
+// ── SMS notifications ──────────────────────────────────────────────────────
+
+// Master switch — gates ALL outbound SMS. Ships OFF; only the owner flips it.
+export async function getSmsEnabled(): Promise<boolean> {
+  const { data } = await db().from("app_flags").select("enabled").eq("key", "sms_notifications").maybeSingle();
+  return !!data?.enabled;
+}
+
+export async function setSmsEnabled(enabled: boolean): Promise<{ ok: boolean; error?: string }> {
+  const owner = await requireOwner();
+  if (!owner.ok) return { ok: false, error: owner.error };
+  const { error } = await db()
+    .from("app_flags")
+    .upsert({ key: "sms_notifications", enabled, updated_by: owner.email, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/inbox");
+  return { ok: true };
+}
+
+// Per-person opt-out (default opted-in). Set for the real signed-in user.
+export async function getMySmsOptOut(): Promise<boolean> {
+  const me = await getCurrentTech();
+  if (!me) return false;
+  const { data } = await db().from("tech_directory").select("sms_opt_out").or(`email.ilike.${me.email.toLowerCase()},secondary_emails.cs.{${me.email.toLowerCase()}}`).maybeSingle();
+  return !!data?.sms_opt_out;
+}
+
+export async function setMySmsOptOut(optOut: boolean): Promise<{ ok: boolean }> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false };
+  await db().from("tech_directory").update({ sms_opt_out: optOut }).ilike("email", me.email.toLowerCase());
+  revalidatePath("/inbox");
+  return { ok: true };
+}
+
+// Quiet hours: 9pm–7am America/Chicago — no texts sent in this window.
+function inQuietHours(): boolean {
+  const h = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "2-digit", hour12: false }).format(new Date()));
+  return h >= 21 || h < 7;
+}
+
+// Best-effort SMS to a teammate when a note is addressed to them. Sends ONLY
+// when the master switch is on, the recipient has a phone, hasn't opted out,
+// and it isn't quiet hours. Never throws.
+async function maybeSendSms(targetEmail: string, fromName: string, body: string, urgent: boolean): Promise<void> {
+  try {
+    if (!(await getSmsEnabled())) return;
+    if (inQuietHours()) return;
+    const { data: rt } = await db()
+      .from("tech_directory")
+      .select("phone, sms_opt_out")
+      .or(`email.ilike.${targetEmail},secondary_emails.cs.{${targetEmail}}`)
+      .eq("is_active", true)
+      .maybeSingle();
+    const phone = (rt?.phone as string | null) ?? null;
+    if (!phone || rt?.sms_opt_out) return;
+
+    const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+    if (!SUPABASE_URL || !SERVICE_KEY) return;
+    const text = `${urgent ? "🚨 URGENT — " : ""}New note from ${fromName} on TPAR:\n\n"${body.slice(0, 280)}${body.length > 280 ? "…" : ""}"\n\nOpen: https://tpar-dashboard.vercel.app/inbox`;
+    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+      body: JSON.stringify({ to: phone, text, context: "team-note" }),
+    });
+  } catch { /* best-effort */ }
+}
+
 export async function postNote(_prev: PostResult, formData: FormData): Promise<PostResult> {
   const me = await getCurrentTech();
   if (!me) return { ok: false, message: "not signed in" };
@@ -184,6 +253,12 @@ export async function postNote(_prev: PostResult, formData: FormData): Promise<P
     urgent,
   });
   if (error) return { ok: false, message: error.message };
+
+  // Best-effort SMS to the recipient (gated by master switch + opt-out + quiet hours).
+  if (targetKind === "teammate" && targetEmail) {
+    const fromName = me.tech?.tech_short_name ?? me.email.split("@")[0];
+    await maybeSendSms(targetEmail, fromName, body, urgent);
+  }
 
   // Best-effort Slack ping to Danny when a teammate note is addressed to him.
   if (targetKind === "teammate" && targetEmail && isOwner(targetEmail)) {

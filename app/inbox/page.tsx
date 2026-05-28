@@ -5,20 +5,25 @@ import { PageShell } from "../../components/PageShell";
 import { NoteComposer } from "../../components/NoteComposer";
 import { NoteCard } from "../../components/NoteCard";
 import { MarkReadButton } from "../../components/MarkReadButton";
-import { listMyInbox, listRecipients } from "../notes/board-actions";
+import { SmsSettings } from "../../components/SmsSettings";
+import { listMyInbox, listRecipients, getMySmsOptOut, getSmsEnabled } from "../notes/board-actions";
 import { getCurrentTech } from "../../lib/current-tech";
+import { isOwner } from "../../lib/admin";
 
 export const metadata = { title: "Inbox · TPAR-DB" };
 export const dynamic = "force-dynamic";
 
 export default async function InboxPage() {
-  const [me, notes, recipients] = await Promise.all([
+  const [me, notes, recipients, optedOut, smsEnabled] = await Promise.all([
     getCurrentTech().catch(() => null),
     listMyInbox(),
     listRecipients(),
+    getMySmsOptOut(),
+    getSmsEnabled(),
   ]);
   const signedInAs = me?.tech?.tech_short_name ?? me?.email ?? null;
   const unreadCount = notes.filter((n) => !n.read_at).length;
+  const owner = isOwner(me?.realEmail);
 
   return (
     <PageShell
@@ -30,6 +35,8 @@ export default async function InboxPage() {
         actions: ["Read a note, then hit Mark read", "Send a note to anyone on the team with the box up top", "Attach a job or estimate if it's about a specific one"],
       }}
     >
+      <SmsSettings optedOut={optedOut} isOwner={owner} smsEnabled={smsEnabled} />
+
       <div className="mb-6">
         <NoteComposer mode="teammate" recipients={recipients} signedInAs={signedInAs} />
       </div>
