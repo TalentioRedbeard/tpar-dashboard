@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { HelpBubble, type HelpContent } from "./HelpBubble";
 import { AskBar } from "./AskBar";
+import { BackButton } from "./BackButton";
 import { ImpersonationBar } from "./ImpersonationBar";
 import { getCurrentTech } from "../lib/current-tech";
 import { isOwner } from "../lib/admin";
@@ -63,7 +64,9 @@ export async function PageShell({
             >
               ← {backLabel}
             </Link>
-          ) : null}
+          ) : (
+            <BackButton />
+          )}
           {kicker ? (
             <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-700">
               {kicker}
