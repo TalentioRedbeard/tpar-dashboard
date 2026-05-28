@@ -29,3 +29,27 @@ export function isAdmin(email: string | null | undefined): boolean {
 export function adminEmailList(): string[] {
   return [...ADMIN_EMAILS];
 }
+
+// ── Owner gate ───────────────────────────────────────────────────────────
+// Narrower than admin: the owner is just Danny. "admin" can include other
+// accounts (env allowlist or dashboard_role='admin', e.g. office managers);
+// owner-only capabilities (editing the global "?" help content) must NOT be
+// available to them. Env-overridable so the owner can change without a deploy,
+// but defaults to the single owner email.
+
+const DEFAULT_OWNERS = ["ddunlop@tulsapar.com"];
+
+const OWNER_EMAILS = (process.env.DASHBOARD_OWNER_EMAILS ?? DEFAULT_OWNERS.join(","))
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+/**
+ * Owner-only check. True only for the owner account(s) — distinct from and
+ * stricter than isAdmin(). Use for capabilities that no other account, admin
+ * or otherwise, should have.
+ */
+export function isOwner(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return OWNER_EMAILS.includes(email.toLowerCase());
+}

@@ -12,6 +12,7 @@ import { HelpBubble, type HelpContent } from "./HelpBubble";
 import { AskBar } from "./AskBar";
 import { ImpersonationBar } from "./ImpersonationBar";
 import { getCurrentTech } from "../lib/current-tech";
+import { isOwner } from "../lib/admin";
 
 export async function PageShell({
   title,
@@ -46,6 +47,9 @@ export async function PageShell({
   // auto-poll) + an Exit link.
   const me = await getCurrentTech().catch(() => null);
   const impersonating = me?.isImpersonating ? { techName: me.tech?.tech_short_name ?? "?", realEmail: me.realEmail } : null;
+  // Owner-only: can edit the "?" help content inline. Uses realEmail so it
+  // holds even while impersonating a tech via /admin/view-as.
+  const canEditHelp = isOwner(me?.realEmail);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 md:py-8">
@@ -76,7 +80,7 @@ export async function PageShell({
       </header>
       {hideAskBar ? null : <AskBar pageTitle={title} />}
       <main className={contentClassName}>{children}</main>
-      <HelpBubble content={help} />
+      <HelpBubble content={help} canEdit={canEditHelp} />
     </div>
   );
 }

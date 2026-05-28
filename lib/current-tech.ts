@@ -3,7 +3,7 @@
 
 import { db } from "./supabase";
 import { getSessionUser } from "./supabase-server";
-import { isAdmin } from "./admin";
+import { isAdmin, isOwner } from "./admin";
 import { cookies } from "next/headers";
 
 export type DashboardRole = "admin" | "manager" | "production_manager" | "tech" | null;
@@ -156,6 +156,21 @@ export async function requireWriter(): Promise<
     return { ok: false, error: "Managers are read-only on this dashboard. Ask Danny to take this action." };
   }
   return { ok: false, error: "Your account has no dashboard role assigned." };
+}
+
+/**
+ * Owner-only server-action gate. Stricter than requireWriter() — passes only
+ * for the owner account, not other admins. Use for capabilities reserved to
+ * the owner (e.g. editing the global "?" help content).
+ */
+export async function requireOwner(): Promise<
+  | { ok: true; email: string }
+  | { ok: false; error: string }
+> {
+  const user = await getSessionUser();
+  if (!user?.email) return { ok: false, error: "not signed in" };
+  if (!isOwner(user.email)) return { ok: false, error: "Only the owner can do this." };
+  return { ok: true, email: user.email };
 }
 
 // Shared helper: given the signed-in user and optional `?as=` override,
