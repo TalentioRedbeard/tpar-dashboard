@@ -9,6 +9,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { HelpBubble, type HelpContent } from "./HelpBubble";
+import { AskBar } from "./AskBar";
 import { ImpersonationBar } from "./ImpersonationBar";
 import { getCurrentTech } from "../lib/current-tech";
 
@@ -22,6 +23,7 @@ export async function PageShell({
   children,
   contentClassName = "",
   help,
+  hideAskBar = false,
 }: {
   title: string;
   description?: ReactNode;
@@ -35,6 +37,9 @@ export async function PageShell({
   /** Optional page-aware help content. Floating "?" button always shows
    *  regardless — passing this just makes the content specific. */
   help?: HelpContent;
+  /** Opt out of the persistent AI ask bar (e.g. focused form flows that
+   *  already embed AppGuide). Defaults to showing it. */
+  hideAskBar?: boolean;
 }) {
   // When the viewer is impersonating another tech, render a sticky amber
   // banner with their name + a Refresh button (since the page doesn't
@@ -69,6 +74,7 @@ export async function PageShell({
         </div>
         {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </header>
+      {hideAskBar ? null : <AskBar pageTitle={title} />}
       <main className={contentClassName}>{children}</main>
       <HelpBubble content={help} />
     </div>
