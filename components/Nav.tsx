@@ -24,6 +24,8 @@ const TOOL_ITEMS = [
   { href: "/price", label: "Price" },
   { href: "/ask",   label: "Ask" },
   { href: "/voice-notes", label: "Voice" },
+  { href: "/whiteboard", label: "Board" },
+  { href: "/inbox", label: "Inbox" },
 ];
 
 // Visible to admin + manager + production_manager — leadership review surfaces.
