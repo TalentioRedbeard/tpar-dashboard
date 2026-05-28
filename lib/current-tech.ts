@@ -26,6 +26,9 @@ export type CurrentTech = {
     is_lead: boolean;
     slack_user_id: string | null;
     notes: string | null;
+    /** This tech's own directory email. Follows impersonation (= the
+     *  viewed-as tech's email), so inbox/notes scope to the effective tech. */
+    email: string | null;
   } | null;
 };
 
@@ -63,7 +66,7 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
     if (viewAsName && viewAsName.trim()) {
       const { data: targetTech } = await supa
         .from("tech_directory")
-        .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes")
+        .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email")
         .ilike("tech_short_name", viewAsName.trim())
         .eq("is_active", true)
         .maybeSingle();
@@ -89,6 +92,7 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
             is_lead: !!(targetTech.is_lead as boolean | null),
             slack_user_id: targetTech.slack_user_id as string | null,
             notes: targetTech.notes as string | null,
+            email: (targetTech.email as string | null) ?? null,
           },
         };
       }
@@ -113,6 +117,7 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
       is_lead: !!(data.is_lead as boolean | null),
       slack_user_id: data.slack_user_id as string | null,
       notes: data.notes as string | null,
+      email: (data.email as string | null) ?? null,
     } : null,
   };
 }

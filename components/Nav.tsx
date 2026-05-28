@@ -52,13 +52,19 @@ export function Nav({
   isAdmin: showAdmin = false,
   isManager = false,
   hasTechRow = false,
+  unreadInbox = 0,
+  unreadBoard = 0,
 }: {
   userEmail: string | null;
   isTech?: boolean;
   isAdmin?: boolean;
   isManager?: boolean;
   hasTechRow?: boolean;
+  unreadInbox?: number;
+  unreadBoard?: number;
 }) {
+  const badgeFor = (href: string): number =>
+    href === "/inbox" ? unreadInbox : href === "/whiteboard" ? unreadBoard : 0;
   // Show "My day" link to anyone with a tech_directory row, regardless of
   // dashboard role. Admins (Danny, Kelsey) can intentionally visit /me without
   // being forced there.
@@ -74,7 +80,7 @@ export function Nav({
     },
     {
       title: "Tools",
-      items: TOOL_ITEMS.map((i) => ({ ...i, tone: "default" as const })),
+      items: TOOL_ITEMS.map((i) => ({ ...i, tone: "default" as const, badge: badgeFor(i.href) || undefined })),
     },
     ...(showAdmin || isManager
       ? [{
@@ -130,16 +136,24 @@ export function Nav({
             </li>
           ))}
           <li className="mx-1 h-5 w-px bg-neutral-200" aria-hidden="true" />
-          {TOOL_ITEMS.map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 text-neutral-600 transition hover:bg-brand-50 hover:text-brand-700"
-              >
-                {item.label}
-              </Link>
-            </li>
-          ))}
+          {TOOL_ITEMS.map((item) => {
+            const badge = badgeFor(item.href);
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-1.5 text-neutral-600 transition hover:bg-brand-50 hover:text-brand-700"
+                >
+                  {item.label}
+                  {badge > 0 ? (
+                    <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 py-0.5 text-[10px] font-semibold leading-none text-white">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  ) : null}
+                </Link>
+              </li>
+            );
+          })}
           {/* Leadership items visible to admin OR manager (View as / SalesAsk) */}
           {(showAdmin || isManager) ? (
             <>

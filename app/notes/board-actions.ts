@@ -29,6 +29,14 @@ export type BoardNote = {
 
 export type PostResult = { ok: true; message: string } | { ok: false; message: string };
 
+// The email an inbox/notes view should scope to. Follows "view as" — when an
+// admin is impersonating a tech, this is the impersonated tech's email, so the
+// inbox shows THAT tech's notes. Falls back to the real signed-in email.
+type Me = NonNullable<Awaited<ReturnType<typeof getCurrentTech>>>;
+function effectiveEmail(me: Me): string {
+  return (me.tech?.email ?? me.email).toLowerCase();
+}
+
 export async function listRecipients(): Promise<Recipient[]> {
   const me = await getCurrentTech();
   if (!me) return [];
@@ -66,7 +74,7 @@ export async function listMyInbox(): Promise<BoardNote[]> {
     .from("team_notes")
     .select("*")
     .eq("target_kind", "teammate")
-    .eq("target_email", me.email.toLowerCase())
+    .eq("target_email", effectiveEmail(me))
     .order("created_at", { ascending: false })
     .limit(100);
   return (data ?? []) as BoardNote[];
@@ -79,9 +87,51 @@ export async function markNoteRead(id: string): Promise<{ ok: boolean }> {
     .from("team_notes")
     .update({ read_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("target_email", me.email.toLowerCase())
+    .eq("target_email", effectiveEmail(me))
     .is("read_at", null);
   revalidatePath("/inbox");
+  return { ok: true };
+}
+
+// Count of unread inbox notes + unseen whiteboard posts for the nav badges.
+// Scoped to the effective (impersonation-aware) identity.
+export async function getUnreadCounts(): Promise<{ inbox: number; board: number }> {
+  const me = await getCurrentTech();
+  if (!me) return { inbox: 0, board: 0 };
+  const email = effectiveEmail(me);
+
+  const { count: inbox } = await db()
+    .from("team_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("target_kind", "teammate")
+    .eq("target_email", email)
+    .is("read_at", null);
+
+  const { data: seen } = await db()
+    .from("whiteboard_views")
+    .select("last_seen_at")
+    .eq("user_email", email)
+    .maybeSingle();
+  const since = (seen?.last_seen_at as string | undefined) ?? "1970-01-01T00:00:00Z";
+
+  const { count: board } = await db()
+    .from("team_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("target_kind", "whiteboard")
+    .gt("created_at", since)
+    .neq("author_email", email);
+
+  return { inbox: inbox ?? 0, board: board ?? 0 };
+}
+
+// Mark the whiteboard "seen" up to now for the current user. Skipped while
+// impersonating so previewing a tech's view doesn't clear THEIR badge.
+export async function markWhiteboardSeen(): Promise<{ ok: boolean }> {
+  const me = await getCurrentTech();
+  if (!me || me.isImpersonating) return { ok: false };
+  await db()
+    .from("whiteboard_views")
+    .upsert({ user_email: effectiveEmail(me), last_seen_at: new Date().toISOString() }, { onConflict: "user_email" });
   return { ok: true };
 }
 

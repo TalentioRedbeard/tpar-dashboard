@@ -4,6 +4,7 @@
 import { PageShell } from "../../components/PageShell";
 import { NoteComposer } from "../../components/NoteComposer";
 import { NoteCard } from "../../components/NoteCard";
+import { MarkWhiteboardSeen } from "../../components/MarkWhiteboardSeen";
 import { listWhiteboard } from "../notes/board-actions";
 import { getCurrentTech } from "../../lib/current-tech";
 
@@ -27,6 +28,7 @@ export default async function WhiteboardPage() {
         actions: ["Type in the box and hit Post", "Add tags so it's easy to find later", "Attach a job or link if it's about something specific"],
       }}
     >
+      <MarkWhiteboardSeen />
       <div className="mb-6">
         <NoteComposer mode="whiteboard" signedInAs={signedInAs} />
       </div>

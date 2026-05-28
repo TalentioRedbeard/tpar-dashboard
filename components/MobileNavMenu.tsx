@@ -19,7 +19,7 @@ import { createPortal } from "react-dom";
 
 interface NavSection {
   title: string;
-  items: Array<{ href: string; label: string; tone?: "default" | "tech" | "admin" | "manager" }>;
+  items: Array<{ href: string; label: string; tone?: "default" | "tech" | "admin" | "manager"; badge?: number }>;
 }
 
 export function MobileNavMenu({
@@ -89,9 +89,14 @@ export function MobileNavMenu({
                       <Link
                         href={item.href}
                         onClick={() => setOpen(false)}
-                        className={`block rounded-md px-3 py-2 text-sm font-medium ${toneCls}`}
+                        className={`flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium ${toneCls}`}
                       >
-                        {item.label}
+                        <span>{item.label}</span>
+                        {item.badge && item.badge > 0 ? (
+                          <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            {item.badge > 99 ? "99+" : item.badge}
+                          </span>
+                        ) : null}
                       </Link>
                     </li>
                   );

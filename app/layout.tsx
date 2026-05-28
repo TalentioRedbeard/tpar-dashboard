@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { getSessionUser } from "../lib/supabase-server";
 import { getCurrentTech } from "../lib/current-tech";
+import { getUnreadCounts } from "./notes/board-actions";
 import { Nav } from "../components/Nav";
 import { RegisterServiceWorker } from "../components/RegisterServiceWorker";
 import { InstallPrompt } from "../components/InstallPrompt";
@@ -49,6 +50,7 @@ export default async function RootLayout({
   // see the My day link so they can intentionally visit /me — but they don't
   // get redirected there. /me stays a deliberate destination.
   const hasTechRow = !!me?.tech;
+  const counts = user ? await getUnreadCounts().catch(() => ({ inbox: 0, board: 0 })) : { inbox: 0, board: 0 };
 
   return (
     <html
@@ -63,6 +65,8 @@ export default async function RootLayout({
             isAdmin={isAdmin}
             isManager={isManager}
             hasTechRow={hasTechRow}
+            unreadInbox={counts.inbox}
+            unreadBoard={counts.board}
           />
         )}
         {me?.isImpersonating && me.tech ? (
