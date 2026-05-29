@@ -10,6 +10,7 @@ import { getNeedsForJob } from "../../shopping/actions";
 import { listVoiceNotesForJob } from "../../voice-notes/actions";
 import { getFiredTriggersForJob } from "./trigger-actions";
 import { getBriefingForJob } from "./briefing-actions";
+import { listPinnedEmailsForJob } from "../../customer/[id]/email-actions";
 import { TriggerForms } from "./TriggerForms";
 import { JobBriefingCard } from "../../../components/JobBriefingCard";
 import { PageShell } from "../../../components/PageShell";
@@ -190,7 +191,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     }
   }
 
-  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes, briefing, provJobRawRes] = await Promise.all([
+  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes, briefing, pinnedForJob, provJobRawRes] = await Promise.all([
     customerId
       ? supabase
           .from("communication_events")
@@ -210,6 +211,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     getFiredTriggersForJob(id),
     listVoiceNotesForJob(id),
     getBriefingForJob(id),
+    listPinnedEmailsForJob(id, customerId),
     // Provenance probe — single hcp_jobs_raw row gives us last_synced_at +
     // whether HCP notes are present + the linked original_estimate_id.
     supabase.from("hcp_jobs_raw").select("last_synced_at, hcp_notes, original_estimate_id").eq("hcp_job_id", id).maybeSingle(),
@@ -339,7 +341,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         ) : null
       }
     >
-      <JobBriefingCard hcpJobId={id} briefing={briefing} />
+      <JobBriefingCard hcpJobId={id} briefing={briefing} pinnedEmails={pinnedForJob} />
       <div className="space-y-10">
         <Section title="At a glance">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

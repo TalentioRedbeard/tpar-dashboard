@@ -127,6 +127,42 @@ export async function listPinnedEmails(hcpCustomerId: string): Promise<PinnedEma
   }));
 }
 
+// Pinned emails relevant to a specific job: customer-level pins (hcp_job_id
+// null) + pins explicitly attached to this job. Viewer-scoped like the
+// customer list. Used on the job page + to feed the Job Briefing.
+export async function listPinnedEmailsForJob(hcpJobId: string, hcpCustomerId: string | null): Promise<PinnedEmail[]> {
+  if (!hcpCustomerId) return [];
+  const me = await getCurrentTech().catch(() => null);
+  if (!me) return [];
+  const leadership = me.isAdmin || me.isManager;
+
+  let qb = db()
+    .from("email_pins")
+    .select("id, email_id, hcp_job_id, visibility, handling_note, pinned_at, emails_received(from_address, from_name, subject, ai_summary, snippet, received_at)")
+    .eq("hcp_customer_id", hcpCustomerId)
+    .or(`hcp_job_id.is.null,hcp_job_id.eq.${hcpJobId}`)
+    .order("pinned_at", { ascending: false });
+  if (!leadership) qb = qb.eq("visibility", "tech");
+
+  const { data } = await qb;
+  return ((data ?? []) as unknown as Array<{
+    id: string; email_id: string; hcp_job_id: string | null; visibility: Visibility; handling_note: string | null;
+    emails_received: EmailRow | null;
+  }>).map((p) => ({
+    pinId: p.id,
+    emailId: p.email_id,
+    fromAddress: p.emails_received?.from_address ?? null,
+    fromName: p.emails_received?.from_name ?? null,
+    subject: p.emails_received?.subject ?? null,
+    aiSummary: p.emails_received?.ai_summary ?? null,
+    snippet: p.emails_received?.snippet ?? null,
+    receivedAt: p.emails_received?.received_at ?? null,
+    visibility: p.visibility,
+    handlingNote: p.handling_note,
+    hcpJobId: p.hcp_job_id,
+  }));
+}
+
 export async function pinEmail(input: {
   emailId: string; hcpCustomerId: string; hcpJobId?: string | null; visibility: Visibility; handlingNote?: string;
 }): Promise<{ ok: boolean; error?: string }> {

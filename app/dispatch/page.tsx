@@ -550,7 +550,7 @@ export default async function DispatchPage({
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
           <div className="text-xs uppercase tracking-wide text-emerald-700">Today recognized</div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-emerald-900">{fmtMoney(todayRecognized)}</div>
-          <div className="text-xs text-emerald-700/80">paid invoices · gravy</div>
+          <div className="text-xs text-emerald-700/80">paid invoices</div>
         </div>
         <Link href="/admin/ar" className="rounded-2xl border border-amber-200 bg-amber-50 p-3 hover:border-amber-400 hover:shadow-sm">
           <div className="text-xs uppercase tracking-wide text-amber-700">Open AR</div>
