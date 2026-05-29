@@ -18,6 +18,7 @@ import { StartAppointmentButton } from "../../components/StartAppointmentButton"
 import { ClockSuggestionBanner } from "../../components/ClockSuggestionBanner";
 import { LifecycleButtons } from "../../components/LifecycleButtons";
 import { getCurrentState as getClockState } from "../time/actions";
+import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
 import { getPendingSuggestions } from "../time/suggestions";
 
 export const metadata = { title: "My day · TPAR-DB" };
@@ -181,6 +182,9 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       if (row.invoice_number) invoiceByJob.set(row.hcp_job_id, row.invoice_number);
     }
   }
+
+  // Which of today's jobs have a briefing this tech hasn't reviewed yet?
+  const unreviewedBriefingJobs = new Set(await getUnreviewedBriefingJobs(apptJobIds));
 
   // Build map: hcp_job_id → list of trigger_numbers fired today
   const lifecycleByJob = new Map<string, number[]>();
@@ -416,6 +420,15 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                         <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200" title={`Lead: ${a.tech_primary_name ?? "—"}`}>
                           as helper
                         </span>
+                      ) : null}
+                      {jobId && unreviewedBriefingJobs.has(jobId) ? (
+                        <Link
+                          href={`/job/${jobId}`}
+                          className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-inset ring-amber-300 hover:bg-amber-200"
+                          title="The owner left a briefing for this job — review it before you head out"
+                        >
+                          📋 Briefing — review
+                        </Link>
                       ) : null}
                     </div>
                     <span className="text-xs text-neutral-500">

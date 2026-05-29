@@ -67,6 +67,45 @@ export async function getBriefingForJob(hcpJobId: string): Promise<Briefing | nu
   };
 }
 
+// Batch: of the given jobs, which have a briefing the current tech hasn't
+// reviewed? Two queries total (latest job-note per job, then this tech's
+// reviews of those notes) — used for the /me day-view badge.
+export async function getUnreviewedBriefingJobs(hcpJobIds: string[]): Promise<string[]> {
+  if (hcpJobIds.length === 0) return [];
+  const email = await reviewerEmail();
+  if (!email) return [];
+  const supa = db();
+
+  const { data: notes } = await supa
+    .from("tech_voice_notes")
+    .select("hcp_job_id, id, ts")
+    .in("hcp_job_id", hcpJobIds)
+    .eq("intent_tag", "job-note")
+    .not("transcript", "is", null)
+    .order("ts", { ascending: false });
+
+  // Latest job-note voice note per job (first seen wins — query is ts desc).
+  const latestByJob = new Map<string, string>();
+  for (const n of (notes ?? []) as Array<{ hcp_job_id: string; id: string }>) {
+    if (!latestByJob.has(n.hcp_job_id)) latestByJob.set(n.hcp_job_id, String(n.id));
+  }
+  if (latestByJob.size === 0) return [];
+
+  const noteIds = [...latestByJob.values()];
+  const { data: revs } = await supa
+    .from("job_briefing_reviews")
+    .select("voice_note_id")
+    .eq("reviewed_by_email", email)
+    .in("voice_note_id", noteIds);
+  const reviewed = new Set((revs ?? []).map((r) => String((r as { voice_note_id: string }).voice_note_id)));
+
+  const unreviewed: string[] = [];
+  for (const [jobId, noteId] of latestByJob.entries()) {
+    if (!reviewed.has(noteId)) unreviewed.push(jobId);
+  }
+  return unreviewed;
+}
+
 export async function markBriefingReviewed(hcpJobId: string, voiceNoteId: string): Promise<{ ok: boolean; error?: string }> {
   const me = await getCurrentTech().catch(() => null);
   if (!me) return { ok: false, error: "not signed in" };
