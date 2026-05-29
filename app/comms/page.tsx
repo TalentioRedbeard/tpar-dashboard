@@ -55,6 +55,11 @@ export default async function CommsPage({
   // so we filter on shortName here.
   const effective = mineOnly ? await getEffectiveTechName(asOverride) : null;
   const effectiveTechName = effective?.shortName ?? null;
+  // A search is a customer/topic lookup — show ALL matching comms across the
+  // team so the assigned tech can review the full conversation (e.g. inbound
+  // calls fielded by Madisson), not just their own. The tech filter only
+  // narrows the default (unsearched) feed.
+  const techFilterSuspended = !!q && (!!effectiveTechName || !!tech);
 
   const me = await getCurrentTech().catch(() => null);
   const canWrite = !!me?.canWrite;
@@ -66,8 +71,10 @@ export default async function CommsPage({
     .select("id, occurred_at, channel, direction, hcp_customer_id, customer_name, tech_short_name, importance, sentiment, summary, flags, acked_at, raw_metadata", { count: "exact" });
   if (q) query = query.or(`customer_name.ilike.%${q}%,summary.ilike.%${q}%`);
   if (channel) query = query.eq("channel", channel);
-  if (effectiveTechName) query = query.eq("tech_short_name", effectiveTechName);
-  else if (tech) query = query.eq("tech_short_name", tech);
+  if (!q) {
+    if (effectiveTechName) query = query.eq("tech_short_name", effectiveTechName);
+    else if (tech) query = query.eq("tech_short_name", tech);
+  }
   if (minImp > 0) query = query.gte("importance", minImp);
   // Hide noise (importance=0) unless explicitly included.
   if (!includeNoise && minImp === 0) query = query.gt("importance", 0);
@@ -85,8 +92,10 @@ export default async function CommsPage({
     .limit(500);
   if (q) statsQuery = statsQuery.or(`customer_name.ilike.%${q}%,summary.ilike.%${q}%`);
   if (channel) statsQuery = statsQuery.eq("channel", channel);
-  if (effectiveTechName) statsQuery = statsQuery.eq("tech_short_name", effectiveTechName);
-  else if (tech) statsQuery = statsQuery.eq("tech_short_name", tech);
+  if (!q) {
+    if (effectiveTechName) statsQuery = statsQuery.eq("tech_short_name", effectiveTechName);
+    else if (tech) statsQuery = statsQuery.eq("tech_short_name", tech);
+  }
   if (minImp > 0) statsQuery = statsQuery.gte("importance", minImp);
   if (!includeNoise && minImp === 0) statsQuery = statsQuery.gt("importance", 0);
   const { data: statsRows } = await statsQuery;
@@ -283,6 +292,11 @@ export default async function CommsPage({
         </button>
       </FilterBar>
 
+      {techFilterSuspended ? (
+        <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+          Showing <strong>all</strong> comms matching “{q}” across the team — the tech filter is paused during search so you see the customer&apos;s full conversation, including inbound calls others handled.
+        </div>
+      ) : null}
       <Table columns={columns} rows={rows} emptyText="No comms match those filters." />
       <Pagination page={page} pageSize={PAGE_SIZE} totalCount={count ?? null} baseHref={baseHref} />
     </PageShell>
