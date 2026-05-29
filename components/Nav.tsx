@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { LogoMenu } from "./LogoMenu";
 import { MobileNavMenu } from "./MobileNavMenu";
+import { FlagRibbon } from "./FlagRibbon";
 
 // Full nav set — used by the logo dropdown + mobile drawer (not the banner row).
 const NAV_ITEMS = [
@@ -57,11 +58,6 @@ const ADMIN_ITEMS = [
   { href: "/snap",            label: "Snap" },
   { href: "/admin",           label: "Admin home" },
 ];
-
-// The flag-ribbon trim under the banner — repeating gold/cream/navy/red bands,
-// echoing the flowing bands of the Tulsa flag.
-const RIBBON =
-  "repeating-linear-gradient(90deg, #e8a200 0 16px, #f7f2e4 16px 20px, #16335c 20px 34px, #c8102e 34px 38px, #f7f2e4 38px 42px)";
 
 export function Nav({
   userEmail,
@@ -181,8 +177,8 @@ export function Nav({
         <MobileNavMenu sections={mobileSections} userEmail={userEmail} />
       </div>
 
-      {/* Flag-ribbon trim */}
-      <div aria-hidden="true" className="h-1.5 w-full" style={{ backgroundImage: RIBBON }} />
+      {/* Flag-ribbon trim — flowing Tulsa-flag bands */}
+      <FlagRibbon />
     </nav>
   );
 }
