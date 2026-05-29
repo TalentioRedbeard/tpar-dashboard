@@ -12,6 +12,8 @@ import { getOpenNeeds, getRecentlyCompletedNeeds, getResearchForNeed, type NeedR
 import { LogNeedForm } from "./LogNeedForm";
 import { NeedActions } from "./NeedActions";
 import { ResearchButton } from "./ResearchButton";
+import { listDistributors } from "./distributor-actions";
+import { DistributorDirectory, type NeedLine } from "@/components/DistributorDirectory";
 
 export const dynamic = "force-dynamic";
 
@@ -99,9 +101,10 @@ export default async function ShoppingPage({
   const params = await searchParams;
   const prefillJob = params?.prefill_job ?? "";
 
-  const [open, recentDone] = await Promise.all([
+  const [open, recentDone, distributors] = await Promise.all([
     getOpenNeeds({ limit: 100 }),
     getRecentlyCompletedNeeds(10),
+    listDistributors(),
   ]);
 
   // Load any existing research results for the open needs (parallel)
@@ -120,6 +123,12 @@ export default async function ShoppingPage({
 
   const byUrgency = (urg: Urgency) => sortedOpen.filter((n) => n.urgency === urg);
 
+  // Prefill the per-vendor order/quote email with the needs that actually need buying.
+  const orderableNeeds: NeedLine[] = sortedOpen
+    .filter((n) => n.urgency === "asap" || n.urgency === "today" || n.urgency === "this_week")
+    .slice(0, 20)
+    .map((n) => ({ qty: n.qty, item: n.item_description }));
+
   return (
     <PageShell
       kicker="Procurement"
@@ -131,6 +140,20 @@ export default async function ShoppingPage({
         </span>
       }
     >
+      <Section
+        title="Suppliers"
+        description="Distributor contacts + one-tap order / quote emails. Admins can add or edit."
+      >
+        <DistributorDirectory
+          distributors={distributors}
+          openNeeds={orderableNeeds}
+          canEdit={me.isAdmin}
+          signedInName={me.tech?.hcp_full_name ?? me.tech?.tech_short_name ?? ""}
+        />
+      </Section>
+
+      <div className="my-6" />
+
       <Section title="Log a new need">
         <LogNeedForm canWrite={me.canWrite} defaultJobId={prefillJob} />
       </Section>
