@@ -9,7 +9,9 @@ import { addJobNote } from "../../../lib/notes-actions";
 import { getNeedsForJob } from "../../shopping/actions";
 import { listVoiceNotesForJob } from "../../voice-notes/actions";
 import { getFiredTriggersForJob } from "./trigger-actions";
+import { getBriefingForJob } from "./briefing-actions";
 import { TriggerForms } from "./TriggerForms";
+import { JobBriefingCard } from "../../../components/JobBriefingCard";
 import { PageShell } from "../../../components/PageShell";
 import { getJob360, resolveJobIdentifier, jobRevenueDollars, jobDueDollars } from "@/lib/typed-db/job-360";
 import { redirect } from "next/navigation";
@@ -188,7 +190,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     }
   }
 
-  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes, provJobRawRes] = await Promise.all([
+  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes, briefing, provJobRawRes] = await Promise.all([
     customerId
       ? supabase
           .from("communication_events")
@@ -207,6 +209,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     getNeedsForJob(id),
     getFiredTriggersForJob(id),
     listVoiceNotesForJob(id),
+    getBriefingForJob(id),
     // Provenance probe — single hcp_jobs_raw row gives us last_synced_at +
     // whether HCP notes are present + the linked original_estimate_id.
     supabase.from("hcp_jobs_raw").select("last_synced_at, hcp_notes, original_estimate_id").eq("hcp_job_id", id).maybeSingle(),
@@ -336,6 +339,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         ) : null
       }
     >
+      <JobBriefingCard hcpJobId={id} briefing={briefing} />
       <div className="space-y-10">
         <Section title="At a glance">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -565,6 +569,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             appointmentId={null}
             firedTriggers={firedTriggers}
             canWrite={canWrite}
+            briefing={briefing}
           />
           {firedTriggers.length > 0 && (
             <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50/50 p-3">

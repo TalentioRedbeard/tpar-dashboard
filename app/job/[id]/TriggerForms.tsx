@@ -12,6 +12,7 @@ import {
   fireOnMyWay, firePresent, fireFinishWork, fireCollectDone,
   type CustomerDisposition, type PaymentMethod, type FiredTrigger,
 } from "./trigger-actions";
+import { markBriefingReviewed, type Briefing } from "./briefing-actions";
 
 const DISPOSITION_OPTIONS: Array<{ value: CustomerDisposition; label: string; emoji: string }> = [
   { value: "approved_now",       label: "Approved — pay now",      emoji: "✅" },
@@ -40,12 +41,14 @@ export function TriggerForms({
   appointmentId,
   firedTriggers,
   canWrite,
+  briefing = null,
 }: {
   hcpJobId: string;
   hcpCustomerId: string | null;
   appointmentId: string | null;
   firedTriggers: FiredTrigger[];
   canWrite: boolean;
+  briefing?: Briefing | null;
 }) {
   const [openForm, setOpenForm] = useState<2 | 5 | 6 | 7 | null>(null);
 
@@ -102,6 +105,7 @@ export function TriggerForms({
       {openForm === 2 && (
         <OnMyWayForm
           hcpJobId={hcpJobId} hcpCustomerId={hcpCustomerId} appointmentId={appointmentId}
+          briefing={briefing}
           onClose={() => setOpenForm(null)}
         />
       )}
@@ -154,9 +158,9 @@ function TriggerButton({
 
 // ─── Form: #2 On My Way ────────────────────────────────────────────────
 function OnMyWayForm({
-  hcpJobId, hcpCustomerId, appointmentId, onClose,
+  hcpJobId, hcpCustomerId, appointmentId, briefing, onClose,
 }: {
-  hcpJobId: string; hcpCustomerId: string | null; appointmentId: string | null; onClose: () => void;
+  hcpJobId: string; hcpCustomerId: string | null; appointmentId: string | null; briefing: Briefing | null; onClose: () => void;
 }) {
   const [customerCalled, setCustomerCalled] = useState(true);
   const [notes, setNotes] = useState("");
@@ -181,6 +185,7 @@ function OnMyWayForm({
             });
           }}
         >
+          {briefing ? <OmwBriefingPrompt hcpJobId={hcpJobId} briefing={briefing} /> : null}
           <Checkbox checked={customerCalled} onChange={setCustomerCalled} label="Called/texted the customer about ETA" />
           <NotesField value={notes} onChange={setNotes} placeholder="Anything about route, notes for self" />
           <SubmitRow isPending={isPending} error={error} label="Log On-My-Way" />
@@ -384,6 +389,38 @@ function CollectDoneForm({
         </form>
       )}
     </Wrapper>
+  );
+}
+
+// ─── Job-briefing prompt (soft gate before heading out / calling) ──────
+function OmwBriefingPrompt({ hcpJobId, briefing }: { hcpJobId: string; briefing: Briefing }) {
+  const [reviewed, setReviewed] = useState(briefing.reviewedByMe);
+  const [expanded, setExpanded] = useState(!briefing.reviewedByMe);
+  const [pending, startTransition] = useTransition();
+  return (
+    <div className={`rounded-xl border-2 p-3 ${reviewed ? "border-emerald-300 bg-emerald-50" : "border-amber-400 bg-amber-50"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-neutral-900">
+          📋 {reviewed ? "Job briefing reviewed ✓" : "Review the job briefing before you head out / call"}
+        </span>
+        <button type="button" onClick={() => setExpanded((v) => !v)} className="shrink-0 text-xs text-neutral-500 hover:text-neutral-800">
+          {expanded ? "hide" : "show"}
+        </button>
+      </div>
+      {expanded ? (
+        <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-neutral-700">{briefing.transcript}</p>
+      ) : null}
+      {!reviewed ? (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => startTransition(async () => { const r = await markBriefingReviewed(hcpJobId, briefing.voiceNoteId); if (r.ok) setReviewed(true); })}
+          className="mt-2 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+        >
+          {pending ? "Saving…" : "I've reviewed it ✓"}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
