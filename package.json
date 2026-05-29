@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "lint": "eslint app components lib",
+    "build": "eslint app components lib && next build",
     "start": "next start"
   },
   "dependencies": {
@@ -21,6 +22,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@typescript-eslint/parser": "^8.60.0",
+    "eslint": "^9.39.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
