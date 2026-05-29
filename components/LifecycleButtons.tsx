@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { fireLifecycleTrigger, getLifecycleHcpStatus, type HcpMirrorStatus } from "@/app/me/lifecycle-actions";
+import { captureTechLocation } from "@/lib/capture-tech-location";
 
 type Props = {
   hcpJobId: string;
@@ -37,6 +38,18 @@ const BUTTONS: Array<{
 // Trigger numbers that mirror to HCP via the bot — show sync status pill
 // for these only.
 const HCP_MIRRORED_TRIGGERS = new Set<TriggerNum>([2, 3, 6]);
+
+// Universal action_type per trigger # for the tech_locations log. So we can
+// later answer "where was the Start button pressed for this job?".
+const TRIGGER_ACTION: Record<TriggerNum, string> = {
+  1: "trigger_1",
+  2: "omw",
+  3: "start",
+  4: "build_estimate",
+  5: "present",
+  6: "finish",
+  7: "done",
+};
 
 type MirrorEntry = { firedAt: string; status: HcpMirrorStatus };
 
@@ -108,6 +121,9 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
   }, [mirror, hcpJobId]);
 
   const onFire = (triggerNumber: TriggerNum) => {
+    // Universal location ping for the per-action audit + dispatch map
+    // (fire-and-forget). Pairs the button press with the tech's GPS.
+    captureTechLocation(TRIGGER_ACTION[triggerNumber], { hcpJobId });
     startTransition(async () => {
       setError(null);
       const res = await fireLifecycleTrigger({

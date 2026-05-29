@@ -5,6 +5,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { clockIn, clockOut, type CurrentClockState } from "@/app/time/actions";
+import { captureTechLocation } from "@/lib/capture-tech-location";
 
 type Props = {
   initial: CurrentClockState;
@@ -75,6 +76,10 @@ export function ClockButton({ initial, techShortName }: Props) {
     setError(null);
     const location = await captureLocation();
     const client_reported_at = new Date().toISOString();
+    // Universal tech_locations log (fire-and-forget). The second GPS read
+    // inside captureTechLocation uses the cached position from the call
+    // above (maximumAge 30s), so it's effectively free.
+    captureTechLocation(isClockedIn ? "clock_out" : "clock_in");
     startTransition(async () => {
       const result =
         state.state === "clocked-in"
