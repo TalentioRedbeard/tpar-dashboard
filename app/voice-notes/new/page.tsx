@@ -7,7 +7,8 @@ import Link from "next/link";
 import { getCurrentTech } from "@/lib/current-tech";
 import { db } from "@/lib/supabase";
 import { PageShell } from "@/components/PageShell";
-import { VoiceNoteRecorder, TECH_INTENTS, LEADERSHIP_INTENTS, PRIMARY_INTENTS } from "../VoiceNoteRecorder";
+import { VoiceNoteRecorder } from "../VoiceNoteRecorder";
+import { TECH_INTENTS, LEADERSHIP_INTENTS, PRIMARY_INTENTS } from "../intents";
 import { VoiceNoteJobPicker } from "./VoiceNoteJobPicker";
 import { resolveJobIdentifier } from "@/lib/typed-db/job-360";
 
