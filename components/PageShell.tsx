@@ -53,7 +53,7 @@ export async function PageShell({
   const canEditHelp = isOwner(me?.realEmail);
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 md:py-8">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6 md:py-8">
       {impersonating ? <ImpersonationBar techName={impersonating.techName} realEmail={impersonating.realEmail} /> : null}
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>

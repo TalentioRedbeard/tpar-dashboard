@@ -7,8 +7,9 @@ import Link from "next/link";
 import { LogoMenu } from "./LogoMenu";
 import { MobileNavMenu } from "./MobileNavMenu";
 
+// Full nav set — used by the logo dropdown + mobile drawer (not the banner row).
 const NAV_ITEMS = [
-  { href: "/",          label: "Today" },
+  { href: "/",          label: "Home" },
   { href: "/time",      label: "Time" },
   { href: "/customers", label: "Customers" },
   { href: "/jobs",      label: "Jobs" },
@@ -18,6 +19,18 @@ const NAV_ITEMS = [
   { href: "/schedule",  label: "Schedule" },
   { href: "/shopping",  label: "Shopping" },
   { href: "/reports",   label: "Reports" },
+];
+
+// The few daily-driver links shown directly on the desktop banner. Everything
+// else (Home, Time, Shopping, Reports, tools, leadership, admin) lives in the
+// logo dropdown, so the banner stays clean instead of overflowing.
+const PRIMARY_ITEMS = [
+  { href: "/customers", label: "Customers" },
+  { href: "/jobs",      label: "Jobs" },
+  { href: "/estimates", label: "Estimates" },
+  { href: "/comms",     label: "Comms" },
+  { href: "/dispatch",  label: "Dispatch" },
+  { href: "/schedule",  label: "Schedule" },
 ];
 
 const TOOL_ITEMS = [
@@ -101,12 +114,13 @@ export function Nav({
 
   return (
     <nav className="sticky top-0 z-30 bg-gold-500 shadow-sm">
-      <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-3 py-2.5 md:gap-4 md:px-6 md:py-3">
+      <div className="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2.5 md:gap-4 md:px-6 md:py-3">
         {/* Logo doubles as the full-app menu (red dropdown). */}
         <LogoMenu sections={mobileSections} />
 
-        {/* Desktop horizontal nav — hidden on phones */}
-        <ul className="ml-2 hidden flex-1 items-center gap-1 overflow-x-auto text-sm md:flex">
+        {/* Desktop banner — a few daily-driver links; everything else lives in
+            the logo dropdown (left), so the banner stays clean. */}
+        <ul className="ml-2 hidden flex-1 items-center gap-1.5 text-sm md:flex">
           {showMyDay ? (
             <li>
               <Link
@@ -117,7 +131,7 @@ export function Nav({
               </Link>
             </li>
           ) : null}
-          {NAV_ITEMS.map((item) => (
+          {PRIMARY_ITEMS.map((item) => (
             <li key={item.href}>
               <Link
                 href={item.href}
@@ -127,69 +141,6 @@ export function Nav({
               </Link>
             </li>
           ))}
-          <li className="mx-1 h-5 w-px bg-navy-900/25" aria-hidden="true" />
-          {TOOL_ITEMS.map((item) => {
-            const badge = badgeFor(item.href);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-1.5 text-navy-800 transition hover:bg-gold-400"
-                >
-                  {item.label}
-                  {badge > 0 ? (
-                    <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-flagred-600 px-1 py-0.5 text-[10px] font-semibold leading-none text-white">
-                      {badge > 99 ? "99+" : badge}
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
-            );
-          })}
-          {(showAdmin || isManager) ? (
-            <>
-              {LEADERSHIP_ITEMS.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 font-medium text-flagred-700 transition hover:bg-gold-400"
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </>
-          ) : null}
-          {showAdmin ? (
-            <>
-              {ADMIN_ITEMS.slice(0, 2).map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 font-medium text-flagred-700 transition hover:bg-gold-400"
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-              <li>
-                <Link
-                  href="/admin"
-                  className="inline-block whitespace-nowrap rounded-md bg-flagred-600 px-3 py-1.5 font-medium text-white ring-1 ring-inset ring-flagred-700 transition hover:bg-flagred-700"
-                >
-                  Admin
-                </Link>
-              </li>
-            </>
-          ) : null}
-          {isManager ? (
-            <li
-              title="Manager — full read access; writes are admin-only."
-              className="inline-block whitespace-nowrap rounded-md bg-navy-800 px-3 py-1.5 font-medium text-white ring-1 ring-inset ring-navy-900/40"
-            >
-              Manager · read-only
-            </li>
-          ) : null}
         </ul>
 
         {/* Mobile spacer pushes hamburger + email to the right */}
