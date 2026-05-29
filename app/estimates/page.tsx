@@ -6,6 +6,7 @@ import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { Table, StatusPill, fmtMoney, fmtDateShort, type Column } from "../../components/Table";
 import { StatCard } from "../../components/ui/StatCard";
+import { getCurrentTech } from "../../lib/current-tech";
 
 export const metadata = { title: "Estimates · TPAR-DB" };
 
@@ -36,6 +37,11 @@ export default async function EstimatesPage() {
     .order("created_at", { ascending: false })
     .limit(200);
   const rows = (data ?? []) as EstRow[];
+
+  // "Create estimate" is admin/manager-gated (matches /dispatch/new-estimate),
+  // so only surface the button to those roles.
+  const me = await getCurrentTech().catch(() => null);
+  const canCreate = !!(me?.isAdmin || me?.isManager);
 
   // Status rollup
   const byStatus = new Map<string, number>();
@@ -90,6 +96,14 @@ export default async function EstimatesPage() {
     <PageShell
       title="Estimates"
       description="Drafts, previewed, approved, pushed-to-HCP, and archived estimates from Tool 3."
+      actions={canCreate ? (
+        <Link
+          href="/dispatch/new-estimate"
+          className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
+        >
+          + Create Estimate(s)
+        </Link>
+      ) : undefined}
     >
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
         {STATUSES.map((s) => {

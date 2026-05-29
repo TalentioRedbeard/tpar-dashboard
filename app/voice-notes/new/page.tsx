@@ -18,7 +18,7 @@ export default async function NewVoiceNotePage({
 }: {
   searchParams: Promise<{ job?: string; customer?: string; intent?: string }>;
 }) {
-  const me = await getCurrentTech();
+  const me = await getCurrentTech().catch(() => null);
   if (!me) redirect("/login?from=/voice-notes/new");
 
   const params = await searchParams;
@@ -39,19 +39,26 @@ export default async function NewVoiceNotePage({
   let hcpJobId: string | undefined = undefined;
   let attached: { label: string; href: string } | null = null;
   if (jobInput) {
-    const resolved = await resolveJobIdentifier(jobInput);
-    if (resolved.kind === "hcp_id" || resolved.kind === "invoice") {
-      const row = resolved.row as Record<string, unknown>;
-      hcpJobId = row.hcp_job_id as string;
-      const customer = (row.customer_name as string | null) ?? "(unknown)";
-      const invoice = (row.invoice_number as string | null) ?? "—";
-      attached = {
-        label: `${customer} — invoice ${invoice}`,
-        href: `/job/${hcpJobId}`,
-      };
+    // Wrapped so a resolver hiccup never 500s the page — it just falls back to
+    // a standalone note. (Align Design, for instance, is an upcoming
+    // appointment not yet in job_360, so it resolves to "none" — that's fine.)
+    try {
+      const resolved = await resolveJobIdentifier(jobInput);
+      if (resolved.kind === "hcp_id" || resolved.kind === "invoice") {
+        const row = resolved.row as Record<string, unknown>;
+        hcpJobId = row.hcp_job_id as string;
+        const customer = (row.customer_name as string | null) ?? "(unknown)";
+        const invoice = (row.invoice_number as string | null) ?? "—";
+        attached = {
+          label: `${customer} — invoice ${invoice}`,
+          href: `/job/${hcpJobId}`,
+        };
+      }
+      // "invoice_multiple" / "none" → leave unattached; recorder saves a
+      // standalone note (still useful).
+    } catch {
+      // Resolver failed — proceed as a standalone note rather than erroring.
     }
-    // If resolved.kind is "invoice_multiple" or "none", leave hcpJobId undefined.
-    // The recorder will save as a standalone note (still useful).
   }
   if (!attached && hcpCustomerId) {
     const supa = db();
