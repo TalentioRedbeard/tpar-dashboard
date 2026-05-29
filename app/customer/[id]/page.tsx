@@ -287,6 +287,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
   const cust = c.data as Record<string, unknown>;
 
+  // Display-name fallback. Some customers have a null name in customer_360 (an
+  // HCP record with only a phone/email). Never show the raw cus_ id as the name.
+  const displayName =
+    ((cust.name as string | null)?.trim()) ||
+    [cust.first_name, cust.last_name].map((v) => ((v as string | null) ?? "").trim()).filter(Boolean).join(" ") ||
+    ((cust.email as string | null)?.trim()) ||
+    "Unnamed customer";
+
   // Curated inbox-email pins for this customer (viewer-scoped inside the action).
   const owner = isOwner(me?.realEmail);
   const pinnedEmails = await listPinnedEmails(id);
@@ -294,7 +302,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   return (
     <PageShell
       kicker="Customer"
-      title={(cust.name as string) ?? id}
+      title={displayName}
       description={
         <span className="font-mono text-xs text-neutral-500">{id}</span>
       }
@@ -329,6 +337,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             >
               📞 Queue callback
             </Link>
+            {owner ? (
+              <a
+                href="#customer-emails"
+                className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+              >
+                📎 Attach email
+              </a>
+            ) : null}
             <span className="ml-auto text-[10px] text-neutral-400">
               Both land in this customer&apos;s comms thread.
             </span>
@@ -748,9 +764,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <ProvenanceCard items={provenanceItems} />
 
         {(owner || pinnedEmails.length > 0) ? (
-          <Section title="Emails (from your inbox)">
-            <CustomerEmails hcpCustomerId={id} isOwner={owner} pinned={pinnedEmails} />
-          </Section>
+          <div id="customer-emails" className="scroll-mt-24">
+            <Section title="Emails (from your inbox)">
+              <CustomerEmails hcpCustomerId={id} isOwner={owner} pinned={pinnedEmails} />
+            </Section>
+          </div>
         ) : null}
 
         <Section title="Recent communications">
