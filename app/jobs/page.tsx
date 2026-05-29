@@ -70,7 +70,7 @@ type JobRow = {
 export default async function JobsListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; include_internal?: string; mine?: string; as?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; include_internal?: string; mine?: string; as?: string; page?: string; full_history?: string }>;
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
@@ -79,6 +79,9 @@ export default async function JobsListPage({
   const outstandingOnly = params.outstanding === "1";
   const includeInternal = params.include_internal === "1";
   const mineOnly = params.mine === "1";
+  // "Search full history" widens the data source from job_360 (last ~90 days)
+  // to appointments_master (full history). Only meaningful with a search q.
+  const fullHistory = params.full_history === "1" && (params.q ?? "").trim().length > 0;
   const asOverride = (params.as ?? "").trim() || null;
   const page = Math.max(1, Number(params.page ?? "1"));
 
@@ -124,22 +127,80 @@ export default async function JobsListPage({
     query = query.not("hcp_customer_id", "in", '("cus_9cf8cc5b02e1430a85288b034763cc19","cus_386a644b8054483788825c86c1b13b9c")');
   }
 
-  const { data, count } = await query
-    .order("job_date", { ascending: false, nullsFirst: false })
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-  const rows = (data ?? []) as JobRow[];
+  let rows: JobRow[];
+  let count: number | null;
 
-  // HCP fallback: if our DB returns 0 hits AND the query looks like an HCP
-  // estimate number (all digits, 6-9 chars), live-lookup HCP and redirect
-  // to the matching job. Cuts the "I pasted the number off the HCP page,
-  // why doesn't it find anything" friction.
-  const looksLikeHcpNumber = /^\d{6,9}$/.test(q);
-  if (rows.length === 0 && (count ?? 0) === 0 && looksLikeHcpNumber) {
-    const live = await liveLookupHcpEstimate(q);
-    if (live?.hcp_job_id) {
-      // Found in HCP — go straight to the job page. Tag from=hcp-estimate
-      // so /job/[id] could surface a banner (future).
-      redirect(`/job/${live.hcp_job_id}?from=hcp-estimate&estimate=${q}`);
+  if (fullHistory) {
+    // Full-history search: query appointments_master (all-time appointments,
+    // ~2,900 rows) and dedupe by hcp_job_id, keeping the most recent
+    // appointment per job. Lets users find work that aged out of job_360's
+    // 90-day window. Some columns aren't available here (no due_amount,
+    // gross_margin_pct, on_time, gps_matched, invoice_number) — they render
+    // as "—" or "n/a" in the table.
+    // Keep the DB query simple (avoids Supabase's "instantiation excessively
+    // deep" TS error with multiple chained .not()), then JS-filter the rows
+    // for internal/test customers.
+    let apptQuery = supa
+      .from("appointments_master")
+      .select("hcp_job_id, hcp_customer_id, customer_name, scheduled_start, status, tech_primary_name, total_amount")
+      .ilike("customer_name", `%${q}%`)
+      .not("hcp_job_id", "is", null);
+    if (tech) apptQuery = apptQuery.eq("tech_primary_name", tech);
+    if (status) apptQuery = apptQuery.eq("status", status);
+    const { data: apptData } = await apptQuery
+      .order("scheduled_start", { ascending: false, nullsFirst: false })
+      .limit(500);
+
+    const INTERNAL_NAMES = new Set(["Tulsa Plumbing and Remodeling", "TPAR", "Spam", "DMG", "System"]);
+    const TEST_CUSTOMER_IDS = new Set(["cus_9cf8cc5b02e1430a85288b034763cc19", "cus_386a644b8054483788825c86c1b13b9c"]);
+    const seen = new Set<string>();
+    const unique: JobRow[] = [];
+    for (const a of ((apptData ?? []) as Array<{
+      hcp_job_id: string; hcp_customer_id: string | null; customer_name: string | null;
+      scheduled_start: string; status: string | null; tech_primary_name: string | null;
+      total_amount: number | null;
+    }>)) {
+      if (seen.has(a.hcp_job_id)) continue;
+      if (!includeInternal) {
+        if (a.customer_name && INTERNAL_NAMES.has(a.customer_name)) continue;
+        if (a.hcp_customer_id && TEST_CUSTOMER_IDS.has(a.hcp_customer_id)) continue;
+      }
+      seen.add(a.hcp_job_id);
+      unique.push({
+        hcp_job_id: a.hcp_job_id,
+        hcp_customer_id: a.hcp_customer_id,
+        customer_name: a.customer_name,
+        invoice_number: null,
+        job_date: a.scheduled_start ? a.scheduled_start.slice(0, 10) : null,
+        tech_primary_name: a.tech_primary_name,
+        appointment_status: a.status,
+        revenue: a.total_amount != null ? Number(a.total_amount) / 100 : null,
+        due_amount: null,
+        days_outstanding: null,
+        gross_margin_pct: null,
+        on_time: null,
+        gps_matched: null,
+      });
+    }
+    count = unique.length;
+    rows = unique.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  } else {
+    const { data, count: c } = await query
+      .order("job_date", { ascending: false, nullsFirst: false })
+      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+    rows = (data ?? []) as JobRow[];
+    count = c ?? 0;
+
+    // HCP fallback: if our DB returns 0 hits AND the query looks like an HCP
+    // estimate number (all digits, 6-9 chars), live-lookup HCP and redirect
+    // to the matching job. Cuts the "I pasted the number off the HCP page,
+    // why doesn't it find anything" friction.
+    const looksLikeHcpNumber = /^\d{6,9}$/.test(q);
+    if (rows.length === 0 && (count ?? 0) === 0 && looksLikeHcpNumber) {
+      const live = await liveLookupHcpEstimate(q);
+      if (live?.hcp_job_id) {
+        redirect(`/job/${live.hcp_job_id}?from=hcp-estimate&estimate=${q}`);
+      }
     }
   }
 
@@ -189,7 +250,20 @@ export default async function JobsListPage({
 
   const columns: Column<JobRow>[] = [
     { header: "Date", cell: (r) => fmtDateShort(r.job_date), className: "text-neutral-600" },
-    { header: "Invoice", cell: (r) => r.invoice_number ?? "—", className: "font-mono text-xs" },
+    {
+      header: "Invoice",
+      cell: (r) =>
+        r.invoice_number
+          ? r.invoice_number
+          : r.hcp_job_id ? (
+              <span className="text-neutral-400" title={`Job id (no invoice yet): ${r.hcp_job_id}`}>
+                job_{r.hcp_job_id.replace(/^job_/, "").slice(0, 6)}…
+              </span>
+            ) : (
+              <span className="text-neutral-400">—</span>
+            ),
+      className: "font-mono text-xs",
+    },
     { header: "Customer", cell: (r) => r.customer_name ?? "—", className: "font-medium text-neutral-900" },
     { header: "Tech", cell: (r) => <TechName name={r.tech_primary_name} formerSet={formerSet} /> },
     { header: "Status", cell: (r) => r.appointment_status ? <StatusPill status={r.appointment_status} /> : <span className="text-neutral-400">—</span> },
@@ -232,13 +306,16 @@ export default async function JobsListPage({
     ...(includeInternal ? { include_internal: "1" } : {}),
     ...(mineOnly ? { mine: "1" } : {}),
     ...(asOverride ? { as: asOverride } : {}),
+    ...(fullHistory ? { full_history: "1" } : {}),
   };
   const baseHref = `/jobs?${new URLSearchParams(sharedFilters).toString()}`;
   const csvHref = `/jobs/export.csv?${new URLSearchParams(sharedFilters).toString()}`;
 
   const description = effectiveTechName
-    ? `Jobs where ${effectiveTechName} is on the crew (lead or helper).`
-    : "Active and recent jobs across the team.";
+    ? `Jobs where ${effectiveTechName} is on the crew (lead or helper). Default view: recent ~90 days.`
+    : fullHistory
+      ? `Searching full history (all-time appointments matching "${q}"). Some columns blank — appointments_master doesn't carry revenue / margin / GPS.`
+      : "Recent jobs (last ~90 days from job_360). Tick “Full history” in the filter bar to widen the search across all-time appointments.";
 
   return (
     <PageShell
@@ -254,7 +331,11 @@ export default async function JobsListPage({
       }
     >
       <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="Jobs (window)" value={(count ?? 0).toLocaleString()} hint={stats.length === 500 ? "stats: top 500" : `stats: all ${stats.length}`} />
+        <StatCard
+          label={fullHistory ? "Matches (full history)" : "Jobs (window)"}
+          value={(count ?? 0).toLocaleString()}
+          hint={fullHistory ? "stats below: recent window" : stats.length === 500 ? "stats: top 500" : `stats: all ${stats.length}`}
+        />
         <StatCard label="Revenue (window)" value={fmtMoney(totalRevenue)} tone={totalRevenue > 0 ? "brand" : "neutral"} />
         <StatCard label="Outstanding" value={fmtMoney(totalDue)} tone={totalDue > 0 ? "red" : "neutral"} />
         <StatCard label="Avg margin" value={avgMargin != null ? fmtPct(avgMargin) : "—"} tone={avgMargin != null && avgMargin >= 30 ? "green" : avgMargin != null && avgMargin >= 15 ? "amber" : "neutral"} hint={onTimePct != null ? `${fmtPct(onTimePct)} on-time` : undefined} />
@@ -304,7 +385,7 @@ export default async function JobsListPage({
         {effective ? (
           <span className="inline-flex items-center gap-2 self-end pb-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200">
             Mine only{effective.viewingAs ? ` · ${effective.viewingAs}` : ""}
-            <a href={`/jobs?${new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}), ...(outstandingOnly ? { outstanding: "1" } : {}), ...(includeInternal ? { include_internal: "1" } : {}) }).toString()}`} className="ml-1 text-emerald-700 hover:text-emerald-900" aria-label="Clear mine filter">×</a>
+            <a href={`/jobs?${new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}), ...(outstandingOnly ? { outstanding: "1" } : {}), ...(includeInternal ? { include_internal: "1" } : {}), ...(fullHistory ? { full_history: "1" } : {}) }).toString()}`} className="ml-1 text-emerald-700 hover:text-emerald-900" aria-label="Clear mine filter">×</a>
           </span>
         ) : null}
         <label className="inline-flex items-center gap-2 pb-1.5">
@@ -314,6 +395,13 @@ export default async function JobsListPage({
         <label className="inline-flex items-center gap-2 pb-1.5">
           <input type="checkbox" name="include_internal" value="1" defaultChecked={includeInternal} />
           <span className="text-sm text-neutral-600">Include TPAR-internal</span>
+        </label>
+        <label
+          className="inline-flex items-center gap-2 pb-1.5"
+          title="Widen the search past the 90-day window — searches all-time appointments. Only effective with a search term."
+        >
+          <input type="checkbox" name="full_history" value="1" defaultChecked={fullHistory} />
+          <span className="text-sm text-neutral-600">Full history</span>
         </label>
         <button
           type="submit"
