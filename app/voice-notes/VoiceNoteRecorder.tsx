@@ -170,7 +170,16 @@ export function VoiceNoteRecorder({ hcpJobId, hcpCustomerId, defaultIntentTag, i
     if (needsDiscussion) fd.set("needs_discussion", "1");
 
     startTransition(async () => {
-      const res = await uploadVoiceNote(fd);
+      let res: Awaited<ReturnType<typeof uploadVoiceNote>>;
+      try {
+        res = await uploadVoiceNote(fd);
+      } catch (e) {
+        // A throw here is usually the framework rejecting the request (e.g. the
+        // audio exceeds the Server Action body limit) — show it inline and keep
+        // the IndexedDB blob so the recording isn't lost, instead of crashing.
+        setError(`Upload failed: ${e instanceof Error ? e.message : String(e)}. The recording is saved — try again.`);
+        return;
+      }
       if (!res.ok) {
         // Keep the IndexedDB row — user can retry without losing audio.
         setError(res.error);
