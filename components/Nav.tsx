@@ -1,10 +1,10 @@
-// Top nav for the unified TPAR app.
-// Desktop (md+): full horizontal nav with all links pill-styled.
-// Mobile (< md): logo + hamburger drawer (MobileNavMenu) — fixes the
-// horizontal-scroll cut-off Danny hit 2026-05-04.
+// Top nav for the unified TPAR app — Tulsa-flag styled (gold banner, navy text,
+// red logo dropdown, flag-ribbon trim).
+// Desktop (md+): gold horizontal banner with all links.
+// Mobile (< md): logo-menu + hamburger drawer (MobileNavMenu).
 
 import Link from "next/link";
-import { Wordmark } from "./ui/Brand";
+import { LogoMenu } from "./LogoMenu";
 import { MobileNavMenu } from "./MobileNavMenu";
 
 const NAV_ITEMS = [
@@ -29,8 +29,6 @@ const TOOL_ITEMS = [
 ];
 
 // Visible to admin + manager + production_manager — leadership review surfaces.
-// View-as: leadership previews tech dashboard. SalesAsk: binding review.
-// Catalog: every system surface (auto-generated).
 const LEADERSHIP_ITEMS = [
   { href: "/attach",          label: "Attach" },
   { href: "/admin/leads",     label: "Leads" },
@@ -46,6 +44,11 @@ const ADMIN_ITEMS = [
   { href: "/snap",            label: "Snap" },
   { href: "/admin",           label: "Admin home" },
 ];
+
+// The flag-ribbon trim under the banner — repeating gold/cream/navy/red bands,
+// echoing the flowing bands of the Tulsa flag.
+const RIBBON =
+  "repeating-linear-gradient(90deg, #e8a200 0 16px, #f7f2e4 16px 20px, #16335c 20px 34px, #c8102e 34px 38px, #f7f2e4 38px 42px)";
 
 export function Nav({
   userEmail,
@@ -66,11 +69,9 @@ export function Nav({
 }) {
   const badgeFor = (href: string): number =>
     href === "/inbox" ? unreadInbox : href === "/whiteboard" ? unreadBoard : 0;
-  // Show "My day" link to anyone with a tech_directory row, regardless of
-  // dashboard role. Admins (Danny, Kelsey) can intentionally visit /me without
-  // being forced there.
   const showMyDay = isTech || hasTechRow;
-  // Build the section list once for the mobile drawer
+
+  // Build the section list once — shared by the logo dropdown + mobile drawer.
   const mobileSections = [
     {
       title: "Main",
@@ -84,22 +85,13 @@ export function Nav({
       items: TOOL_ITEMS.map((i) => ({ ...i, tone: "default" as const, badge: badgeFor(i.href) || undefined })),
     },
     ...(showAdmin || isManager
-      ? [{
-          title: "Leadership",
-          items: LEADERSHIP_ITEMS.map((i) => ({ ...i, tone: "admin" as const })),
-        }]
+      ? [{ title: "Leadership", items: LEADERSHIP_ITEMS.map((i) => ({ ...i, tone: "admin" as const })) }]
       : []),
     ...(showAdmin
-      ? [{
-          title: "Admin",
-          items: ADMIN_ITEMS.map((i) => ({ ...i, tone: "admin" as const })),
-        }]
+      ? [{ title: "Admin", items: ADMIN_ITEMS.map((i) => ({ ...i, tone: "admin" as const })) }]
       : []),
     ...(isManager
-      ? [{
-          title: "Role",
-          items: [{ href: "/me", label: "Manager · read-only", tone: "manager" as const }],
-        }]
+      ? [{ title: "Role", items: [{ href: "/me", label: "Manager · read-only", tone: "manager" as const }] }]
       : []),
     {
       title: "Other",
@@ -108,11 +100,10 @@ export function Nav({
   ];
 
   return (
-    <nav className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+    <nav className="sticky top-0 z-30 bg-gold-500 shadow-sm">
       <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-3 py-2.5 md:gap-4 md:px-6 md:py-3">
-        <Link href="/" className="shrink-0" aria-label="TPAR-DB home">
-          <Wordmark size="md" />
-        </Link>
+        {/* Logo doubles as the full-app menu (red dropdown). */}
+        <LogoMenu sections={mobileSections} />
 
         {/* Desktop horizontal nav — hidden on phones */}
         <ul className="ml-2 hidden flex-1 items-center gap-1 overflow-x-auto text-sm md:flex">
@@ -120,7 +111,7 @@ export function Nav({
             <li>
               <Link
                 href="/me"
-                className="inline-block whitespace-nowrap rounded-md bg-emerald-50 px-3 py-1.5 font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200 transition hover:bg-emerald-100"
+                className="inline-block whitespace-nowrap rounded-md bg-navy-800 px-3 py-1.5 font-medium text-white ring-1 ring-inset ring-navy-900/40 transition hover:bg-navy-900"
               >
                 My day
               </Link>
@@ -130,24 +121,24 @@ export function Nav({
             <li key={item.href}>
               <Link
                 href={item.href}
-                className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 text-neutral-600 transition hover:bg-neutral-100 hover:text-neutral-900"
+                className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 font-medium text-navy-900 transition hover:bg-gold-400"
               >
                 {item.label}
               </Link>
             </li>
           ))}
-          <li className="mx-1 h-5 w-px bg-neutral-200" aria-hidden="true" />
+          <li className="mx-1 h-5 w-px bg-navy-900/25" aria-hidden="true" />
           {TOOL_ITEMS.map((item) => {
             const badge = badgeFor(item.href);
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-1.5 text-neutral-600 transition hover:bg-brand-50 hover:text-brand-700"
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-1.5 text-navy-800 transition hover:bg-gold-400"
                 >
                   {item.label}
                   {badge > 0 ? (
-                    <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 py-0.5 text-[10px] font-semibold leading-none text-white">
+                    <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-flagred-600 px-1 py-0.5 text-[10px] font-semibold leading-none text-white">
                       {badge > 99 ? "99+" : badge}
                     </span>
                   ) : null}
@@ -155,14 +146,13 @@ export function Nav({
               </li>
             );
           })}
-          {/* Leadership items visible to admin OR manager (View as / SalesAsk) */}
           {(showAdmin || isManager) ? (
             <>
               {LEADERSHIP_ITEMS.map((item) => (
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 text-accent-700 transition hover:bg-accent-50"
+                    className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 font-medium text-flagred-700 transition hover:bg-gold-400"
                   >
                     {item.label}
                   </Link>
@@ -176,7 +166,7 @@ export function Nav({
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 text-accent-700 transition hover:bg-accent-50"
+                    className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 font-medium text-flagred-700 transition hover:bg-gold-400"
                   >
                     {item.label}
                   </Link>
@@ -185,7 +175,7 @@ export function Nav({
               <li>
                 <Link
                   href="/admin"
-                  className="inline-block whitespace-nowrap rounded-md bg-accent-50 px-3 py-1.5 font-medium text-accent-700 ring-1 ring-inset ring-accent-100 transition hover:bg-accent-100"
+                  className="inline-block whitespace-nowrap rounded-md bg-flagred-600 px-3 py-1.5 font-medium text-white ring-1 ring-inset ring-flagred-700 transition hover:bg-flagred-700"
                 >
                   Admin
                 </Link>
@@ -195,7 +185,7 @@ export function Nav({
           {isManager ? (
             <li
               title="Manager — full read access; writes are admin-only."
-              className="inline-block whitespace-nowrap rounded-md bg-brand-50 px-3 py-1.5 font-medium text-brand-700 ring-1 ring-inset ring-brand-200"
+              className="inline-block whitespace-nowrap rounded-md bg-navy-800 px-3 py-1.5 font-medium text-white ring-1 ring-inset ring-navy-900/40"
             >
               Manager · read-only
             </li>
@@ -205,10 +195,10 @@ export function Nav({
         {/* Mobile spacer pushes hamburger + email to the right */}
         <div className="ml-auto md:hidden" />
 
-        {/* Search button — hidden on the smallest mobile to save space */}
+        {/* Search button */}
         <Link
           href="/search"
-          className="hidden whitespace-nowrap rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 transition hover:bg-neutral-50 sm:inline-flex sm:items-center sm:gap-1.5"
+          className="hidden whitespace-nowrap rounded-md border border-navy-900/20 bg-white/90 px-3 py-1.5 text-sm text-navy-900 transition hover:bg-white sm:inline-flex sm:items-center sm:gap-1.5"
           prefetch={false}
           aria-label="Search"
         >
@@ -221,14 +211,14 @@ export function Nav({
 
         {/* Desktop email + sign-out */}
         {userEmail ? (
-          <div className="hidden items-center gap-3 text-sm text-neutral-600 md:flex">
+          <div className="hidden items-center gap-3 text-sm text-navy-900 md:flex">
             <span className="hidden truncate md:inline" title={userEmail}>
               {userEmail.replace("@tulsapar.com", "")}
             </span>
             <form action="/auth/signout" method="POST">
               <button
                 type="submit"
-                className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition hover:bg-neutral-50"
+                className="rounded-md border border-navy-900/20 bg-white/90 px-2.5 py-1 text-xs font-medium text-navy-900 transition hover:bg-white"
               >
                 Sign out
               </button>
@@ -239,6 +229,9 @@ export function Nav({
         {/* Mobile hamburger — hidden on md+ */}
         <MobileNavMenu sections={mobileSections} userEmail={userEmail} />
       </div>
+
+      {/* Flag-ribbon trim */}
+      <div aria-hidden="true" className="h-1.5 w-full" style={{ backgroundImage: RIBBON }} />
     </nav>
   );
 }

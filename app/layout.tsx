@@ -27,7 +27,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport = {
-  themeColor: "#1e40af",
+  themeColor: "#e8a200",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -57,7 +57,7 @@ export default async function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-neutral-50 text-neutral-900">
+      <body className="min-h-full flex flex-col bg-background text-neutral-900">
         {user && (
           <Nav
             userEmail={user.email}

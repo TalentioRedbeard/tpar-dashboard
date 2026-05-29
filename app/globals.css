@@ -6,8 +6,8 @@
  * base for surfaces and text — never use zinc/gray/slate elsewhere.
  */
 @theme inline {
-  /* Background + foreground */
-  --color-background: #f9fafb;
+  /* Background + foreground — cream/bone base (Tulsa-flag inspired) */
+  --color-background: #f7f2e4;
   --color-foreground: #0a0a0a;
   --color-surface: #ffffff;
 
@@ -28,6 +28,20 @@
   --color-accent-500: #f59e0b;
   --color-accent-600: #d97706;
   --color-accent-700: #b45309;
+
+  /* Tulsa-flag accents — gold banner, red logo menu, navy bands, cream.
+   * Inspired by the flag painted on the shop garage door. */
+  --color-gold-300:   #f7d774;
+  --color-gold-400:   #f2c94c;
+  --color-gold-500:   #e8a200;
+  --color-gold-600:   #c98a00;
+  --color-flagred-500: #c8102e;
+  --color-flagred-600: #ab0f28;
+  --color-flagred-700: #880c20;
+  --color-navy-700:   #16335c;
+  --color-navy-800:   #0f2444;
+  --color-navy-900:   #0b1b34;
+  --color-cream:      #f7f2e4;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
