@@ -329,6 +329,14 @@ function TopCandidateCard({
         {cand.reasons.length > 0 ? <span className="text-brand-700">· {cand.reasons.join(" · ")}</span> : null}
       </div>
 
+      {cand.briefing_unreviewed ? (
+        <div className="mt-2">
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-inset ring-amber-300">
+            📋 Briefing — review before you head out
+          </span>
+        </div>
+      ) : null}
+
       {cand.nudges.length > 0 ? (
         <ul className="mt-3 space-y-1">
           {cand.nudges.map((n, i) => (
@@ -414,6 +422,7 @@ function CandidateRow({ cand }: { cand: FinderCandidate }): ReactNode {
       <Link href={`/job/${cand.hcp_job_id}`} className="flex items-baseline justify-between gap-3 px-4 py-2 text-sm">
         <div>
           <span className="font-medium text-neutral-900">{cand.customer_name ?? "—"}</span>
+          {cand.briefing_unreviewed ? <span className="ml-1" title="Unreviewed job briefing">📋</span> : null}
           {cand.invoice_number ? <span className="ml-2 font-mono text-xs text-neutral-500">#{cand.invoice_number}</span> : null}
           {cand.street ? <span className="ml-2 text-neutral-600">{cand.street}</span> : null}
         </div>

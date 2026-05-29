@@ -13,6 +13,7 @@
 
 import { db } from "../../lib/supabase";
 import { getCurrentTech } from "../../lib/current-tech";
+import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
 
 export type FinderCandidate = {
   hcp_job_id: string;
@@ -34,6 +35,8 @@ export type FinderCandidate = {
   reasons: string[];                  // why this came up (for UI)
   // Behavior nudges surfaced for THIS candidate
   nudges: string[];
+  // True when this job has a briefing the caller hasn't reviewed yet.
+  briefing_unreviewed: boolean;
 };
 
 const DAY_MS = 86_400_000;
@@ -519,11 +522,17 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
       score,
       reasons,
       nudges,
+      briefing_unreviewed: false,
     });
   }
 
   candidates.sort((a, b) => b.score - a.score);
-  return { candidates: candidates.slice(0, 20), ambient };
+  const top = candidates.slice(0, 20);
+  // Flag jobs with a briefing the caller hasn't reviewed (so the card can show
+  // a "Briefing — review" chip). One batch lookup for all surfaced jobs.
+  const unreviewed = new Set(await getUnreviewedBriefingJobs(top.map((c) => c.hcp_job_id)));
+  for (const c of top) c.briefing_unreviewed = unreviewed.has(c.hcp_job_id);
+  return { candidates: top, ambient };
 }
 
 export type AmbientSnapshot = {
