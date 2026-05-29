@@ -7,6 +7,9 @@ import { AgreementForm } from "../../../components/AgreementForm";
 import { AgreementStatusButton } from "../../../components/AgreementStatusButton";
 import { TechName } from "../../../components/ui/TechName";
 import { getCurrentTech } from "../../../lib/current-tech";
+import { isOwner } from "../../../lib/admin";
+import { listPinnedEmails } from "./email-actions";
+import { CustomerEmails } from "../../../components/CustomerEmails";
 import { getFormerTechNames } from "../../../lib/former-techs";
 import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
@@ -283,6 +286,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   }
 
   const cust = c.data as Record<string, unknown>;
+
+  // Curated inbox-email pins for this customer (viewer-scoped inside the action).
+  const owner = isOwner(me?.realEmail);
+  const pinnedEmails = await listPinnedEmails(id);
 
   return (
     <PageShell
@@ -739,6 +746,12 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         </Section>
 
         <ProvenanceCard items={provenanceItems} />
+
+        {(owner || pinnedEmails.length > 0) ? (
+          <Section title="Emails (from your inbox)">
+            <CustomerEmails hcpCustomerId={id} isOwner={owner} pinned={pinnedEmails} />
+          </Section>
+        ) : null}
 
         <Section title="Recent communications">
           {recentComms.data && recentComms.data.length > 0 ? (
