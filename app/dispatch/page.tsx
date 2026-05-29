@@ -17,7 +17,7 @@ import { fmtMoney } from "../../components/Table";
 import { TechName } from "../../components/ui/TechName";
 import { getFormerTechNames } from "../../lib/former-techs";
 import { getCurrentTech } from "../../lib/current-tech";
-import { DispatchMap, type CustomerPin, type VanPin } from "../../components/DispatchMap";
+import { DispatchMap, type CustomerPin, type VanPin, type TechPin } from "../../components/DispatchMap";
 import { DispatchAck } from "./DispatchAck";
 import type { DispatchAckStatus, DispatchItemType } from "./actions";
 
@@ -177,6 +177,8 @@ export default async function DispatchPage({
     vansRes,
     mapCustomersRes,
     vanPositionsRes,
+    techLastPosRes,
+    adherenceFarRes,
     openArRes,
     agedHighImpRes,
     agedHighImpCountRes,
@@ -277,6 +279,19 @@ export default async function DispatchPage({
     supa
       .from("vehicle_last_known_position_v")
       .select("vehicle_id, display_name, driver_short_name, driver_full_name, lat, lng, last_seen_at"),
+    // Latest tech ping per tech (in-app GPS capture) — last 8h window so stale techs drop off.
+    supa
+      .from("tech_last_position_v")
+      .select("tech_email, tech_short_name, tech_full_name, lat, lng, last_action, last_at, hcp_job_id")
+      .gte("last_at", new Date(Date.now() - 8 * 3_600_000).toISOString()),
+    // Lifecycle adherence flags — trigger pressed > 0.5 mi from the job site, last 24h.
+    supa
+      .from("lifecycle_adherence_v")
+      .select("id, captured_at, tech_short_name, action_type, hcp_job_id, customer_name, miles_from_site")
+      .eq("adherence_flag", "far")
+      .gte("captured_at", new Date(Date.now() - 24 * 3_600_000).toISOString())
+      .order("captured_at", { ascending: false })
+      .limit(20),
     // Open AR — invoices in 'open' or 'pending_payment' state on jobs HCP
     // marks completed. Surfaced 2026-05-14 after variance audit found $38k+
     // sitting in this bucket. Madisson's collection lever lives here.
@@ -427,6 +442,28 @@ export default async function DispatchPage({
     last_seen_at: v.last_seen_at,
   }));
 
+  const techPins: TechPin[] = (
+    (techLastPosRes.data ?? []) as Array<{
+      tech_email: string; tech_short_name: string | null; tech_full_name: string | null;
+      lat: number; lng: number; last_action: string; last_at: string; hcp_job_id: string | null;
+    }>
+  ).map((t) => ({
+    id: t.tech_email,
+    tech_short_name: t.tech_short_name,
+    tech_full_name: t.tech_full_name,
+    lat: Number(t.lat),
+    lng: Number(t.lng),
+    last_action: t.last_action,
+    last_at: t.last_at,
+    hcp_job_id: t.hcp_job_id,
+  }));
+
+  const adherenceFlags = (adherenceFarRes.data ?? []) as Array<{
+    id: string; captured_at: string; tech_short_name: string | null;
+    action_type: string; hcp_job_id: string | null; customer_name: string | null;
+    miles_from_site: number | null;
+  }>;
+
   // Top-strip metrics
   const scheduledLast24h = last24hRows.length;
   const scheduledLast24hAmount = last24hRows.reduce((s, r) => s + (Number(r.total_amount) || 0), 0) / 100;
@@ -559,8 +596,43 @@ export default async function DispatchPage({
         </Link>
       </div>
 
-      {/* MAP — customer pins + van pins, color-coded by tech */}
-      <DispatchMap customers={customerPins} vans={vanPins} />
+      {/* MAP — customer pins + van pins (Bouncie) + tech pings (in-app GPS) */}
+      <DispatchMap customers={customerPins} vans={vanPins} techs={techPins} />
+
+      {/* ADHERENCE FLAGS — lifecycle triggers pressed far from the job (24h) */}
+      {adherenceFlags.length > 0 ? (
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold text-amber-900">
+              ⚠ Adherence flags · last 24h
+            </h3>
+            <span className="text-xs text-amber-700">
+              Lifecycle trigger pressed &gt; 0.5 mi from the job site
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {adherenceFlags.map((f) => (
+              <li key={f.id} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                <span className="rounded-md bg-white px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">
+                  {f.action_type}
+                </span>
+                <span className="font-medium text-amber-900">{f.tech_short_name ?? "?"}</span>
+                <span className="text-amber-800">
+                  {f.miles_from_site != null ? `${f.miles_from_site.toFixed(1)} mi from` : "far from"} {f.customer_name ?? "site"}
+                </span>
+                {f.hcp_job_id ? (
+                  <a href={`/job/${f.hcp_job_id}`} className="text-xs text-amber-700 hover:underline">
+                    open job →
+                  </a>
+                ) : null}
+                <span className="ml-auto text-xs text-amber-700">
+                  {new Date(f.captured_at).toLocaleString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {/* AGED HIGH-IMP COMMS — Layer 2 decay: split <7d (visible) vs 7+d (collapsed) */}
       {agedHighImpTotal > 0 && (() => {
