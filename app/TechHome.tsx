@@ -145,6 +145,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   const [todayPrimaryRes, todayHelperRes] = await Promise.all([
     supabase.from("appointments_master")
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, street, city, status, tech_primary_name")
+      .is("deleted_at", null)
       .eq("tech_primary_name", techFullName)
       .gte("scheduled_start", todayStart)
       .lte("scheduled_start", todayEnd)
@@ -152,6 +153,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       .order("scheduled_start", { ascending: true }),
     supabase.from("appointments_master")
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, street, city, status, tech_primary_name")
+      .is("deleted_at", null)
       .contains("tech_all_names", [techFullName])
       .gte("scheduled_start", todayStart)
       .lte("scheduled_start", todayEnd)
@@ -176,6 +178,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   const [upcomingPrimaryRes, upcomingHelperRes] = await Promise.all([
     supabase.from("appointments_master")
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, street, city, status, tech_primary_name")
+      .is("deleted_at", null)
       .eq("tech_primary_name", techFullName)
       .gt("scheduled_start", todayEnd)
       .lte("scheduled_start", upcomingEnd)
@@ -184,6 +187,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       .limit(15),
     supabase.from("appointments_master")
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, street, city, status, tech_primary_name")
+      .is("deleted_at", null)
       .contains("tech_all_names", [techFullName])
       .gt("scheduled_start", todayEnd)
       .lte("scheduled_start", upcomingEnd)

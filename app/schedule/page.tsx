@@ -425,6 +425,7 @@ export default async function SchedulePage({
       .select(
         "appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags",
       )
+      .is("deleted_at", null)
       .gte("scheduled_start", windowStartUtc)
       .lt("scheduled_start", windowEndUtc)
       .not("hcp_customer_id", "in", TEST_CUSTOMER_SQL)

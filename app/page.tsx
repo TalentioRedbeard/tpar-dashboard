@@ -120,6 +120,7 @@ async function loadData() {
     supabase
       .from("appointments_master")
       .select("appointment_id, hcp_job_id, scheduled_start, customer_name, tech_primary_name, status, street, city")
+      .is("deleted_at", null)
       .gte("scheduled_start", todayStart)
       .lte("scheduled_start", todayEnd)
       // Hide cancelled — they aren't on the books

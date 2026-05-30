@@ -191,6 +191,7 @@ export default async function DispatchPage({
     supa
       .from("appointments_master")
       .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags")
+      .is("deleted_at", null)
       .gte("scheduled_start", todayStartUtc)
       .lt("scheduled_start", todayEndUtc)
       .not("status", "in", cancelStatusSql)
@@ -200,6 +201,7 @@ export default async function DispatchPage({
     supa
       .from("appointments_master")
       .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags")
+      .is("deleted_at", null)
       .gte("scheduled_start", todayEndUtc)
       .lt("scheduled_start", weekEndUtc)
       .not("status", "in", cancelStatusSql)
@@ -212,6 +214,7 @@ export default async function DispatchPage({
     supa
       .from("appointments_master")
       .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, status, tech_primary_name, customer_name, street, city")
+      .is("deleted_at", null)
       .lt("scheduled_start", sevenDaysAgo)
       .gte("scheduled_start", sixtyDaysAgo)
       .in("status", ["scheduled", "Scheduled", "needs scheduling", "Needs Scheduling"])
@@ -222,6 +225,7 @@ export default async function DispatchPage({
     supa
       .from("appointments_master")
       .select("appointment_id, hcp_job_id, total_amount", { count: "exact", head: false })
+      .is("deleted_at", null)
       .gte("created_at", last24hAgo)
       .not("status", "in", cancelStatusSql)
       .not("hcp_customer_id", "in", testCustomerSql),

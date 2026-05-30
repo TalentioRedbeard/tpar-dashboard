@@ -67,6 +67,7 @@ export default async function OpenArPage() {
     const { data: jobs } = await supa
       .from("appointments_master")
       .select("hcp_job_id, customer_name, hcp_customer_id, tech_primary_name")
+      .is("deleted_at", null)
       .in("hcp_job_id", jobIds);
     for (const j of (jobs ?? []) as Array<{ hcp_job_id: string; customer_name: string | null; hcp_customer_id: string | null; tech_primary_name: string | null }>) {
       if (!customerByJob.has(j.hcp_job_id)) customerByJob.set(j.hcp_job_id, j);

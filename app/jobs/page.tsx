@@ -143,6 +143,7 @@ export default async function JobsListPage({
     let apptQuery = supa
       .from("appointments_master")
       .select("hcp_job_id, hcp_customer_id, customer_name, scheduled_start, status, tech_primary_name, total_amount")
+      .is("deleted_at", null)
       .ilike("customer_name", `%${q}%`)
       .not("hcp_job_id", "is", null);
     if (tech) apptQuery = apptQuery.eq("tech_primary_name", tech);

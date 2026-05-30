@@ -95,6 +95,7 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
     // Today + tomorrow (so a tech checking near midnight still gets next-day)
     supa.from("appointments_master")
         .select("hcp_job_id, hcp_customer_id, customer_name, street, city, scheduled_start, status, tech_primary_id, tech_all_ids")
+        .is("deleted_at", null)
         .gte("scheduled_start", new Date(Date.now() - DAY_MS).toISOString())
         .lte("scheduled_start", new Date(Date.now() + DAY_MS).toISOString())
         .order("scheduled_start", { ascending: true })
@@ -226,6 +227,7 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
     const { data: rows } = await supa
       .from("appointments_master")
       .select("hcp_job_id, tech_primary_id, tech_all_ids, scheduled_start")
+      .is("deleted_at", null)
       .or(`tech_primary_id.eq.${compound.empId},tech_all_ids.cs.{${compound.empId}}`)
       .gte("scheduled_start", since)
       .not("hcp_job_id", "is", null)
@@ -269,6 +271,7 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
         .limit(30),
       supa.from("appointments_master")
         .select("hcp_job_id")
+        .is("deleted_at", null)
         .or(streetOrFilters)
         .not("hcp_job_id", "is", null)
         .order("scheduled_start", { ascending: false, nullsFirst: false })
@@ -317,6 +320,7 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
         .in("hcp_job_id", Array.from(candidateJobIds)),
     supa.from("appointments_master")
         .select("hcp_job_id, street, city, scheduled_start, status")
+        .is("deleted_at", null)
         .in("hcp_job_id", Array.from(candidateJobIds)),
     supa.from("job_lifecycle_events")
         .select("hcp_job_id, trigger_number, fired_at")

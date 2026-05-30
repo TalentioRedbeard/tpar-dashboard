@@ -159,6 +159,7 @@ export default async function CoachingPage() {
     const { data: appts } = await supa
       .from("appointments_master")
       .select("hcp_customer_id, scheduled_start, status")
+      .is("deleted_at", null)
       .in("hcp_customer_id", custIds)
       .not("status", "in", '("user canceled","pro canceled")');
     const byCust = new Map<string, string[]>();
