@@ -17,6 +17,7 @@ import { ClockButton } from "../../components/ClockButton";
 import { StartAppointmentButton } from "../../components/StartAppointmentButton";
 import { ClockSuggestionBanner } from "../../components/ClockSuggestionBanner";
 import { LifecycleButtons } from "../../components/LifecycleButtons";
+import { DismissJobButton } from "../../components/DismissJobButton";
 import { getCurrentState as getClockState } from "../time/actions";
 import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
 import { getPendingSuggestions } from "../time/suggestions";
@@ -157,6 +158,34 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   ]);
 
   const appts = (apptsRes.data ?? []) as Array<Record<string, unknown>>;
+
+  // Per-tech "mark handled" dismissals — clears the appt from /me without
+  // firing any HCP trigger. tech_email follows view-as (me.tech.email = the
+  // viewed-as tech's email when impersonating).
+  const techEmail = me.tech?.email ?? me.email ?? null;
+  const dismissedApptIds = new Set<string>();
+  const dismissedJobIds = new Set<string>();
+  if (techEmail) {
+    const { data: dis } = await db().from("tech_appointment_dismissals")
+      .select("appointment_id, hcp_job_id")
+      .eq("tech_email", techEmail.toLowerCase())
+      .order("dismissed_at", { ascending: false })
+      .limit(500);
+    for (const d of (dis ?? []) as Array<{ appointment_id: string | null; hcp_job_id: string | null }>) {
+      if (d.appointment_id) dismissedApptIds.add(d.appointment_id);
+      if (d.hcp_job_id) dismissedJobIds.add(d.hcp_job_id);
+    }
+  }
+  const isApptDismissed = (a: Record<string, unknown>): boolean => {
+    const apptId = a.appointment_id as string | null;
+    const jobId = a.hcp_job_id as string | null;
+    if (apptId && dismissedApptIds.has(apptId)) return true;
+    if (jobId && dismissedJobIds.has(jobId)) return true;
+    return false;
+  };
+  const activeAppts = appts.filter((a) => !isApptDismissed(a));
+  const dismissedAppts = appts.filter(isApptDismissed);
+
   const comms = (commsRes.data ?? []) as Array<Record<string, unknown>>;
   const vehicle = vehicleRes.data as Record<string, unknown> | null;
   const kpi = kpiRes.data as Record<string, unknown> | null;
@@ -383,13 +412,19 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       {/* Today's appointments */}
       <section className="mb-8">
         <h2 className="mb-3 text-base font-semibold text-neutral-800">Today&apos;s appointments</h2>
-        {appts.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-6 text-center text-sm text-neutral-500">
-            No appointments scheduled for you today.
-          </div>
+        {activeAppts.length === 0 ? (
+          dismissedAppts.length > 0 ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center text-sm text-emerald-800">
+              All of today&apos;s appointments are marked handled. See Dismissed below to restore.
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-6 text-center text-sm text-neutral-500">
+              No appointments scheduled for you today.
+            </div>
+          )
         ) : (
           <ul className="space-y-2">
-            {appts.map((a) => {
+            {activeAppts.map((a) => {
               const apptId = a.appointment_id as string | null;
               const jobId = (a.hcp_job_id as string | null) ?? null;
               const isHere =
@@ -477,11 +512,41 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       initialMirrors={initialMirrorsByJob.get(jobId) ?? {}}
                     />
                   )}
+                  {!viewingAs && (apptId || jobId) ? (
+                    <div className="mt-2 flex justify-end">
+                      <DismissJobButton appointmentId={apptId} hcpJobId={jobId} />
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
           </ul>
         )}
+
+        {/* Dismissed today — collapsed restorable list. Hidden when viewing-as
+            another tech (admins shouldn't accidentally restore another tech's
+            handled state). */}
+        {!viewingAs && dismissedAppts.length > 0 ? (
+          <details className="mt-3 rounded-xl border border-neutral-200 bg-white">
+            <summary className="cursor-pointer px-3 py-2 text-sm text-neutral-600 hover:text-neutral-800">
+              {dismissedAppts.length} marked handled today — click to restore
+            </summary>
+            <ul className="space-y-1 border-t border-neutral-100 p-2">
+              {dismissedAppts.map((a) => {
+                const apptId = (a.appointment_id as string | null) ?? null;
+                const jobId = (a.hcp_job_id as string | null) ?? null;
+                return (
+                  <li key={apptId ?? jobId ?? "(no-id)"} className="flex flex-wrap items-center gap-2 rounded-lg bg-neutral-50 px-2.5 py-1.5 text-sm">
+                    <span className="flex-1 text-neutral-700">
+                      {fmtTime(a.scheduled_start as string)} · {(a.customer_name as string) ?? "(no name)"}
+                    </span>
+                    <DismissJobButton appointmentId={apptId} hcpJobId={jobId} variant="restore" />
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        ) : null}
       </section>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
