@@ -182,6 +182,37 @@ export default async function JobsListPage({
         gps_matched: null,
       });
     }
+    // Recency boost: rank each matched job by the more recent of (a) its
+    // appointment date and (b) the customer's most recent comm. So a customer
+    // who hasn't had a job in a year but texted us last week still surfaces.
+    if (unique.length > 0) {
+      const customerIds = Array.from(
+        new Set(unique.map((r) => r.hcp_customer_id).filter((v): v is string => !!v))
+      );
+      if (customerIds.length > 0) {
+        const { data: commData } = await supa
+          .from("communication_events")
+          .select("hcp_customer_id, occurred_at")
+          .in("hcp_customer_id", customerIds)
+          .order("occurred_at", { ascending: false })
+          .limit(2000);
+        const latestComm = new Map<string, string>();
+        for (const c of (commData ?? []) as Array<{ hcp_customer_id: string; occurred_at: string }>) {
+          if (!c.hcp_customer_id) continue;
+          if (!latestComm.has(c.hcp_customer_id)) {
+            latestComm.set(c.hcp_customer_id, c.occurred_at);
+          }
+        }
+        const recencyMs = (r: JobRow): number => {
+          const jobMs = r.job_date ? new Date(r.job_date).getTime() : 0;
+          const commIso = r.hcp_customer_id ? latestComm.get(r.hcp_customer_id) : undefined;
+          const commMs = commIso ? new Date(commIso).getTime() : 0;
+          return Math.max(jobMs, commMs);
+        };
+        unique.sort((a, b) => recencyMs(b) - recencyMs(a));
+      }
+    }
+
     count = unique.length;
     rows = unique.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   } else {
