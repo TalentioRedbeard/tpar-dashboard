@@ -65,7 +65,21 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
     if (!res.ok || !json?.ok) {
       return { ok: false, error: json?.error ?? `create-hcp-job ${res.status}` };
     }
+
+    // Bounce the new HCP appointment back into our DB BEFORE returning, so
+    // the Schedule / Dispatch / My-day surfaces show it immediately rather
+    // than waiting up to 30 min for the next tpar-appointments-sync cron.
+    try {
+      await fetch(`${SUPABASE_URL}/functions/v1/hcp-sync-appointments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+        body: JSON.stringify({ daysBack: 1, daysForward: 7 }),
+      });
+    } catch { /* best-effort — the cron will catch up within 30 min */ }
+
     revalidatePath("/dispatch");
+    revalidatePath("/schedule");
+    revalidatePath("/me");
     return { ok: true, hcp_job_id: String(json.job_id ?? "") };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
