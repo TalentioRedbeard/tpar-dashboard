@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { fireLifecycleTrigger, getLifecycleHcpStatus, type HcpMirrorStatus } from "@/app/me/lifecycle-actions";
 import { captureTechLocation } from "@/lib/capture-tech-location";
+import { bounceHcpAppointments } from "@/lib/bounce-hcp-appointments";
 
 type Props = {
   hcpJobId: string;
@@ -119,6 +121,29 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
       if (pollTimerRef.current) { window.clearTimeout(pollTimerRef.current); pollTimerRef.current = null; }
     };
   }, [mirror, hcpJobId]);
+
+  // Bounce-back: when an HCP mirror transitions to 'synced', re-pull
+  // appointments so our local view reflects HCP's update without waiting
+  // for the half-hourly cron. bouncedRef tracks which triggers we've already
+  // bounced so we fire it once per sync transition (not on every re-render).
+  const router = useRouter();
+  const bouncedRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    let didBounce = false;
+    for (const [tStr, entry] of Object.entries(mirror)) {
+      const t = Number(tStr);
+      if (entry.status.state === "synced" && !bouncedRef.current.has(t)) {
+        bouncedRef.current.add(t);
+        didBounce = true;
+      }
+    }
+    if (didBounce) {
+      void (async () => {
+        await bounceHcpAppointments();
+        router.refresh();
+      })();
+    }
+  }, [mirror, router]);
 
   const onFire = (triggerNumber: TriggerNum) => {
     // Universal location ping for the per-action audit + dispatch map
