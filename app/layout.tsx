@@ -9,6 +9,7 @@ import { RegisterServiceWorker } from "../components/RegisterServiceWorker";
 import { InstallPrompt } from "../components/InstallPrompt";
 import { ImpersonationBanner } from "../components/ImpersonationBanner";
 import { GlobalRecorder } from "../components/GlobalRecorder";
+import { isOwner } from "../lib/admin";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -79,7 +80,7 @@ export default async function RootLayout({
         <div className="flex-1">{children}</div>
         <RegisterServiceWorker />
         {user && <InstallPrompt />}
-        {user ? <GlobalRecorder /> : null}
+        {user ? <GlobalRecorder isOwner={isOwner(user.email)} /> : null}
       </body>
     </html>
   );
