@@ -18,6 +18,7 @@ import { Pill } from "../components/ui/Pill";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MyTasks } from "../components/MyTasks";
 import { listMyTasks } from "@/lib/tasks";
+import { listMySkills } from "@/lib/skills";
 
 function fmtTime(s: string | null): string {
   if (!s) return "—";
@@ -365,6 +366,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   });
 
   const myTasks = await listMyTasks();
+  const mySkills = await listMySkills();
 
   return (
     <PageShell
@@ -408,6 +410,18 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       {myTasks.length > 0 ? (
         <section className="mb-5">
           <MyTasks tasks={myTasks} />
+        </section>
+      ) : null}
+
+      {/* Your skills (#9) */}
+      {mySkills.length > 0 ? (
+        <section className="mb-5">
+          <div className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
+            <h3 className="mb-1.5 text-sm font-semibold text-violet-900">🛠 Your skills</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {mySkills.map((s) => <span key={s.skill_id} className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-xs text-violet-800">{s.label}{s.level !== "proficient" ? ` · ${s.level}` : ""}</span>)}
+            </div>
+          </div>
         </section>
       ) : null}
 

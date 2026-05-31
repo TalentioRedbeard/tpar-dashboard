@@ -15,6 +15,11 @@ const SECTIONS = [
     desc: "Edit slack_user_id, active flag, and notes per tech. Affects Slack routing across the system.",
   },
   {
+    href: "/admin/skills",
+    title: "Skills & requirements",
+    desc: "The structured skillset layer: skill catalog, per-tech skill grants, and per-work-type required skills. Feeds the scheduling advisor + task assignment.",
+  },
+  {
     href: "/alarms",
     title: "Wake-up alarms",
     desc: "Schedule + cancel orchestrated phone-call alarms with N-step DTMF authentication. Use for hard-to-wake mornings, deadline-critical reminders, or tethering to a program function.",

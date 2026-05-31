@@ -137,6 +137,19 @@ export async function recommendSchedule(job: AdvisorJobInput): Promise<AdvisorRe
     }
   }
 
+  // 4b. Structured skills per tech (#9) — the advisor prefers these over the
+  // sparse recent_work inference when present. Authored at /admin/skills.
+  const skillsByShort = new Map<string, string[]>();
+  try {
+    const { data: tsRows } = await supa.from("tech_skills_v").select("tech_short_name, label").eq("is_active", true);
+    for (const r of (tsRows ?? []) as Array<{ tech_short_name: string | null; label: string | null }>) {
+      if (!r.tech_short_name || !r.label) continue;
+      const list = skillsByShort.get(r.tech_short_name) ?? [];
+      list.push(r.label);
+      skillsByShort.set(r.tech_short_name, list);
+    }
+  } catch { /* skillset layer optional */ }
+
   // 5. Assemble fleet state.
   const fleetTechs = techs.map((t) => ({
     short_name: t.tech_short_name,
@@ -144,6 +157,7 @@ export async function recommendSchedule(job: AdvisorJobInput): Promise<AdvisorRe
     is_lead: !!t.is_lead,
     day_appts: apptsByTech.get(t.hcp_full_name ?? "") ?? [],
     recent_work: recentByTech.get(t.hcp_full_name ?? "") ?? [],
+    skills: skillsByShort.get(t.tech_short_name) ?? [],
     location: locByShort.get(t.tech_short_name) ?? null,
   }));
 
