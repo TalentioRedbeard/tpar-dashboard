@@ -25,6 +25,7 @@ import { RequestReportButton } from "../../components/RequestReportButton";
 import { TechAvatar } from "../../components/TechAvatar";
 import { DownloadCsvButton } from "../../components/DownloadCsvButton";
 import { TaskList } from "../../components/TaskList";
+import { AssignmentBar } from "../../components/AssignmentBar";
 import { NoteToDanny } from "../../components/NoteToDanny";
 import { listTasks } from "../../lib/tasks";
 import { isResolving, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
@@ -419,6 +420,22 @@ export default async function DispatchPage({
       .map((v) => [v.primary_driver_short_name, v.display_name]),
   );
 
+  // Assignment bar (Today's lanes): all active work vehicles + tech + today's-job options.
+  const assignableVansRes = await supa
+    .from("vehicles_master")
+    .select("id, display_name, primary_driver_short_name, kind")
+    .eq("is_active", true)
+    .in("kind", ["van", "truck"])
+    .order("display_name");
+  const assignableVehicles = (assignableVansRes.data ?? []) as Array<{ id: string; display_name: string; primary_driver_short_name: string | null; kind: string }>;
+  const assignTechs = activeTechs.map((t) => ({ short_name: t.tech_short_name, full_name: t.hcp_full_name }));
+  const todayJobOptions = ((todayRes.data ?? []) as Array<{ hcp_job_id: string | null; customer_name: string | null; scheduled_start: string | null }>)
+    .filter((a) => a.hcp_job_id)
+    .map((a) => ({
+      value: a.hcp_job_id as string,
+      label: `${a.customer_name ?? "Job"}${a.scheduled_start ? ` · ${new Date(a.scheduled_start).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" })}` : ""}`,
+    }));
+
   const formerSet = await getFormerTechNames();
 
   // Map pin arrays — server-side shaping so the client component stays dumb.
@@ -695,12 +712,13 @@ export default async function DispatchPage({
       {/* LANES — column per tech */}
       <section className="mb-8">
         <h2 className="mb-3 text-base font-semibold text-neutral-800">Today&apos;s lanes</h2>
+        <AssignmentBar techs={assignTechs} vehicles={assignableVehicles} jobs={todayJobOptions} />
         {techLaneOrder.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center text-sm text-neutral-500">
             No active techs to render.
           </div>
         ) : (
-          <div className="flex gap-3 overflow-x-auto pb-3">
+          <div className="grid grid-cols-1 gap-3 pb-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {techLaneOrder.map((techName) => {
               const lane = laneByTech.get(techName) ?? [];
               const shortName = activeTechs.find((t) => t.hcp_full_name === techName)?.tech_short_name
@@ -708,7 +726,7 @@ export default async function DispatchPage({
               const van = vanByDriver.get(shortName);
               const revenue = revenueByTechToday.get(techName) ?? 0;
               return (
-                <div key={techName} className="flex w-72 shrink-0 flex-col rounded-2xl border border-neutral-200 bg-white">
+                <div key={techName} className="flex flex-col rounded-2xl border border-neutral-200 bg-white">
                   <header className="border-b border-neutral-100 p-3">
                     <div className="flex items-baseline justify-between gap-2">
                       <div className="flex items-center gap-2">
