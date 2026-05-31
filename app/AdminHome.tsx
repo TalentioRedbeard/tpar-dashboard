@@ -149,6 +149,13 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
         </Link>
       </section>
 
+      {/* Notes to me — owner-only receiving window (voice notes + flags), up top so it's seen */}
+      {isOwner(me.realEmail) && dannyNotes.length > 0 ? (
+        <section className="mb-6">
+          <NotesToDannyInbox notes={dannyNotes} />
+        </section>
+      ) : null}
+
       {/* Action grid — 2 columns on phone, 3 on tablet, 6 on desktop */}
       <section className="mb-6">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Quick actions</h2>
@@ -204,13 +211,6 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
           <span className="text-xs text-neutral-500">→ dispatch</span>
         </Link>
       </section>
-
-      {/* Notes to Danny — owner-only receiving window */}
-      {isOwner(me.realEmail) ? (
-        <section className="mb-6">
-          <NotesToDannyInbox notes={dannyNotes} />
-        </section>
-      ) : null}
 
       {/* Freshness strip — when was each upstream data source last synced */}
       <section className="mb-6">

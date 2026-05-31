@@ -158,7 +158,7 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
             <div className="mb-2 text-[11px] text-neutral-500">Goes to the Claude dev queue — picked up in an active session.</div>
           ) : null}
           <div className="flex items-center gap-2">
-            <button type="button" onClick={save} disabled={pending} className="flex-1 rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">{pending ? "Saving…" : target === "claude" ? "Send to Claude" : "Save"}</button>
+            <button type="button" onClick={save} disabled={pending || (transcribing && (target === "claude" || target === "note_to_danny"))} className="flex-1 rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">{pending ? "Saving…" : (transcribing && (target === "claude" || target === "note_to_danny")) ? "Transcribing…" : target === "claude" ? "Send to Claude" : "Save"}</button>
             <button type="button" onClick={reset} disabled={pending} className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">Discard</button>
           </div>
           {msg ? <div className="mt-1 text-xs text-neutral-600">{msg}</div> : null}
