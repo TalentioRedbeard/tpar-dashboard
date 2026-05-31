@@ -129,14 +129,14 @@ export async function sendNoteToDanny(body: string, opts?: { taskId?: string; ta
   return { ok: true };
 }
 
-export type DannyNote = { id: string; author_short_name: string | null; body: string; created_at: string; read_at: string | null };
+export type DannyNote = { id: string; author_short_name: string | null; body: string; attach_ref: string | null; tags: string[] | null; created_at: string; read_at: string | null };
 
 export async function listNotesToDanny(limit = 30): Promise<DannyNote[]> {
   const me = await getCurrentTech();
   if (!me || !isOwner(me.realEmail)) return [];
   const { data } = await db()
     .from("team_notes")
-    .select("id, author_short_name, body, created_at, read_at")
+    .select("id, author_short_name, body, attach_ref, tags, created_at, read_at")
     .eq("target_email", ownerEmail())
     .contains("tags", ["note-to-danny"])
     .order("created_at", { ascending: false })
