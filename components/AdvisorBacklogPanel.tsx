@@ -43,7 +43,7 @@ export function AdvisorBacklogPanel({ jobs, recommend }: { jobs: BacklogJob[]; r
   }
 
   return (
-    <details className="mb-6 rounded-2xl border border-brand-200 bg-brand-50/40 p-4">
+    <details open className="rounded-2xl border border-brand-200 bg-brand-50/40 p-4">
       <summary className="cursor-pointer text-sm font-semibold text-brand-900">
         ✨ Advisor — work the backlog
         <span className="ml-2 font-normal text-brand-900/70">recommend a tech + time for each unscheduled job</span>

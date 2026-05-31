@@ -53,3 +53,8 @@ export function isOwner(email: string | null | undefined): boolean {
   if (!email) return false;
   return OWNER_EMAILS.includes(email.toLowerCase());
 }
+
+/** The primary owner email — used to address owner-only notes ("Note to Danny"). */
+export function ownerEmail(): string {
+  return OWNER_EMAILS[0] ?? "ddunlop@tulsapar.com";
+}

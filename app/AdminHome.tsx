@@ -21,6 +21,9 @@ import { PageShell } from "../components/PageShell";
 import { Section } from "../components/ui/Section";
 import { Pill } from "../components/ui/Pill";
 import { FreshnessStrip } from "../components/FreshnessStrip";
+import { NotesToDannyInbox } from "../components/NotesToDannyInbox";
+import { listNotesToDanny } from "@/lib/tasks";
+import { isOwner } from "@/lib/admin";
 
 function fmtTime(s: string | null): string {
   if (!s) return "—";
@@ -79,6 +82,7 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
   const firstAppt = todayAppts[0]?.scheduled_start ? fmtTime(todayAppts[0].scheduled_start) : null;
   const openARCount = openARRes.count ?? 0;
   const followupCount = followupCountRes.count ?? 0;
+  const dannyNotes = isOwner(me.realEmail) ? await listNotesToDanny() : [];
 
   // Mode-awareness: is the user clocked into a specific job right now?
   const clockedIntoJob =
@@ -200,6 +204,13 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
           <span className="text-xs text-neutral-500">→ dispatch</span>
         </Link>
       </section>
+
+      {/* Notes to Danny — owner-only receiving window */}
+      {isOwner(me.realEmail) ? (
+        <section className="mb-6">
+          <NotesToDannyInbox notes={dannyNotes} />
+        </section>
+      ) : null}
 
       {/* Freshness strip — when was each upstream data source last synced */}
       <section className="mb-6">

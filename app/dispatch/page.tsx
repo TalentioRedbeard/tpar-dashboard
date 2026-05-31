@@ -24,6 +24,9 @@ import { DispatchAck } from "./DispatchAck";
 import { RequestReportButton } from "../../components/RequestReportButton";
 import { TechAvatar } from "../../components/TechAvatar";
 import { DownloadCsvButton } from "../../components/DownloadCsvButton";
+import { TaskList } from "../../components/TaskList";
+import { NoteToDanny } from "../../components/NoteToDanny";
+import { listTasks } from "../../lib/tasks";
 import { isResolving, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
@@ -399,6 +402,8 @@ export default async function DispatchPage({
   const paidToday = (paidTodayRes.data ?? []) as Array<{ hcp_job_id: string; amount: number }>;
   const activeTechs = (activeTechsRes.data ?? []) as Array<{ tech_short_name: string; hcp_full_name: string; is_lead: boolean | null; avatar_url: string | null }>;
   const avatarByFullName = new Map<string, string | null>(activeTechs.map((t) => [t.hcp_full_name, t.avatar_url ?? null]));
+  const dispatchTasks = await listTasks();
+  const taskTechNames = activeTechs.map((t) => t.tech_short_name);
   const gpsByAppt = new Map<string, GpsArrival>(
     ((gpsRes.data ?? []) as GpsArrival[]).map((g) => [g.appointment_id, g]),
   );
@@ -998,6 +1003,14 @@ export default async function DispatchPage({
           })}
         </div>
       </details>
+
+      {/* TASK LIST + NOTE TO DANNY (Danny 2026-05-31) */}
+      {canWriteAck ? (
+        <div className="mb-6 grid items-start gap-4 lg:grid-cols-2">
+          <TaskList tasks={dispatchTasks} techNames={taskTechNames} />
+          <NoteToDanny />
+        </div>
+      ) : null}
 
       <p className="mt-4 text-xs text-neutral-500">
         v0 · read-only · drag-to-reassign + map coming in v1/v2.
