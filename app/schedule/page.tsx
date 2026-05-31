@@ -19,6 +19,7 @@ import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { fmtMoney } from "../../components/Table";
 import { getCurrentTech } from "../../lib/current-tech";
+import { isOwner } from "../../lib/admin";
 import { TechAvatar } from "../../components/TechAvatar";
 import { CellAddMenu } from "../../components/CellAddMenu";
 import { RescheduleButton } from "../../components/RescheduleButton";
@@ -388,6 +389,7 @@ export default async function SchedulePage({
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/schedule");
   if (!me.isAdmin && !me.isManager) redirect("/me");
+  const canApply = isOwner(me.email); // Phase 1: only the owner pushes proposals to HCP
 
   const params = await searchParams;
   const todayKey = chicagoTodayKey();
@@ -622,7 +624,7 @@ export default async function SchedulePage({
 
       {view !== "month" ? <div className="mb-3"><TechOrderControl techs={orderedTechsForControl} /></div> : null}
 
-      <PendingChangesBar changes={pendingChanges} />
+      <PendingChangesBar changes={pendingChanges} canApply={canApply} />
 
       {/* LEGEND — what the colors mean (the "plaid" key) */}
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-600">
@@ -824,7 +826,7 @@ function DayView({
                   <div className="text-[11px] text-neutral-500">{count}{dollars > 0 ? ` · ${fmtMoney(dollars)}` : ""}{assist > 0 ? ` · +${assist} assist` : ""}</div>
                 </div>
               </div>
-              <DropCell techFull={techFullName} dateKey={dayKey} disabled={isPast} className="grid flex-1 grid-cols-1 gap-1.5 rounded-md sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <DropCell techFull={techFullName} dateKey={dayKey} disabled={isPast || !techs.some((t) => t.hcp_full_name === techFullName)} className="grid flex-1 grid-cols-1 gap-1.5 rounded-md sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {cell.length === 0 ? (
                   <div className="col-span-full flex items-center gap-2 text-[11px] text-neutral-400">
                     {isPast ? <span className="text-neutral-300">— Open day</span> : <><span>Open day</span><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></>}
@@ -942,7 +944,7 @@ function WeekView({
                   const isPast = dayKey < todayKey;
                   return (
                     <td key={dayKey} className={`min-h-24 border-r border-b border-neutral-200 align-top ${isToday ? "bg-amber-50/60" : isPast ? "bg-neutral-50/40" : "bg-white"}`}>
-                      <DropCell techFull={techFullName} dateKey={dayKey} disabled={isPast} className="h-full min-h-16 rounded-md p-1">
+                      <DropCell techFull={techFullName} dateKey={dayKey} disabled={isPast || !techs.some((t) => t.hcp_full_name === techFullName)} className="h-full min-h-16 rounded-md p-1">
                         {cell.length === 0 ? (
                           <div className="flex h-full min-h-16 items-center justify-center">
                             {isPast ? <span className="text-[10px] text-neutral-300">—</span> : <CellAddMenu techFull={techFullName} dateKey={dayKey} compact />}
