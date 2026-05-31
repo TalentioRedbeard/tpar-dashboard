@@ -21,6 +21,9 @@ import { fmtMoney } from "../../components/Table";
 import { getCurrentTech } from "../../lib/current-tech";
 import { TechAvatar } from "../../components/TechAvatar";
 import { CellAddMenu } from "../../components/CellAddMenu";
+import { RescheduleButton } from "../../components/RescheduleButton";
+import { PendingChangesBar } from "../../components/PendingChangesBar";
+import { listPendingChanges, type PendingChange } from "../../lib/schedule-changes";
 
 export const metadata = { title: "Schedule · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -129,6 +132,13 @@ function chicagoTime(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+// 'HH:MM' → '2:00pm' (for proposed reschedule times)
+function hm12(t: string | null): string {
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")}${h >= 12 ? "pm" : "am"}`;
 }
 
 function dayHeader(key: string): { weekday: string; mmdd: string } {
@@ -496,6 +506,10 @@ export default async function SchedulePage({
       if (n && n !== a.tech_primary_name) assistCountByTech.set(n, (assistCountByTech.get(n) ?? 0) + 1);
     }
   }
+
+  // Pending reschedule proposals (#21), keyed by appointment.
+  const pendingChanges = await listPendingChanges();
+  const pendingByAppt = new Map<string, PendingChange>(pendingChanges.filter((c) => c.appointment_id).map((c) => [c.appointment_id as string, c]));
   const apptCountByDay = new Map<string, number>();
   const dollarsByDay = new Map<string, number>();
   for (const a of appts) {
@@ -591,6 +605,8 @@ export default async function SchedulePage({
           ))}
         </div>
       </div>
+
+      <PendingChangesBar changes={pendingChanges} />
 
       {/* LEGEND — what the colors mean (the "plaid" key) */}
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-600">
@@ -693,6 +709,7 @@ export default async function SchedulePage({
           apptCountByTech={apptCountByTech}
           dollarsByTech={dollarsByTech}
           assistCountByTech={assistCountByTech}
+          pendingByAppt={pendingByAppt}
           color={color}
           todayKey={todayKey}
         />
@@ -741,7 +758,7 @@ export default async function SchedulePage({
 // ──────────────────────────────────────────────────────────────────────────────
 
 function DayView({
-  dayKey, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, color, todayKey,
+  dayKey, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, pendingByAppt, color, todayKey,
 }: {
   dayKey: string;
   rowOrder: string[];
@@ -752,6 +769,7 @@ function DayView({
   apptCountByTech: Map<string, number>;
   dollarsByTech: Map<string, number>;
   assistCountByTech: Map<string, number>;
+  pendingByAppt: Map<string, PendingChange>;
   color: ColorMode;
   todayKey: string;
 }) {
@@ -793,17 +811,24 @@ function DayView({
                   <div className="col-span-full flex items-center gap-2 text-[11px] text-neutral-400">
                     {isPast ? <span className="text-neutral-300">— Open day</span> : <><span>Open day</span><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></>}
                   </div>
-                ) : cell.map((a) => (
-                  a.hcp_job_id ? (
-                    <Link key={a.appointment_id ?? a.hcp_job_id} href={`/job/${a.hcp_job_id}`} className="block">
-                      <ApptDetail a={a} opts={{ color }} />
-                    </Link>
-                  ) : (
-                    <div key={a.appointment_id ?? Math.random()}>
-                      <ApptDetail a={a} opts={{ color }} />
+                ) : cell.map((a) => {
+                  const chg = a.appointment_id ? pendingByAppt.get(a.appointment_id) : undefined;
+                  return (
+                    <div key={a.appointment_id ?? a.hcp_job_id ?? Math.random()} className="space-y-0.5">
+                      {a.hcp_job_id ? (
+                        <Link href={`/job/${a.hcp_job_id}`} className="block"><ApptDetail a={a} opts={{ color }} /></Link>
+                      ) : (
+                        <ApptDetail a={a} opts={{ color }} />
+                      )}
+                      {(a.appointment_id && !isPast) || chg ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {a.appointment_id && !isPast ? <RescheduleButton appointmentId={a.appointment_id} hcpJobId={a.hcp_job_id} customerName={a.customer_name} currentStart={a.scheduled_start} dateKey={dayKey} /> : null}
+                          {chg ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium text-amber-800">→ proposed {hm12(chg.proposed_start_time)}</span> : null}
+                        </div>
+                      ) : null}
                     </div>
-                  )
-                ))}
+                  );
+                })}
                 {cell.length > 0 && !isPast ? <div className="flex items-center"><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></div> : null}
               </div>
             </div>
