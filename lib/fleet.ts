@@ -66,3 +66,40 @@ export async function clearVehicleDriver(vehicleId: string): Promise<FleetResult
   revalidatePath("/dispatch");
   return { ok: true };
 }
+
+// Admin-only inline edit of a vehicle's catalog fields from the fleet strip.
+export async function editVehicle(
+  vehicleId: string,
+  patch: { display_name?: string; primary_driver_short_name?: string | null; last_known_odometer?: number | null; notes?: string | null; is_active?: boolean },
+): Promise<FleetResult> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  if (!me.isAdmin) return { ok: false, error: "Only an admin can edit vehicles." };
+  if (!vehicleId) return { ok: false, error: "No vehicle." };
+
+  const supa = db();
+  const now = new Date().toISOString();
+  const update: Record<string, unknown> = { updated_at: now };
+  if (patch.display_name !== undefined) {
+    const n = patch.display_name.trim();
+    if (n) update.display_name = n.slice(0, 120);
+  }
+  if (patch.primary_driver_short_name !== undefined) {
+    update.primary_driver_short_name = patch.primary_driver_short_name?.trim() || null;
+  }
+  if (patch.last_known_odometer !== undefined) {
+    update.last_known_odometer = patch.last_known_odometer != null && Number.isFinite(patch.last_known_odometer) ? Math.round(patch.last_known_odometer) : null;
+  }
+  if (patch.notes !== undefined) update.notes = patch.notes?.trim().slice(0, 2000) || null;
+  if (patch.is_active !== undefined) update.is_active = patch.is_active;
+
+  // Keep one tech <-> one vehicle: if a driver was set here, clear them off others.
+  const newDriver = update.primary_driver_short_name as string | null | undefined;
+  if (typeof newDriver === "string" && newDriver) {
+    await supa.from("vehicles_master").update({ primary_driver_short_name: null, updated_at: now }).eq("primary_driver_short_name", newDriver).neq("id", vehicleId);
+  }
+  const { error } = await supa.from("vehicles_master").update(update).eq("id", vehicleId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/dispatch");
+  return { ok: true };
+}

@@ -26,6 +26,8 @@ import { TechAvatar } from "../../components/TechAvatar";
 import { DownloadCsvButton } from "../../components/DownloadCsvButton";
 import { TaskList } from "../../components/TaskList";
 import { AssignmentBar } from "../../components/AssignmentBar";
+import { VehicleStrip } from "../../components/VehicleStrip";
+import { LaneDropZone } from "../../components/LaneDropZone";
 import { NoteToDanny } from "../../components/NoteToDanny";
 import { GpsQueryWindow } from "../../components/GpsQueryWindow";
 import { listTasks } from "../../lib/tasks";
@@ -424,11 +426,11 @@ export default async function DispatchPage({
   // Assignment bar (Today's lanes): all active work vehicles + tech + today's-job options.
   const assignableVansRes = await supa
     .from("vehicles_master")
-    .select("id, display_name, primary_driver_short_name, kind")
+    .select("id, display_name, primary_driver_short_name, kind, last_known_odometer, last_known_odometer_at, is_active, vin, notes")
     .eq("is_active", true)
     .in("kind", ["van", "truck"])
     .order("display_name");
-  const assignableVehicles = (assignableVansRes.data ?? []) as Array<{ id: string; display_name: string; primary_driver_short_name: string | null; kind: string }>;
+  const assignableVehicles = (assignableVansRes.data ?? []) as Array<{ id: string; display_name: string; primary_driver_short_name: string | null; kind: string; last_known_odometer: number | null; last_known_odometer_at: string | null; is_active: boolean; vin: string | null; notes: string | null }>;
   const assignTechs = activeTechs.map((t) => ({ short_name: t.tech_short_name, full_name: t.hcp_full_name }));
   const todayJobOptions = ((todayRes.data ?? []) as Array<{ hcp_job_id: string | null; customer_name: string | null; scheduled_start: string | null }>)
     .filter((a) => a.hcp_job_id)
@@ -719,7 +721,7 @@ export default async function DispatchPage({
             No active techs to render.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 pb-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 pb-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {techLaneOrder.map((techName) => {
               const lane = laneByTech.get(techName) ?? [];
               const shortName = activeTechs.find((t) => t.hcp_full_name === techName)?.tech_short_name
@@ -727,12 +729,12 @@ export default async function DispatchPage({
               const van = vanByDriver.get(shortName);
               const revenue = revenueByTechToday.get(techName) ?? 0;
               return (
-                <div key={techName} className="flex flex-col rounded-2xl border border-neutral-200 bg-white">
-                  <header className="border-b border-neutral-100 p-3">
+                <LaneDropZone key={techName} techShortName={shortName !== "Unassigned" ? shortName : null} className="flex flex-col rounded-2xl border border-neutral-200 bg-white">
+                  <header className="border-b border-neutral-100 p-2">
                     <div className="flex items-baseline justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <TechAvatar shortName={shortName} avatarUrl={avatarByFullName.get(techName) ?? null} />
-                        <div className="font-semibold text-neutral-900">{shortName}</div>
+                        <div className="text-sm font-semibold text-neutral-900">{shortName}</div>
                       </div>
                       <div className="text-xs text-neutral-500">{lane.length} appt{lane.length === 1 ? "" : "s"}</div>
                     </div>
@@ -741,7 +743,7 @@ export default async function DispatchPage({
                       {revenue > 0 ? <span className="font-medium text-emerald-700">{fmtMoney(revenue / 100)}</span> : null}
                     </div>
                   </header>
-                  <div className="flex-1 space-y-2 p-2">
+                  <div className="flex-1 space-y-1.5 p-1.5">
                     {lane.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-neutral-200 p-3 text-center text-xs text-neutral-400">
                         Open today
@@ -797,11 +799,12 @@ export default async function DispatchPage({
                       );
                     })}
                   </div>
-                </div>
+                </LaneDropZone>
               );
             })}
           </div>
         )}
+        <VehicleStrip vehicles={assignableVehicles} canEdit={me.isAdmin} techShortNames={taskTechNames} />
       </section>
 
       {/* STALE — Layer 2 decay: split <14d vs 14+d */}
