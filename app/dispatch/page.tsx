@@ -27,6 +27,7 @@ import { DownloadCsvButton } from "../../components/DownloadCsvButton";
 import { TaskList } from "../../components/TaskList";
 import { AssignmentBar } from "../../components/AssignmentBar";
 import { NoteToDanny } from "../../components/NoteToDanny";
+import { GpsQueryWindow } from "../../components/GpsQueryWindow";
 import { listTasks } from "../../lib/tasks";
 import { isResolving, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
 
@@ -1027,6 +1028,13 @@ export default async function DispatchPage({
         <div className="mb-6 grid items-start gap-4 lg:grid-cols-2">
           <TaskList tasks={dispatchTasks} techNames={taskTechNames} />
           <NoteToDanny />
+        </div>
+      ) : null}
+
+      {/* PAST GPS DATA — NL query window (reuses gps-query edge fn + AskResult) */}
+      {(me.isAdmin || me.isManager) ? (
+        <div className="mb-6">
+          <GpsQueryWindow />
         </div>
       ) : null}
 
