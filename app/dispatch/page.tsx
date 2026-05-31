@@ -906,19 +906,21 @@ export default async function DispatchPage({
               Needs scheduling · {needsSchedulingRows.length} job{needsSchedulingRows.length === 1 ? "" : "s"}
               <span className="ml-2 font-normal text-sky-900/70">{fresh.length} recent (≤30d) · {older.length} older (30+d) · no calendar entry yet</span>
             </summary>
-            <ul className="mt-3 space-y-1.5 text-sm">
-              {fresh.map(renderNeed)}
-            </ul>
-            {older.length > 0 && (
-              <details className="mt-3 rounded-xl border border-sky-300 bg-sky-100/50 p-2">
-                <summary className="cursor-pointer text-xs font-medium text-sky-900">
-                  Older (30+ days · {older.length}) — collapsed by default
-                </summary>
-                <ul className="mt-2 space-y-1.5 text-sm">
-                  {older.map(renderNeed)}
-                </ul>
-              </details>
-            )}
+            <div className="mt-3 h-96 overflow-y-auto pr-1">
+              <ul className="space-y-1.5 text-sm">
+                {fresh.map(renderNeed)}
+              </ul>
+              {older.length > 0 && (
+                <details className="mt-3 rounded-xl border border-sky-300 bg-sky-100/50 p-2">
+                  <summary className="cursor-pointer text-xs font-medium text-sky-900">
+                    Older (30+ days · {older.length}) — collapsed by default
+                  </summary>
+                  <ul className="mt-2 space-y-1.5 text-sm">
+                    {older.map(renderNeed)}
+                  </ul>
+                </details>
+              )}
+            </div>
           </details>
         );
       })()}

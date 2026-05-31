@@ -48,7 +48,7 @@ export function AdvisorBacklogPanel({ jobs, recommend }: { jobs: BacklogJob[]; r
         ✨ Advisor — work the backlog
         <span className="ml-2 font-normal text-brand-900/70">recommend a tech + time for each unscheduled job</span>
       </summary>
-      <ul className="mt-3 space-y-2">
+      <ul className="mt-3 h-96 space-y-2 overflow-y-auto pr-1">
         {jobs.map((j) => {
           const s = st(j.hcp_job_id);
           return (
