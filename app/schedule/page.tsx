@@ -20,6 +20,7 @@ import { PageShell } from "../../components/PageShell";
 import { fmtMoney } from "../../components/Table";
 import { getCurrentTech } from "../../lib/current-tech";
 import { TechAvatar } from "../../components/TechAvatar";
+import { CellAddMenu } from "../../components/CellAddMenu";
 
 export const metadata = { title: "Schedule · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -755,6 +756,7 @@ function DayView({
   todayKey: string;
 }) {
   const isToday = dayKey === todayKey;
+  const isPast = dayKey < todayKey;
   return (
     <div className={`overflow-hidden rounded-2xl border ${isToday ? "border-amber-300" : "border-neutral-200"} bg-white`}>
       <div className={`border-b ${isToday ? "border-amber-300 bg-amber-50" : "border-neutral-200 bg-neutral-50"} px-4 py-2 text-sm font-semibold ${isToday ? "text-amber-900" : "text-neutral-800"}`}>
@@ -788,7 +790,9 @@ function DayView({
               </div>
               <div className="grid flex-1 grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {cell.length === 0 ? (
-                  <div className="col-span-full text-[11px] text-neutral-300">— Open day</div>
+                  <div className="col-span-full flex items-center gap-2 text-[11px] text-neutral-400">
+                    {isPast ? <span className="text-neutral-300">— Open day</span> : <><span>Open day</span><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></>}
+                  </div>
                 ) : cell.map((a) => (
                   a.hcp_job_id ? (
                     <Link key={a.appointment_id ?? a.hcp_job_id} href={`/job/${a.hcp_job_id}`} className="block">
@@ -800,6 +804,7 @@ function DayView({
                     </div>
                   )
                 ))}
+                {cell.length > 0 && !isPast ? <div className="flex items-center"><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></div> : null}
               </div>
             </div>
           );
@@ -890,7 +895,9 @@ function WeekView({
                   return (
                     <td key={dayKey} className={`min-h-24 border-r border-b border-neutral-200 p-1 align-top ${isToday ? "bg-amber-50/60" : isPast ? "bg-neutral-50/40" : "bg-white"}`}>
                       {cell.length === 0 ? (
-                        <div className="flex h-full min-h-16 items-center justify-center text-[10px] text-neutral-300">—</div>
+                        <div className="flex h-full min-h-16 items-center justify-center">
+                          {isPast ? <span className="text-[10px] text-neutral-300">—</span> : <CellAddMenu techFull={techFullName} dateKey={dayKey} compact />}
+                        </div>
                       ) : (
                         <div className="space-y-1">
                           {cell.map((a) => (
@@ -904,6 +911,7 @@ function WeekView({
                               </div>
                             )
                           ))}
+                          {!isPast ? <div className="pt-0.5"><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></div> : null}
                         </div>
                       )}
                     </td>

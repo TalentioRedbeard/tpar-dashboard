@@ -8,12 +8,15 @@ import { CreateEventForm } from "./CreateEventForm";
 export const metadata = { title: "New event · Dispatch · TPAR-DB" };
 export const dynamic = "force-dynamic";
 
-export default async function NewEventPage() {
+export default async function NewEventPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/dispatch/new-event");
   if (!me.isAdmin && !me.isManager) redirect("/me");
 
   const [locations, techs] = await Promise.all([loadInternalLocations(), loadActiveTechs()]);
+  const params = await searchParams;
+  const initialDate = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : undefined;
+  const initialTechId = params.tech ? techs.find((t) => t.hcp_full_name === params.tech)?.hcp_employee_id : undefined;
 
   return (
     <PageShell
@@ -34,6 +37,8 @@ export default async function NewEventPage() {
           action={createEvent}
           locations={locations}
           techs={techs}
+          initialDate={initialDate}
+          initialTechId={initialTechId}
         />
       )}
     </PageShell>

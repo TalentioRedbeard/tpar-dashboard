@@ -17,10 +17,14 @@ export function CreateEstimateForm({
   action,
   searchCustomers,
   techs,
+  initialDate,
+  initialTechId,
 }: {
   action: (fd: FormData) => Promise<CreateEstimateResult>;
   searchCustomers: (q: string) => Promise<CustomerHit[]>;
   techs: Tech[];
+  initialDate?: string;
+  initialTechId?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -107,7 +111,7 @@ export function CreateEstimateForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="text-xs font-medium text-neutral-700">Tech</span>
-          <select name="tech_employee_id" required defaultValue="" className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
+          <select name="tech_employee_id" required defaultValue={initialTechId ?? ""} className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
             <option value="">Choose a tech…</option>
             {techs.map((t) => (
               <option key={t.hcp_employee_id} value={t.hcp_employee_id}>{t.tech_short_name}{t.is_lead ? " (lead)" : ""}</option>
@@ -116,7 +120,7 @@ export function CreateEstimateForm({
         </label>
         <label className="block">
           <span className="text-xs font-medium text-neutral-700">Date (Chicago)</span>
-          <input type="date" name="date" required defaultValue={tomorrowYmd} className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
+          <input type="date" name="date" required defaultValue={initialDate ?? tomorrowYmd} className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
         </label>
         <label className="block">
           <span className="text-xs font-medium text-neutral-700">Start time (Chicago)</span>

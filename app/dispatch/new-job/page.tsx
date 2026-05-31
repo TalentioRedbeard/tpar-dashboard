@@ -9,12 +9,15 @@ import { CreateJobForm } from "./CreateJobForm";
 export const metadata = { title: "New job · Dispatch · TPAR-DB" };
 export const dynamic = "force-dynamic";
 
-export default async function NewJobPage() {
+export default async function NewJobPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/dispatch/new-job");
   if (!me.isAdmin && !me.isManager) redirect("/me");
 
   const techs = await loadActiveTechs();
+  const params = await searchParams;
+  const initialDate = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : undefined;
+  const initialTechId = params.tech ? techs.find((t) => t.hcp_full_name === params.tech)?.hcp_employee_id : undefined;
 
   return (
     <PageShell
@@ -33,6 +36,8 @@ export default async function NewJobPage() {
         getTechDayLoad={getTechDayLoad}
         getCustomerSnapshot={getCustomerSnapshot}
         recommend={recommendSchedule}
+        initialDate={initialDate}
+        initialTechId={initialTechId}
       />
     </PageShell>
   );

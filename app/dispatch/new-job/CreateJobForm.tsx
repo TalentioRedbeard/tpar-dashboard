@@ -37,6 +37,8 @@ export function CreateJobForm({
   getTechDayLoad,
   getCustomerSnapshot,
   recommend,
+  initialDate,
+  initialTechId,
 }: {
   action: (fd: FormData) => Promise<CreateJobResult>;
   searchCustomers: (q: string) => Promise<CustomerHit[]>;
@@ -44,6 +46,8 @@ export function CreateJobForm({
   getTechDayLoad: (dateChi: string) => Promise<TechDayLoad[]>;
   getCustomerSnapshot: (customerId: string) => Promise<CustomerSnapshot | null>;
   recommend: (job: AdvisorJobInput) => Promise<AdvisorResult>;
+  initialDate?: string;
+  initialTechId?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -59,8 +63,8 @@ export function CreateJobForm({
   const tomorrowYmd = tomorrow.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 
   // Controlled fields (so the advisor can pre-fill tech + start time on Apply).
-  const [selectedDate, setSelectedDate] = useState<string>(tomorrowYmd);
-  const [selectedTechId, setSelectedTechId] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<string>(initialDate ?? tomorrowYmd);
+  const [selectedTechId, setSelectedTechId] = useState<string>(initialTechId ?? "");
   const [startTime, setStartTime] = useState<string>("09:00");
   const [durationMin, setDurationMin] = useState<number>(120);
   const [description, setDescription] = useState<string>("");
