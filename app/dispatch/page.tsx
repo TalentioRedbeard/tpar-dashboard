@@ -605,8 +605,54 @@ export default async function DispatchPage({
         </Link>
       </div>
 
-      {/* MAP — customer pins + van pins (Bouncie) + tech pings (in-app GPS) */}
-      <DispatchMap customers={customerPins} vans={vanPins} techs={techPins} />
+      {/* MAP (left) + HIGH-IMPORTANCE FOLLOW-UPS (right, scrollable to-do window) */}
+      <div className="mb-6 grid items-start gap-4 lg:grid-cols-2">
+        <DispatchMap customers={customerPins} vans={vanPins} techs={techPins} />
+
+        <div className="flex h-[460px] flex-col rounded-2xl border border-red-200 bg-red-50 p-3">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold text-red-900">
+              ⚠ Follow-ups{agedHighImpTotal > 0 ? ` · ${agedHighImpTotal}` : ""}
+              <span className="ml-1 text-xs font-normal text-red-900/70">high-importance · waiting &gt;24h</span>
+            </h3>
+            <Link href="/admin/queue" className="shrink-0 text-xs font-medium text-red-800 underline hover:text-red-900">full queue →</Link>
+          </div>
+          {agedHighImpTotal === 0 ? (
+            <div className="flex flex-1 items-center justify-center text-sm text-red-900/60">✓ Nothing waiting</div>
+          ) : (() => {
+            const renderComm = (c: typeof agedHighImpRows[number]) => {
+              const ack = getAck("comm_event", String(c.id));
+              if (hideResolved && isResolving(ack?.status)) return null;
+              const dimmed = isResolving(ack?.status);
+              const hours = Math.floor((Date.now() - new Date(c.occurred_at).getTime()) / 3_600_000);
+              const ageLabel = hours >= 24 ? `${Math.floor(hours / 24)}d` : `${hours}h`;
+              return (
+                <li key={c.id} className={`rounded-xl border bg-white p-2 text-sm ${ackBorder(ack?.status)} ${dimmed ? "opacity-60" : ""}`}>
+                  <div className="flex items-baseline gap-2 text-xs text-red-900/70">
+                    <span className="font-mono font-semibold">{ageLabel} old</span>
+                    <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800">imp {c.importance}</span>
+                    <span className="uppercase">{c.channel ?? "—"}{c.direction ? ` · ${c.direction}` : ""}</span>
+                    {c.tech_short_name ? <span className="text-neutral-600">{c.tech_short_name}</span> : null}
+                    <span className="ml-auto"><DispatchAck itemType="comm_event" itemId={String(c.id)} existing={ack} canWrite={canWriteAck} /></span>
+                  </div>
+                  <div className="mt-1 font-medium text-neutral-900">{c.customer_name ?? "—"}</div>
+                  <div className="text-xs text-neutral-700">{c.summary ?? "—"}</div>
+                  {ack?.note ? <div className="mt-1 text-[11px] italic text-neutral-700">“{ack.note}”</div> : null}
+                </li>
+              );
+            };
+            const sorted = [...agedHighImpRows].sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime());
+            return (
+              <>
+                <ul className="flex-1 space-y-2 overflow-y-auto pr-1">
+                  {sorted.map(renderComm)}
+                </ul>
+                <p className="mt-2 shrink-0 text-center text-[10px] text-red-900/60">top {agedHighImpRows.length} of {agedHighImpTotal} · oldest first</p>
+              </>
+            );
+          })()}
+        </div>
+      </div>
 
       {/* ADHERENCE FLAGS — lifecycle triggers pressed far from the job (24h) */}
       {adherenceFlags.length > 0 ? (
@@ -643,58 +689,7 @@ export default async function DispatchPage({
         </div>
       ) : null}
 
-      {/* AGED HIGH-IMP COMMS — Layer 2 decay: split <7d (visible) vs 7+d (collapsed) */}
-      {agedHighImpTotal > 0 && (() => {
-        const SEVEN_DAYS_MS = 7 * 86_400_000;
-        const renderComm = (c: typeof agedHighImpRows[number]) => {
-          const ack = getAck("comm_event", String(c.id));
-          if (hideResolved && isResolving(ack?.status)) return null;
-          const dimmed = isResolving(ack?.status);
-          const hours = Math.floor((Date.now() - new Date(c.occurred_at).getTime()) / 3_600_000);
-          const ageLabel = hours >= 24 ? `${Math.floor(hours / 24)}d` : `${hours}h`;
-          return (
-            <li key={c.id} className={`rounded-xl border bg-white p-2 text-sm ${ackBorder(ack?.status)} ${dimmed ? "opacity-60" : ""}`}>
-              <div className="flex items-baseline gap-2 text-xs text-red-900/70">
-                <span className="font-mono font-semibold">{ageLabel} old</span>
-                <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800">imp {c.importance}</span>
-                <span className="uppercase">{c.channel ?? "—"}{c.direction ? ` · ${c.direction}` : ""}</span>
-                {c.tech_short_name ? <span className="text-neutral-600">{c.tech_short_name}</span> : null}
-                <span className="ml-auto"><DispatchAck itemType="comm_event" itemId={String(c.id)} existing={ack} canWrite={canWriteAck} /></span>
-              </div>
-              <div className="mt-1 font-medium text-neutral-900">{c.customer_name ?? "—"}</div>
-              <div className="text-xs text-neutral-700">{c.summary ?? "—"}</div>
-              {ack?.note ? <div className="mt-1 text-[11px] italic text-neutral-700">“{ack.note}”</div> : null}
-            </li>
-          );
-        };
-        const fresh = agedHighImpRows.filter(c => (Date.now() - new Date(c.occurred_at).getTime()) < SEVEN_DAYS_MS);
-        const older = agedHighImpRows.filter(c => (Date.now() - new Date(c.occurred_at).getTime()) >= SEVEN_DAYS_MS);
-        return (
-          <details className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4" open={fresh.length >= 5}>
-            <summary className="cursor-pointer text-sm font-semibold text-red-900">
-              ⚠ {agedHighImpTotal} high-importance follow-up{agedHighImpTotal === 1 ? "" : "s"} waiting &gt; 24h
-              <span className="ml-2 font-normal text-red-900/70">{fresh.length} recent (≤7d) · {older.length} older (7+d) · click to expand</span>
-            </summary>
-            <ul className="mt-3 space-y-2">
-              {fresh.map(renderComm)}
-            </ul>
-            {older.length > 0 && (
-              <details className="mt-3 rounded-xl border border-red-300 bg-red-100/50 p-2">
-                <summary className="cursor-pointer text-xs font-medium text-red-900">
-                  Older (7+ days · {older.length}) — collapsed by default
-                </summary>
-                <ul className="mt-2 space-y-2">
-                  {older.map(renderComm)}
-                </ul>
-              </details>
-            )}
-            <p className="mt-3 text-xs text-red-900/70">
-              Showing top {agedHighImpRows.length} of {agedHighImpTotal} —
-              <Link href="/admin/queue" className="ml-1 font-medium underline">open full queue →</Link>
-            </p>
-          </details>
-        );
-      })()}
+      {/* High-importance follow-ups now render in the map row above (Phase 2). */}
 
       {/* LANES — column per tech */}
       <section className="mb-8">
