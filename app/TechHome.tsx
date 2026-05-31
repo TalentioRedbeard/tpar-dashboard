@@ -16,6 +16,8 @@ import { PageShell } from "../components/PageShell";
 import { Section } from "../components/ui/Section";
 import { Pill } from "../components/ui/Pill";
 import { EmptyState } from "../components/ui/EmptyState";
+import { MyTasks } from "../components/MyTasks";
+import { listMyTasks } from "@/lib/tasks";
 
 function fmtTime(s: string | null): string {
   if (!s) return "—";
@@ -362,6 +364,8 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
     day: "numeric",
   });
 
+  const myTasks = await listMyTasks();
+
   return (
     <PageShell
       kicker={`Tech · ${techName}`}
@@ -399,6 +403,13 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
           </Link>
         </section>
       )}
+
+      {/* Tasks assigned to this tech (#18) */}
+      {myTasks.length > 0 ? (
+        <section className="mb-5">
+          <MyTasks tasks={myTasks} />
+        </section>
+      ) : null}
 
       {/* Ask bar — primary CTA for "I don't know what to do" / "find me X" */}
       <section className="mb-6">

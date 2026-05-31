@@ -68,12 +68,15 @@ function TaskRow({ task, techNames, run, pending }: { task: Task; techNames: str
           <option value="">Unassigned</option>
           {techNames.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
+        {task.tech_response === "accepted" ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800">✓ accepted</span> : null}
+        {task.tech_response === "declined" ? <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] text-rose-800">✕ can&apos;t do</span> : null}
         <span className="ml-auto flex items-center gap-1">
           {task.status !== "in_progress" ? <button type="button" disabled={pending} onClick={() => run(() => setTaskStatus(task.id, "in_progress"))} className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] text-amber-800 hover:bg-amber-50">Start</button> : null}
           <button type="button" disabled={pending} onClick={() => run(() => setTaskStatus(task.id, "done"))} className="rounded border border-emerald-300 bg-white px-1.5 py-0.5 text-[10px] text-emerald-800 hover:bg-emerald-50">✓ Done</button>
         </span>
       </div>
       {task.detail ? <div className="mt-1 text-xs text-neutral-600">{task.detail}</div> : null}
+      {task.tech_response === "declined" && task.tech_response_note ? <div className="mt-1 text-xs italic text-rose-700">{task.assigned_to ?? "tech"} can&apos;t do this: “{task.tech_response_note}”</div> : null}
       {task.requirements.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {task.requirements.map((r, i) => <span key={i} className={`rounded px-1.5 py-0.5 text-[10px] ${r.kind === "skill" ? "bg-violet-100 text-violet-800" : "bg-neutral-200 text-neutral-700"}`}>{r.kind === "skill" ? "🛠 " : "• "}{r.text}</span>)}

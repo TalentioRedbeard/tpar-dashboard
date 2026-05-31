@@ -23,6 +23,9 @@ export type Task = {
   created_at: string;
   updated_at: string;
   done_at: string | null;
+  tech_response: "accepted" | "declined" | null;
+  tech_response_note: string | null;
+  tech_response_at: string | null;
 };
 export type TaskResult = { ok: true } | { ok: false; error: string };
 
@@ -43,6 +46,72 @@ export async function listTasks(): Promise<Task[]> {
     .order("created_at", { ascending: false })
     .limit(100);
   return (data ?? []) as Task[];
+}
+
+// Tech-facing: tasks assigned to the signed-in tech, not yet done (#18).
+export async function listMyTasks(): Promise<Task[]> {
+  const me = await getCurrentTech();
+  if (!me?.tech) return [];
+  const { data } = await db()
+    .from("tasks")
+    .select("*")
+    .eq("assigned_to", me.tech.tech_short_name)
+    .neq("status", "done")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  return (data ?? []) as Task[];
+}
+
+// Tech accept / "can't do" on an assigned task (#18). Declining with a reason
+// records the gap on the task (as a skill requirement) AND flags Danny — the
+// bridge to the structured skillset layer. Tech-allowed (bypasses the
+// admin/manager gate, since this IS the tech responding).
+export async function respondToTask(taskId: string, response: "accepted" | "declined", note?: string): Promise<TaskResult> {
+  const me = await getCurrentTech();
+  if (!me?.tech) return { ok: false, error: "not signed in" };
+  const myName = me.tech.tech_short_name;
+  const supa = db();
+  const { data: task } = await supa.from("tasks").select("title, assigned_to, requirements").eq("id", taskId).maybeSingle();
+  if (!task) return { ok: false, error: "task not found" };
+  if (task.assigned_to && task.assigned_to !== myName && !me.isAdmin) return { ok: false, error: "this task isn't assigned to you" };
+
+  const now = new Date().toISOString();
+  const noteClean = (note ?? "").trim().slice(0, 500) || null;
+  const patch: Record<string, unknown> = { tech_response: response, tech_response_note: noteClean, tech_response_at: now, updated_at: now };
+  if (response === "accepted") patch.status = "in_progress";
+  if (response === "declined" && noteClean) {
+    const reqs = (Array.isArray(task.requirements) ? task.requirements : []) as TaskRequirement[];
+    reqs.push({ text: noteClean, kind: "skill", added_by: myName, added_at: now });
+    patch.requirements = reqs;
+  }
+  const { error } = await supa.from("tasks").update(patch).eq("id", taskId);
+  if (error) return { ok: false, error: error.message };
+
+  if (response === "declined") {
+    try {
+      await supa.from("team_notes").insert({
+        author_email: me.email,
+        author_short_name: myName,
+        target_kind: "teammate",
+        target_email: ownerEmail(),
+        target_short_name: "Danny",
+        body: `🚧 ${myName} can't do task "${task.title}"${noteClean ? `: ${noteClean}` : ""} — missing skill/requirement to fill.`,
+        attach_kind: null,
+        attach_ref: taskId,
+        tags: ["note-to-danny", "task-decline", "skill-gap"],
+        urgent: false,
+      });
+      const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+      await fetch(`${SUPABASE_URL}/functions/v1/notify-danny`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Trigger-Secret": process.env.NOTIFY_DANNY_SECRET ?? "" },
+        body: JSON.stringify({ text: `🚧 *${myName} can't do a task*: "${task.title}"${noteClean ? `\n> ${noteClean}` : ""}`, context: "task-decline" }),
+      });
+    } catch { /* best-effort */ }
+  }
+  revalidatePath("/");
+  revalidatePath("/dispatch");
+  return { ok: true };
 }
 
 export async function createTask(input: { title: string; detail?: string; assigned_to?: string }): Promise<TaskResult> {
