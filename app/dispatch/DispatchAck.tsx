@@ -1,12 +1,21 @@
 "use client";
 
-// Inline ack picker for any /dispatch item. Compact by default (just a chip
-// + ▾). Expands on click to show all 4 statuses + optional note input + "clear".
-//
-// Optimistic-ish: posts via server action, revalidates the page.
+// Inline disposition picker for any /dispatch item. Compact chip + ▾; expands to
+// a grouped menu: ACTIVE statuses (stay on the board) and CLEAR/PAUSE statuses
+// (collapse the item out of the live lists) + optional note + remove.
 
 import { useState, useTransition, useRef, useEffect } from "react";
-import { setDispatchAck, type DispatchAckStatus, type DispatchItemType } from "./actions";
+import { setDispatchAck } from "./actions";
+import {
+  type DispatchAckStatus,
+  type DispatchItemType,
+  ACTIVE_STATUSES,
+  RESOLVING_STATUSES,
+  isResolving,
+  dispositionChip,
+  dispositionLabel,
+  DISPOSITION_HINT,
+} from "./dispositions";
 
 type Existing = {
   status: DispatchAckStatus;
@@ -32,7 +41,6 @@ export function DispatchAck({
   const [msg, setMsg] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     function handler(e: MouseEvent) {
@@ -51,18 +59,15 @@ export function DispatchAck({
     startTransition(async () => {
       const result = await setDispatchAck({ ok: false, message: "" }, fd);
       setMsg(result.ok ? result.message : `err: ${result.message}`);
-      if (result.ok && (status === "addressed" || status === "clear")) {
-        setOpen(false);
-      }
+      // Resolving (or clear) collapses the item — close the picker.
+      if (result.ok && (status === "clear" || isResolving(status as DispatchAckStatus))) setOpen(false);
     });
   }
 
-  const chipClasses = chipFor(existing?.status);
-  const label = labelFor(existing?.status);
+  const chip = dispositionChip(existing?.status);
+  const label = dispositionLabel(existing?.status);
 
-  if (!canWrite && !existing) {
-    return null;  // hide if no perms + nothing to show
-  }
+  if (!canWrite && !existing) return null;
 
   return (
     <div className="relative inline-block" ref={containerRef}>
@@ -70,26 +75,31 @@ export function DispatchAck({
         type="button"
         onClick={() => canWrite && setOpen((o) => !o)}
         disabled={!canWrite}
-        title={existing ? `${label} by ${existing.set_by_short_name ?? "?"} · ${new Date(existing.set_at).toLocaleString()}${existing.note ? "\n" + existing.note : ""}` : "Set status"}
-        className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${chipClasses} ${canWrite ? "hover:opacity-80 cursor-pointer" : ""}`}
+        title={existing ? `${label} by ${existing.set_by_short_name ?? "?"} · ${new Date(existing.set_at).toLocaleString()}${existing.note ? "\n" + existing.note : ""}` : "Set status / clear with a reason"}
+        className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${chip} ${canWrite ? "hover:opacity-80 cursor-pointer" : ""}`}
       >
         <span>{label}</span>
         {canWrite ? <span aria-hidden className="text-[8px] opacity-60">▾</span> : null}
       </button>
 
       {open && canWrite ? (
-        <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-neutral-300 bg-white p-2 shadow-lg">
-          <div className="mb-1 text-[10px] uppercase tracking-wide text-neutral-500">Set status</div>
-          <div className="space-y-1">
-            <StatusButton onClick={() => submit("addressed")} status="addressed" pending={pending} />
-            <StatusButton onClick={() => submit("needs_followup")} status="needs_followup" pending={pending} />
-            <StatusButton onClick={() => submit("needs_review")} status="needs_review" pending={pending} />
-            <StatusButton onClick={() => submit("needs_advise")} status="needs_advise" pending={pending} />
+        <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-neutral-300 bg-white p-2 shadow-lg">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Active — stays on the board</div>
+          <div className="space-y-0.5">
+            {ACTIVE_STATUSES.map((s) => (
+              <StatusButton key={s} status={s} onClick={() => submit(s)} pending={pending} />
+            ))}
+          </div>
+          <div className="mb-1 mt-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Clear / pause — collapses it</div>
+          <div className="space-y-0.5">
+            {RESOLVING_STATUSES.map((s) => (
+              <StatusButton key={s} status={s} onClick={() => submit(s)} pending={pending} />
+            ))}
           </div>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="optional note (≤500 chars)"
+            placeholder="optional note (≤500 chars) — esp. for declined / awaiting-client"
             rows={2}
             className="mt-2 w-full rounded-md border border-neutral-200 px-2 py-1 text-[11px]"
           />
@@ -100,7 +110,7 @@ export function DispatchAck({
               disabled={pending}
               className="mt-1 w-full rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[10px] text-neutral-600 hover:bg-neutral-100"
             >
-              Clear status
+              Remove status (back to unset)
             </button>
           ) : null}
           {msg ? <div className="mt-1 text-[10px] text-neutral-600">{msg}</div> : null}
@@ -116,29 +126,11 @@ function StatusButton({ status, onClick, pending }: { status: DispatchAckStatus;
       type="button"
       onClick={onClick}
       disabled={pending}
-      className={`block w-full rounded-md px-2 py-1 text-left text-[11px] font-medium ${chipFor(status)} hover:opacity-80`}
+      title={DISPOSITION_HINT[status]}
+      className={`block w-full rounded-md px-2 py-1 text-left text-[11px] font-medium ${dispositionChip(status)} hover:opacity-80`}
     >
-      {labelFor(status)}
+      {dispositionLabel(status)}
+      <span className="ml-1 font-normal opacity-60">· {DISPOSITION_HINT[status]}</span>
     </button>
   );
-}
-
-function chipFor(status: DispatchAckStatus | undefined): string {
-  switch (status) {
-    case "addressed":      return "bg-emerald-100 text-emerald-800 border border-emerald-200";
-    case "needs_followup": return "bg-amber-100 text-amber-800 border border-amber-200";
-    case "needs_review":   return "bg-sky-100 text-sky-800 border border-sky-200";
-    case "needs_advise":   return "bg-violet-100 text-violet-800 border border-violet-200";
-    default:               return "bg-neutral-50 text-neutral-500 border border-dashed border-neutral-300";
-  }
-}
-
-function labelFor(status: DispatchAckStatus | undefined): string {
-  switch (status) {
-    case "addressed":      return "✓ addressed";
-    case "needs_followup": return "↻ follow-up";
-    case "needs_review":   return "👁 review";
-    case "needs_advise":   return "❓ advise";
-    default:               return "+ status";
-  }
 }

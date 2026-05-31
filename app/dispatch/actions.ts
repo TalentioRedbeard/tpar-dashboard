@@ -1,16 +1,20 @@
 "use server";
 
-// Server actions for /dispatch — operational status (ack) overlay on items.
-//
-// One row per (item_type, item_id) in dispatch_acks. Status comes from a fixed
-// set. Optional note. set_by_email + set_by_short_name attribute the writer.
+// Server action for /dispatch dispositions — one row per (item_type, item_id) in
+// dispatch_acks. Status comes from the shared taxonomy in ./dispositions. Optional
+// note. set_by_email + set_by_short_name attribute the writer. Resolving statuses
+// auto-collapse the item (the page handles the hide); "clear" deletes the row.
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
-
-export type DispatchAckStatus = "addressed" | "needs_followup" | "needs_review" | "needs_advise";
-export type DispatchItemType = "appointment" | "stale_appointment" | "needs_scheduling" | "comm_event";
+import {
+  type DispatchAckStatus,
+  type DispatchItemType,
+  ALL_STATUSES,
+  VALID_ITEM_TYPES,
+  DISPOSITION_LABEL,
+} from "./dispositions";
 
 export type AckActionResult =
   | { ok: true; message: string }
@@ -19,7 +23,7 @@ export type AckActionResult =
 async function requireWriter(): Promise<{ email: string; short_name: string } | { error: string }> {
   const me = await getCurrentTech();
   if (!me) return { error: "not signed in" };
-  // admin + manager + production_manager + lead techs may set ack
+  // admin + manager + production_manager + lead techs may set a disposition
   const isLead = !!me.tech?.is_lead;
   if (!(me.isAdmin || me.isManager || isLead)) {
     return { error: "not authorized — admin, manager, or lead tech only" };
@@ -29,9 +33,6 @@ async function requireWriter(): Promise<{ email: string; short_name: string } | 
     short_name: me.tech?.tech_short_name ?? me.email.split("@")[0],
   };
 }
-
-const VALID_STATUSES: DispatchAckStatus[] = ["addressed", "needs_followup", "needs_review", "needs_advise"];
-const VALID_TYPES: DispatchItemType[] = ["appointment", "stale_appointment", "needs_scheduling", "comm_event"];
 
 export async function setDispatchAck(
   _prev: AckActionResult,
@@ -46,7 +47,7 @@ export async function setDispatchAck(
   const noteRaw   = formData.get("note");
   const note      = typeof noteRaw === "string" ? noteRaw.trim().slice(0, 500) || null : null;
 
-  if (!VALID_TYPES.includes(item_type)) return { ok: false, message: `invalid item_type: ${item_type}` };
+  if (!(VALID_ITEM_TYPES as string[]).includes(item_type)) return { ok: false, message: `invalid item_type: ${item_type}` };
   if (!item_id) return { ok: false, message: "missing item_id" };
 
   const supa = db();
@@ -63,7 +64,7 @@ export async function setDispatchAck(
     return { ok: true, message: "cleared" };
   }
 
-  if (!VALID_STATUSES.includes(status as DispatchAckStatus)) {
+  if (!(ALL_STATUSES as string[]).includes(status)) {
     return { ok: false, message: `invalid status: ${status}` };
   }
 
@@ -85,9 +86,5 @@ export async function setDispatchAck(
   if (error) return { ok: false, message: error.message };
   revalidatePath("/dispatch");
 
-  const label = status === "addressed" ? "✓ addressed"
-              : status === "needs_followup" ? "↻ follow-up"
-              : status === "needs_review" ? "👁 review"
-              : "❓ advise";
-  return { ok: true, message: label };
+  return { ok: true, message: DISPOSITION_LABEL[status as DispatchAckStatus] };
 }

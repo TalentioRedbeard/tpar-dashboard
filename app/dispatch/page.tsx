@@ -21,7 +21,7 @@ import { DispatchMap, type CustomerPin, type VanPin, type TechPin } from "../../
 import { AdvisorBacklogPanel } from "../../components/AdvisorBacklogPanel";
 import { recommendSchedule } from "../../lib/schedule-advisor";
 import { DispatchAck } from "./DispatchAck";
-import type { DispatchAckStatus, DispatchItemType } from "./actions";
+import { isResolving, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -83,12 +83,14 @@ function chicagoTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", { timeZone: CHI, hour: "numeric", minute: "2-digit" });
 }
 function ackBorder(status: DispatchAckStatus | undefined): string {
+  if (!status) return "border-neutral-200";
+  if (isResolving(status)) return "border-emerald-200";
   switch (status) {
-    case "addressed":      return "border-emerald-300";
-    case "needs_followup": return "border-amber-300";
-    case "needs_review":   return "border-sky-300";
-    case "needs_advise":   return "border-violet-300";
-    default:               return "border-neutral-200";
+    case "needs_followup":   return "border-amber-300";
+    case "needs_review":     return "border-sky-300";
+    case "needs_advise":     return "border-violet-300";
+    case "scheduled_active": return "border-blue-300";
+    default:                 return "border-neutral-200";
   }
 }
 
@@ -133,14 +135,14 @@ function techStateLabel(state: string): string {
 export default async function DispatchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ hide_addressed?: string }>;
+  searchParams: Promise<{ show_resolved?: string }>;
 }) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/dispatch");
   if (!me.isAdmin && !me.isManager) redirect("/me");
 
-  const { hide_addressed } = await searchParams;
-  const hideAddressed = hide_addressed === "1";
+  const { show_resolved } = await searchParams;
+  const hideResolved = show_resolved !== "1";  // resolving dispositions auto-collapse by default
   const canWriteAck = me.isAdmin || me.isManager || !!me.tech?.is_lead;
 
   const supa = db();
@@ -348,6 +350,7 @@ export default async function DispatchPage({
   const ackRows = (acksRes.data ?? []) as AckRow[];
   const ackByKey = new Map<string, AckRow>();
   for (const a of ackRows) ackByKey.set(`${a.item_type}:${a.item_id}`, a);
+  const resolvedCount = Array.from(ackByKey.values()).filter((a) => isResolving(a.status)).length;
   function getAck(item_type: DispatchItemType, item_id: string | null | undefined): AckRow | null {
     if (!item_id) return null;
     return ackByKey.get(`${item_type}:${item_id}`) ?? null;
@@ -565,11 +568,11 @@ export default async function DispatchPage({
         </button>
         <span className="ml-auto" />
         <Link
-          href={hideAddressed ? "/dispatch" : "/dispatch?hide_addressed=1"}
-          className={`rounded-md border px-3 py-1.5 text-xs font-medium ${hideAddressed ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"}`}
-          title={hideAddressed ? "Currently hiding addressed items. Click to show all." : "Hide items marked addressed."}
+          href={hideResolved ? "/dispatch?show_resolved=1" : "/dispatch"}
+          className={`rounded-md border px-3 py-1.5 text-xs font-medium ${hideResolved ? "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50" : "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}
+          title={hideResolved ? "Resolved items (declined / done / deferred / awaiting-client / etc.) are hidden. Click to show them." : "Showing resolved items. Click to hide them again."}
         >
-          {hideAddressed ? "✓ Hiding addressed" : "Hide addressed"}
+          {hideResolved ? `Show resolved${resolvedCount ? ` (${resolvedCount})` : ""}` : "✓ Showing resolved"}
         </Link>
       </div>
 
@@ -645,8 +648,8 @@ export default async function DispatchPage({
         const SEVEN_DAYS_MS = 7 * 86_400_000;
         const renderComm = (c: typeof agedHighImpRows[number]) => {
           const ack = getAck("comm_event", String(c.id));
-          if (hideAddressed && ack?.status === "addressed") return null;
-          const dimmed = ack?.status === "addressed";
+          if (hideResolved && isResolving(ack?.status)) return null;
+          const dimmed = isResolving(ack?.status);
           const hours = Math.floor((Date.now() - new Date(c.occurred_at).getTime()) / 3_600_000);
           const ageLabel = hours >= 24 ? `${Math.floor(hours / 24)}d` : `${hours}h`;
           return (
@@ -730,8 +733,8 @@ export default async function DispatchPage({
                       const lifecycleEvents = a.hcp_job_id ? (lifecycleByJob.get(a.hcp_job_id) ?? []) : [];
                       const state = techStateFromEvents(lifecycleEvents);
                       const ack = getAck("appointment", a.appointment_id);
-                      if (hideAddressed && ack?.status === "addressed") return null;
-                      const dimmed = ack?.status === "addressed";
+                      if (hideResolved && isResolving(ack?.status)) return null;
+                      const dimmed = isResolving(ack?.status);
                       return (
                         <div key={a.appointment_id ?? a.hcp_job_id ?? Math.random()} className={`rounded-xl border bg-neutral-50 p-2 ${ackBorder(ack?.status)} ${dimmed ? "opacity-60" : ""}`}>
                           <div className="flex items-baseline justify-between gap-2">
@@ -788,8 +791,8 @@ export default async function DispatchPage({
         const FOURTEEN_DAYS_MS = 14 * 86_400_000;
         const renderStale = (s: typeof staleRows[number]) => {
           const ack = getAck("stale_appointment", s.appointment_id);
-          if (hideAddressed && ack?.status === "addressed") return null;
-          const dimmed = ack?.status === "addressed";
+          if (hideResolved && isResolving(ack?.status)) return null;
+          const dimmed = isResolving(ack?.status);
           const ageDays = Math.round((Date.now() - new Date(s.scheduled_start).getTime()) / 86_400_000);
           return (
             <li key={s.appointment_id ?? s.hcp_job_id ?? s.scheduled_start} className={`flex flex-wrap items-baseline gap-2 ${dimmed ? "opacity-60" : ""}`}>
@@ -848,8 +851,8 @@ export default async function DispatchPage({
       {needsSchedulingRows.length > 0 && (() => {
         const renderNeed = (j: typeof needsSchedulingRows[number]) => {
           const ack = getAck("needs_scheduling", j.hcp_job_id);
-          if (hideAddressed && ack?.status === "addressed") return null;
-          const dimmed = ack?.status === "addressed";
+          if (hideResolved && isResolving(ack?.status)) return null;
+          const dimmed = isResolving(ack?.status);
           return (
             <li key={j.hcp_job_id} className={`flex flex-wrap items-baseline gap-2 ${dimmed ? "opacity-60" : ""}`}>
               <span className="font-mono text-xs text-sky-900/70">{j.age_days != null ? `${j.age_days}d ago` : "—"}</span>
@@ -940,8 +943,8 @@ export default async function DispatchPage({
                     <tbody className="divide-y divide-neutral-100">
                       {dayRows.map((r) => {
                         const ack = getAck("appointment", r.appointment_id);
-                        if (hideAddressed && ack?.status === "addressed") return null;
-                        const dimmed = ack?.status === "addressed";
+                        if (hideResolved && isResolving(ack?.status)) return null;
+                        const dimmed = isResolving(ack?.status);
                         return (
                           <tr key={r.appointment_id ?? r.hcp_job_id ?? Math.random()} className={`hover:bg-neutral-50 ${dimmed ? "opacity-60" : ""}`}>
                             <td className="px-3 py-2 align-top whitespace-nowrap font-mono text-xs text-neutral-700">{chicagoTime(r.scheduled_start)}</td>
