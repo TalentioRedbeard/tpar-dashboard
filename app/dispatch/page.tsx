@@ -22,6 +22,7 @@ import { AdvisorBacklogPanel } from "../../components/AdvisorBacklogPanel";
 import { recommendSchedule } from "../../lib/schedule-advisor";
 import { DispatchAck } from "./DispatchAck";
 import { RequestReportButton } from "../../components/RequestReportButton";
+import { TechAvatar } from "../../components/TechAvatar";
 import { isResolving, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
@@ -251,7 +252,7 @@ export default async function DispatchPage({
     // Active techs (everyone on duty today, even those without an appt) — for empty-lane rendering
     supa
       .from("tech_directory")
-      .select("tech_short_name, hcp_full_name, dashboard_role, is_lead, is_active")
+      .select("tech_short_name, hcp_full_name, dashboard_role, is_lead, is_active, avatar_url")
       .eq("is_active", true)
       .neq("is_test", true)
       .in("dashboard_role", ["tech", "admin"])
@@ -395,7 +396,8 @@ export default async function DispatchPage({
   const last24hRows = (last24hRes.data ?? []) as Array<{ total_amount: number | null }>;
   const intakeCount = intakeRes.count ?? 0;
   const paidToday = (paidTodayRes.data ?? []) as Array<{ hcp_job_id: string; amount: number }>;
-  const activeTechs = (activeTechsRes.data ?? []) as Array<{ tech_short_name: string; hcp_full_name: string; is_lead: boolean | null }>;
+  const activeTechs = (activeTechsRes.data ?? []) as Array<{ tech_short_name: string; hcp_full_name: string; is_lead: boolean | null; avatar_url: string | null }>;
+  const avatarByFullName = new Map<string, string | null>(activeTechs.map((t) => [t.hcp_full_name, t.avatar_url ?? null]));
   const gpsByAppt = new Map<string, GpsArrival>(
     ((gpsRes.data ?? []) as GpsArrival[]).map((g) => [g.appointment_id, g]),
   );
@@ -714,7 +716,10 @@ export default async function DispatchPage({
                 <div key={techName} className="flex w-72 shrink-0 flex-col rounded-2xl border border-neutral-200 bg-white">
                   <header className="border-b border-neutral-100 p-3">
                     <div className="flex items-baseline justify-between gap-2">
-                      <div className="font-semibold text-neutral-900">{shortName}</div>
+                      <div className="flex items-center gap-2">
+                        <TechAvatar shortName={shortName} avatarUrl={avatarByFullName.get(techName) ?? null} />
+                        <div className="font-semibold text-neutral-900">{shortName}</div>
+                      </div>
                       <div className="text-xs text-neutral-500">{lane.length} appt{lane.length === 1 ? "" : "s"}</div>
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2 text-xs">
