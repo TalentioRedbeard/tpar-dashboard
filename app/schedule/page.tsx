@@ -24,6 +24,8 @@ import { CellAddMenu } from "../../components/CellAddMenu";
 import { RescheduleButton } from "../../components/RescheduleButton";
 import { PendingChangesBar } from "../../components/PendingChangesBar";
 import { listPendingChanges, type PendingChange } from "../../lib/schedule-changes";
+import { getTechOrder } from "../../lib/schedule-order";
+import { TechOrderControl } from "../../components/TechOrderControl";
 
 export const metadata = { title: "Schedule · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -473,9 +475,18 @@ export default async function SchedulePage({
     cellByDay.get(dayKey)!.push(a);
   }
 
-  // Row order (for week/day views): leads first, then helpers, then any tech_primary_name not in active roster, then Unassigned
-  const rowOrder: string[] = [];
-  for (const t of techs) if (t.hcp_full_name) rowOrder.push(t.hcp_full_name);
+  // Row order: the dispatcher's saved order first (#21), else leads-first default;
+  // then any extra primary names, then Unassigned.
+  const savedTechOrder = await getTechOrder();
+  const techFulls = techs.map((t) => t.hcp_full_name).filter(Boolean) as string[];
+  const orderedTechFulls = [...techFulls].sort((a, b) => {
+    const ia = savedTechOrder.indexOf(a), ib = savedTechOrder.indexOf(b);
+    if (ia === -1 && ib === -1) return techFulls.indexOf(a) - techFulls.indexOf(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  const rowOrder: string[] = [...orderedTechFulls];
   for (const a of appts) {
     const tech = a.tech_primary_name;
     if (tech && !rowOrder.includes(tech) && tech !== "Unassigned") rowOrder.push(tech);
@@ -484,6 +495,7 @@ export default async function SchedulePage({
 
   const shortByFull = new Map<string, string>();
   for (const t of techs) if (t.hcp_full_name) shortByFull.set(t.hcp_full_name, t.tech_short_name);
+  const orderedTechsForControl = orderedTechFulls.map((full) => ({ full, short: shortByFull.get(full) ?? full.split(" ")[0] }));
 
   const apptCountByTech = new Map<string, number>();
   const dollarsByTech = new Map<string, number>();
@@ -605,6 +617,8 @@ export default async function SchedulePage({
           ))}
         </div>
       </div>
+
+      {view !== "month" ? <div className="mb-3"><TechOrderControl techs={orderedTechsForControl} /></div> : null}
 
       <PendingChangesBar changes={pendingChanges} />
 
