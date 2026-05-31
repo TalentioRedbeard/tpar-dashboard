@@ -21,6 +21,7 @@ import { DispatchMap, type CustomerPin, type VanPin, type TechPin } from "../../
 import { AdvisorBacklogPanel } from "../../components/AdvisorBacklogPanel";
 import { recommendSchedule } from "../../lib/schedule-advisor";
 import { DispatchAck } from "./DispatchAck";
+import { RequestReportButton } from "../../components/RequestReportButton";
 import { isResolving, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
@@ -313,7 +314,7 @@ export default async function DispatchPage({
     // events unacked >24h. Top 6 here, link to full queue for the rest.
     supa
       .from("communication_events")
-      .select("id, occurred_at, channel, direction, customer_name, importance, summary, flags, tech_short_name")
+      .select("id, occurred_at, channel, direction, customer_name, hcp_customer_id, importance, summary, flags, tech_short_name")
       .is("acked_at", null)
       .gte("importance", 7)
       .lt("occurred_at", new Date(Date.now() - 24 * 3600_000).toISOString())
@@ -490,7 +491,7 @@ export default async function DispatchPage({
   // Aged high-importance comms — variance audit V13. List for the banner.
   const agedHighImpRows = (agedHighImpRes.data ?? []) as Array<{
     id: number; occurred_at: string; channel: string | null; direction: string | null;
-    customer_name: string | null; importance: number; summary: string | null;
+    customer_name: string | null; hcp_customer_id: string | null; importance: number; summary: string | null;
     flags: string[] | null; tech_short_name: string | null;
   }>;
   const agedHighImpTotal = agedHighImpCountRes.count ?? agedHighImpRows.length;
@@ -633,7 +634,10 @@ export default async function DispatchPage({
                     <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800">imp {c.importance}</span>
                     <span className="uppercase">{c.channel ?? "—"}{c.direction ? ` · ${c.direction}` : ""}</span>
                     {c.tech_short_name ? <span className="text-neutral-600">{c.tech_short_name}</span> : null}
-                    <span className="ml-auto"><DispatchAck itemType="comm_event" itemId={String(c.id)} existing={ack} canWrite={canWriteAck} /></span>
+                    <span className="ml-auto flex items-center gap-1">
+                      {canWriteAck ? <RequestReportButton hcpCustomerId={c.hcp_customer_id} /> : null}
+                      <DispatchAck itemType="comm_event" itemId={String(c.id)} existing={ack} canWrite={canWriteAck} />
+                    </span>
                   </div>
                   <div className="mt-1 font-medium text-neutral-900">{c.customer_name ?? "—"}</div>
                   <div className="text-xs text-neutral-700">{c.summary ?? "—"}</div>
@@ -862,7 +866,10 @@ export default async function DispatchPage({
                 <span className="text-xs text-sky-900/60">· (no address)</span>
               )}
               <Link href={`/job/${j.hcp_job_id}`} className="font-mono text-[10px] text-sky-700 hover:underline">{j.hcp_job_id.slice(0, 12)}…</Link>
-              <span className="ml-auto"><DispatchAck itemType="needs_scheduling" itemId={j.hcp_job_id} existing={ack} canWrite={canWriteAck} /></span>
+              <span className="ml-auto flex items-center gap-1">
+                {canWriteAck ? <RequestReportButton hcpCustomerId={j.hcp_customer_id} /> : null}
+                <DispatchAck itemType="needs_scheduling" itemId={j.hcp_job_id} existing={ack} canWrite={canWriteAck} />
+              </span>
               {(j.notes_preview || ack?.note) ? (
                 <span className="w-full pl-12 text-xs italic text-sky-900/70">
                   {ack?.note ? `“${ack.note}”` : `“${j.notes_preview}”`}

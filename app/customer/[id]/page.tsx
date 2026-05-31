@@ -8,6 +8,8 @@ import { AgreementStatusButton } from "../../../components/AgreementStatusButton
 import { TechName } from "../../../components/ui/TechName";
 import { getCurrentTech } from "../../../lib/current-tech";
 import { isOwner } from "../../../lib/admin";
+import { CustomerReports } from "../../../components/CustomerReports";
+import type { CustomerReport } from "../../../lib/customer-reports";
 import { listPinnedEmails } from "./email-actions";
 import { CustomerEmails } from "../../../components/CustomerEmails";
 import { getFormerTechNames } from "../../../lib/former-techs";
@@ -298,6 +300,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   // Curated inbox-email pins for this customer (viewer-scoped inside the action).
   const owner = isOwner(me?.realEmail);
   const pinnedEmails = await listPinnedEmails(id);
+  const isLeadership = !!(me?.isAdmin || me?.isManager);
+  const customerReports = isLeadership
+    ? (((await supabase.from("customer_reports").select("*").eq("hcp_customer_id", id).order("created_at", { ascending: false }).limit(20)).data ?? []) as CustomerReport[])
+    : [];
 
   return (
     <PageShell
@@ -349,6 +355,13 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
               Both land in this customer&apos;s comms thread.
             </span>
           </div>
+        )}
+
+        {/* Reports — AI context briefs (leadership only). Phase 3. */}
+        {isLeadership && (
+          <Section title="Reports">
+            <CustomerReports hcpCustomerId={id} initialReports={customerReports} />
+          </Section>
         )}
 
         {/* Pricing brief — mid-call reference for Madisson + leads. Internal only. */}
