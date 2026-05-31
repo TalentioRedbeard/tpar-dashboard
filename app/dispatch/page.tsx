@@ -19,6 +19,7 @@ import { getFormerTechNames } from "../../lib/former-techs";
 import { getCurrentTech } from "../../lib/current-tech";
 import { DispatchMap, type CustomerPin, type VanPin, type TechPin } from "../../components/DispatchMap";
 import { AdvisorBacklogPanel } from "../../components/AdvisorBacklogPanel";
+import { TriagePanel } from "../../components/TriagePanel";
 import { recommendSchedule } from "../../lib/schedule-advisor";
 import { DispatchAck } from "./DispatchAck";
 import { RequestReportButton } from "../../components/RequestReportButton";
@@ -926,6 +927,12 @@ export default async function DispatchPage({
       })()}
       </div>
       )}
+
+      {needsSchedulingRows.length > 0 && (me.isAdmin || me.isManager) ? (
+        <div className="mb-6">
+          <TriagePanel items={needsSchedulingRows.map((j) => ({ id: j.hcp_job_id, customer_id: j.hcp_customer_id ?? null, customer_name: j.customer_name, age_days: j.age_days, context: j.notes_preview }))} />
+        </div>
+      ) : null}
 
       {/* WEEK AHEAD */}
       <details className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4" open>
