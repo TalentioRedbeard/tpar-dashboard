@@ -115,7 +115,7 @@ function fireHcpMirrorInBackground(
 export type FireResult = { ok: true; event_id: string; fired_at: string } | { ok: false; error: string };
 
 export type HcpMirrorStatus = {
-  state: "pending" | "synced" | "failed" | "not_applicable" | "unknown";
+  state: "pending" | "synced" | "unconfirmed" | "failed" | "not_applicable" | "unknown";
   message?: string;
   bot_status?: number;
   elapsed_ms?: number;
@@ -162,12 +162,24 @@ export async function getLifecycleHcpStatus(input: {
   const ctx = (match.context ?? {}) as Record<string, unknown>;
   const botStatus = typeof ctx.bot_status === "number" ? (ctx.bot_status as number) : undefined;
   const elapsedMs = typeof ctx.elapsed_ms === "number" ? (ctx.elapsed_ms as number) : undefined;
-  const botResponse = ctx.bot_response as { success?: boolean; error?: string } | undefined;
+  const botResponse = ctx.bot_response as { success?: boolean; error?: string; ended_state?: string } | undefined;
 
   if (match.level === "error" || botResponse?.success === false) {
     return {
       state: "failed",
       message: botResponse?.error?.slice(0, 200) ?? (match.message as string | undefined) ?? "bot failed",
+      bot_status: botStatus,
+      elapsed_ms: elapsedMs,
+    };
+  }
+
+  // Bot completed the click but couldn't positively confirm HCP advanced (Finish
+  // collapses the container, leaving no Undo). Don't claim a green "synced" —
+  // show amber; verify_hcp_mirrors() reconciles against HCP work status.
+  if (botResponse?.ended_state === "finish_unconfirmed" || botResponse?.ended_state === "unknown_check_mirror") {
+    return {
+      state: "unconfirmed",
+      message: "Finish sent — waiting on HCP to confirm.",
       bot_status: botStatus,
       elapsed_ms: elapsedMs,
     };

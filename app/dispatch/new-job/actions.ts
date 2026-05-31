@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentTech } from "../../../lib/current-tech";
+import { getCurrentTech, requireScheduler } from "../../../lib/current-tech";
 import { db } from "../../../lib/supabase";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -10,10 +10,10 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 type CreateJobResult = { ok: true; hcp_job_id: string } | { ok: false; error: string };
 
 export async function createJob(formData: FormData): Promise<CreateJobResult> {
-  const me = await getCurrentTech();
-  if (!me || !(me.isAdmin || me.isManager)) {
-    return { ok: false, error: "Admin/manager only." };
-  }
+  // requireScheduler (admin|manager) — kept off requireWriter so a future gate
+  // standardization can't silently revoke the office's ability to book.
+  const gate = await requireScheduler();
+  if (!gate.ok) return { ok: false, error: gate.error };
   if (!SERVICE_KEY) {
     return { ok: false, error: "Server misconfigured — SUPABASE_SERVICE_ROLE_KEY missing." };
   }
@@ -153,6 +153,74 @@ export async function loadActiveTechs() {
   return (data ?? []) as Array<{
     tech_short_name: string; hcp_full_name: string; hcp_employee_id: string; is_lead: boolean | null;
   }>;
+}
+
+export type TechDayLoad = {
+  tech_full_name: string;
+  appts: Array<{ start: string; end: string | null; customer: string | null; status: string | null }>;
+};
+
+// Per-tech booked windows for a Chicago day — feeds the "who's free" readout in
+// the booking form (and, later, the scheduling advisor's fleet state).
+// Deterministic, no LLM. Gated to schedulers (admin|manager).
+export async function getTechDayLoad(dateChi: string): Promise<TechDayLoad[]> {
+  const gate = await requireScheduler();
+  if (!gate.ok) return [];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateChi)) return [];
+  const offset = chicagoOffsetForDate(dateChi);
+  const dayStart = new Date(`${dateChi}T00:00:00${formatOffset(offset)}`);
+  if (Number.isNaN(dayStart.getTime())) return [];
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  const supa = db();
+  const { data } = await supa
+    .from("appointments_master")
+    .select("tech_primary_name, scheduled_start, scheduled_end, status, customer_name")
+    .is("deleted_at", null)
+    .gte("scheduled_start", dayStart.toISOString())
+    .lt("scheduled_start", dayEnd.toISOString())
+    .not("status", "in", "(canceled,Canceled,cancelled,Cancelled)")
+    .order("scheduled_start", { ascending: true });
+  const byTech = new Map<string, TechDayLoad>();
+  for (const r of (data ?? []) as Array<{
+    tech_primary_name: string | null; scheduled_start: string; scheduled_end: string | null;
+    status: string | null; customer_name: string | null;
+  }>) {
+    const name = r.tech_primary_name?.trim();
+    if (!name) continue;
+    if (!byTech.has(name)) byTech.set(name, { tech_full_name: name, appts: [] });
+    byTech.get(name)!.appts.push({ start: r.scheduled_start, end: r.scheduled_end, customer: r.customer_name, status: r.status });
+  }
+  return Array.from(byTech.values());
+}
+
+export type CustomerSnapshot = {
+  lifetime_jobs: number;
+  last_visit: string | null;
+  last_tech: string | null;
+};
+
+// Compact history strip for the booking form so the CSR doesn't leave the screen
+// to answer "is this a repeat customer / when were they last here / who took it".
+export async function getCustomerSnapshot(customerId: string): Promise<CustomerSnapshot | null> {
+  const gate = await requireScheduler();
+  if (!gate.ok) return null;
+  const id = customerId.trim();
+  if (!id) return null;
+  const supa = db();
+  const { data } = await supa
+    .from("appointments_master")
+    .select("scheduled_start, tech_primary_name")
+    .eq("hcp_customer_id", id)
+    .is("deleted_at", null)
+    .order("scheduled_start", { ascending: false, nullsFirst: false })
+    .limit(300);
+  const rows = (data ?? []) as Array<{ scheduled_start: string | null; tech_primary_name: string | null }>;
+  const withDate = rows.find((r) => r.scheduled_start);
+  return {
+    lifetime_jobs: rows.length,
+    last_visit: withDate?.scheduled_start ?? null,
+    last_tech: withDate?.tech_primary_name ?? null,
+  };
 }
 
 function chicagoOffsetForDate(ymd: string): number {

@@ -13,6 +13,7 @@ export function ComposeForm({
   hcpJobId,
   customerLabel,
   jobLabel,
+  senderName,
 }: {
   defaultTo: string;
   defaultBody: string;
@@ -21,6 +22,7 @@ export function ComposeForm({
   hcpJobId: string | null;
   customerLabel: string | null;
   jobLabel: string | null;
+  senderName: string;
 }) {
   const [mode, setMode] = useState<SendMode>("sms");
   const [to, setTo] = useState(defaultTo);
@@ -28,6 +30,8 @@ export function ComposeForm({
   const [recipientType, setRecipientType] = useState(defaultRecipientType);
   const [fireAt, setFireAt] = useState("");  // empty = ASAP
   const [state, formAction, pending] = useActionState(sendComms, INITIAL_STATE);
+  // Reads as the signed-in operator, not hardcoded "Danny".
+  const greeting = senderName ? `Hi, this is ${senderName} with Tulsa Plumbing.` : "Hi, this is Tulsa Plumbing.";
 
   return (
     <form action={formAction} className="max-w-xl space-y-4">
@@ -120,7 +124,7 @@ export function ComposeForm({
           onChange={(e) => setBody(e.target.value)}
           placeholder={
             mode === "sms"
-              ? "Hi, this is Danny with Tulsa Plumbing. About the…"
+              ? `${greeting} About the…`
               : "Call Locke about the ETA on the 4-inch PVC sweep"
           }
           className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"

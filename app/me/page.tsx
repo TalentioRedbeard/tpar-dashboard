@@ -231,7 +231,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   // to populate pills on mount — survives page refreshes (without polling).
   type InitialMirror = {
     fired_at: string;
-    state: "pending" | "synced" | "failed";
+    state: "pending" | "synced" | "unconfirmed" | "failed";
     message?: string;
     elapsed_ms?: number;
   };
@@ -262,11 +262,16 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           : { fired_at: firedAt, state: "pending" };
         continue;
       }
-      const ctx = (match.context ?? {}) as { bot_response?: { success?: boolean; error?: string }; elapsed_ms?: number };
+      const ctx = (match.context ?? {}) as { bot_response?: { success?: boolean; error?: string; ended_state?: string }; elapsed_ms?: number };
       const success = ctx.bot_response?.success;
-      perTrigger[trigger] = success === false || match.level === "error"
-        ? { fired_at: firedAt, state: "failed", message: ctx.bot_response?.error?.slice(0, 200), elapsed_ms: ctx.elapsed_ms }
-        : { fired_at: firedAt, state: "synced", elapsed_ms: ctx.elapsed_ms };
+      const endedState = ctx.bot_response?.ended_state;
+      if (success === false || match.level === "error") {
+        perTrigger[trigger] = { fired_at: firedAt, state: "failed", message: ctx.bot_response?.error?.slice(0, 200), elapsed_ms: ctx.elapsed_ms };
+      } else if (endedState === "finish_unconfirmed" || endedState === "unknown_check_mirror") {
+        perTrigger[trigger] = { fired_at: firedAt, state: "unconfirmed", message: "Finish sent — waiting on HCP to confirm.", elapsed_ms: ctx.elapsed_ms };
+      } else {
+        perTrigger[trigger] = { fired_at: firedAt, state: "synced", elapsed_ms: ctx.elapsed_ms };
+      }
     }
     if (Object.keys(perTrigger).length > 0) {
       initialMirrorsByJob.set(job, perTrigger);

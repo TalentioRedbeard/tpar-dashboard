@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentTech } from "../../../lib/current-tech";
+import { requireScheduler } from "../../../lib/current-tech";
 import { db } from "../../../lib/supabase";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -10,10 +10,8 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 type CreateEventResult = { ok: true; hcp_job_id: string } | { ok: false; error: string };
 
 export async function createEvent(formData: FormData): Promise<CreateEventResult> {
-  const me = await getCurrentTech();
-  if (!me || !(me.isAdmin || me.isManager)) {
-    return { ok: false, error: "Admin/manager only." };
-  }
+  const gate = await requireScheduler();
+  if (!gate.ok) return { ok: false, error: gate.error };
   if (!SERVICE_KEY) {
     return { ok: false, error: "Server misconfigured — SUPABASE_SERVICE_ROLE_KEY missing." };
   }

@@ -56,6 +56,12 @@ export default async function ContactsPage() {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/contacts");
 
+  // Greeting for the "text via /comms" deep-link — reads as the signed-in
+  // operator, not hardcoded "Danny" (re-point for Madisson + team).
+  const senderGreeting = me.tech?.tech_short_name
+    ? `Hi, this is ${me.tech.tech_short_name} with Tulsa Plumbing. `
+    : "Hi, this is Tulsa Plumbing. ";
+
   const supa = db();
   const { data } = await supa
     .from("tpar_contacts")
@@ -105,7 +111,7 @@ export default async function ContactsPage() {
               </h2>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {items.map((c) => (
-                  <ContactCard key={c.id} c={c} />
+                  <ContactCard key={c.id} c={c} senderGreeting={senderGreeting} />
                 ))}
               </div>
             </section>
@@ -121,7 +127,7 @@ export default async function ContactsPage() {
   );
 }
 
-function ContactCard({ c }: { c: Contact }) {
+function ContactCard({ c, senderGreeting }: { c: Contact; senderGreeting: string }) {
   const meta = KIND_LABELS[c.kind] ?? KIND_LABELS.other;
   const phoneRaw10 = c.phone_e164 ? c.phone_e164.replace(/^\+1/, "") : null;
   return (
@@ -141,7 +147,7 @@ function ContactCard({ c }: { c: Contact }) {
           </a>
           {phoneRaw10 ? (
             <Link
-              href={`/comms/new?to=${phoneRaw10}&type=${c.kind === "subcontractor" ? "contractor" : c.kind === "vendor" ? "vendor" : "other"}&body=${encodeURIComponent(`Hi, this is Danny with Tulsa Plumbing. `)}`}
+              href={`/comms/new?to=${phoneRaw10}&type=${c.kind === "subcontractor" ? "contractor" : c.kind === "vendor" ? "vendor" : "other"}&body=${encodeURIComponent(senderGreeting)}`}
               className="rounded-md bg-white/60 px-1.5 py-0.5 text-[10px] font-medium text-neutral-700 hover:bg-white"
             >
               💬 Text via /comms

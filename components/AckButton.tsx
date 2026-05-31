@@ -19,10 +19,10 @@ export function AckButton({ commId, acked, canWrite = true }: { commId: number; 
   }
 
   if (!canWrite) {
-    // Manager view — show the state without the action.
+    // Read-only role (office / no dashboard role) — show state without action.
     return (
       <span
-        title="Manager view — only Danny or a tech can ack."
+        title="Read-only role — leadership or a tech can resolve."
         className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
           acked
             ? "border-neutral-200 bg-neutral-50 text-neutral-500"

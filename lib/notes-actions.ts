@@ -14,7 +14,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./supabase";
-import { requireWriter } from "./current-tech";
+import { requireWriter, requireResolver } from "./current-tech";
 
 const MAX_NOTE_LEN = 10_000;
 
@@ -70,9 +70,10 @@ export async function addJobNote(formData: FormData): Promise<AddNoteResult> {
 // ackComm: mark a communication_event as handled. Sets acked_at + acked_by.
 // unackComm: clear the ack (re-flag as needing attention).
 //
-// Operator distinction: any tulsapar.com signed-in user can ack/un-ack.
-// We DON'T scope to "only the original recipient" — Madisson sometimes
-// resolves something Danny would have, and that's correct.
+// Operator distinction: any signed-in operator (admin, tech, or manager)
+// can ack/un-ack — see requireResolver(). We DON'T scope to "only the
+// original recipient": Madisson sometimes resolves something Danny would
+// have, and that's correct (wired 2026-05-30).
 
 export type AckCommResult =
   | { ok: true; acked: boolean }
@@ -84,7 +85,8 @@ export async function ackComm(formData: FormData): Promise<AckCommResult> {
   if (!id || Number.isNaN(id)) return { ok: false, error: "missing comm_id" };
   if (action !== "ack" && action !== "unack") return { ok: false, error: "action must be ack|unack" };
 
-  const writer = await requireWriter();
+  // Managers (Madisson) resolve comms too — requireResolver, not requireWriter.
+  const writer = await requireResolver();
   if (!writer.ok) return { ok: false, error: writer.error };
 
   const supa = db();

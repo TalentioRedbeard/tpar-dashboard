@@ -139,6 +139,16 @@ export function roleFor(c: CurrentTech | null): Role {
 }
 
 /**
+ * UI mirror of requireResolver(): can this user ack/resolve a
+ * communication_event? Keep in lockstep with requireResolver() so the
+ * AckButton control matches the server gate (admin || tech || manager).
+ */
+export function canResolveComms(c: CurrentTech | null): boolean {
+  if (!c) return false;
+  return c.isAdmin || c.isManager || c.dashboardRole === "tech";
+}
+
+/**
  * Server-action gate. Returns the email of the writer if allowed, or an
  * error string if blocked. Use at the top of every mutating server action:
  *
@@ -158,9 +168,47 @@ export async function requireWriter(): Promise<
   if (me.isAdmin) return { ok: true, email: me.email, role: "admin" };
   if (me.dashboardRole === "tech") return { ok: true, email: me.email, role: "tech" };
   if (me.isManager) {
-    return { ok: false, error: "Managers are read-only on this dashboard. Ask Danny to take this action." };
+    // Managers are read-only for *authorship* writes (notes). Their allowed
+    // operational actions (acking comms, booking work) go through
+    // requireResolver()/requireScheduler() below. Per Danny 2026-05-30.
+    return { ok: false, error: "This action is limited to the owner or a tech." };
   }
   return { ok: false, error: "Your account has no dashboard role assigned." };
+}
+
+/**
+ * Resolver gate — for operational "resolve/triage" actions that managers MAY
+ * take (acking a communication_event). Distinct from requireWriter() (note
+ * authorship) which keeps managers out. Per Danny 2026-05-30: Madisson is a
+ * first-class resolver of inbound comms. Admin, tech, and manager pass.
+ */
+export async function requireResolver(): Promise<
+  | { ok: true; email: string; role: "admin" | "tech" | "manager" }
+  | { ok: false; error: string }
+> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  if (me.isAdmin) return { ok: true, email: me.email, role: "admin" };
+  if (me.dashboardRole === "tech") return { ok: true, email: me.email, role: "tech" };
+  if (me.isManager) return { ok: true, email: me.email, role: "manager" };
+  return { ok: false, error: "Your account has no dashboard role assigned." };
+}
+
+/**
+ * Scheduler gate — for creating customer-facing work (jobs/events/estimates)
+ * from /dispatch. Per Danny 2026-05-30: managers (Madisson) book work; techs
+ * do not. Kept as its own gate so a future "standardize on requireWriter"
+ * refactor can't silently revoke the office's ability to schedule.
+ */
+export async function requireScheduler(): Promise<
+  | { ok: true; email: string; role: "admin" | "manager" }
+  | { ok: false; error: string }
+> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  if (me.isAdmin) return { ok: true, email: me.email, role: "admin" };
+  if (me.isManager) return { ok: true, email: me.email, role: "manager" };
+  return { ok: false, error: "Only the owner or a manager can create scheduled work." };
 }
 
 /**

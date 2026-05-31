@@ -16,7 +16,7 @@ type Props = {
   // live polling takes over and updates the same per-trigger entry.
   initialMirrors?: Record<number, {
     fired_at: string;
-    state: "pending" | "synced" | "failed";
+    state: "pending" | "synced" | "unconfirmed" | "failed";
     message?: string;
     elapsed_ms?: number;
   }>;
@@ -226,6 +226,15 @@ function MirrorPill({ entry, hcpJobId, onRetry, retryDisabled }: {
     return (
       <span className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800" title={`HCP mirror succeeded${status.elapsed_ms ? ` in ${(status.elapsed_ms / 1000).toFixed(1)}s` : ""}`}>
         ✓ HCP
+      </span>
+    );
+  }
+  if (status.state === "unconfirmed") {
+    // Bot clicked Finish but HCP didn't expose a confirmation signal. Honest
+    // amber — not a green ✓. verify_hcp_mirrors() reconciles against HCP.
+    return (
+      <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" title={status.message ?? "Finish sent — HCP hasn't confirmed yet. Auto-reconciles against HCP work status."}>
+        HCP ?
       </span>
     );
   }

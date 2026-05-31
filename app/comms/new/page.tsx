@@ -89,6 +89,7 @@ export default async function NewCommsPage({
         hcpJobId={sp.job ?? null}
         customerLabel={customerLabel}
         jobLabel={jobLabel}
+        senderName={me.tech?.tech_short_name ?? ""}
       />
     </PageShell>
   );

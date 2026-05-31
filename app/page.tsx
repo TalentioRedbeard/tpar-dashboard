@@ -10,7 +10,7 @@ import { Section } from "../components/ui/Section";
 import { Pill } from "../components/ui/Pill";
 import { EmptyState } from "../components/ui/EmptyState";
 import { TechName } from "../components/ui/TechName";
-import { getCurrentTech } from "../lib/current-tech";
+import { getCurrentTech, canResolveComms } from "../lib/current-tech";
 import { getFormerTechNames } from "../lib/former-techs";
 import { getCurrentState as getClockState } from "./time/actions";
 import TechHome from "./TechHome";
@@ -192,7 +192,8 @@ export default async function Today() {
   }
 
   const { followups, leaders, recentJobs, patterns, arTop, todayAppts, error } = await loadData();
-  const canWrite = !!me?.canWrite;
+  // Managers (Madisson) can resolve comms — mirror requireResolver() here.
+  const canWrite = canResolveComms(me);
   const formerSet = await getFormerTechNames();
   const clockState = me?.tech ? await getClockState().catch(() => null) : null;
 

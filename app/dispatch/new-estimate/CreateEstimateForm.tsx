@@ -156,9 +156,11 @@ export function CreateEstimateForm({
         <textarea name="message_from_pro" rows={2} placeholder="Optional note customers see on the estimate" className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
       </label>
 
-      <label className="flex items-center gap-2 text-sm text-neutral-700">
-        <input type="checkbox" name="notify_customer" className="h-4 w-4 rounded border-neutral-300" />
-        <span>Notify the customer (uncheck for test runs)</span>
+      <label className="flex items-start gap-2 text-sm text-neutral-700">
+        <input type="checkbox" name="notify_customer" defaultChecked className="mt-0.5 h-4 w-4 rounded border-neutral-300" />
+        <span>Text the customer their estimate appointment
+          <span className="block text-xs text-neutral-400">On by default — uncheck for internal or test bookings. Scheduling never texts on its own.</span>
+        </span>
       </label>
 
       {error && <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"><span className="font-medium">Couldn&apos;t create estimate:</span> {error}</div>}

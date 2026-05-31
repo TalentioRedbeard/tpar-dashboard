@@ -11,7 +11,7 @@ import { Table, Pagination, FilterBar, StatusPill, fmtDateShort, type Column } f
 import { StatCard } from "../../components/ui/StatCard";
 import { AckButton } from "../../components/AckButton";
 import { TechName } from "../../components/ui/TechName";
-import { getEffectiveTechName, getCurrentTech } from "../../lib/current-tech";
+import { getEffectiveTechName, getCurrentTech, canResolveComms } from "../../lib/current-tech";
 import { getFormerTechShortNames } from "../../lib/former-techs";
 
 export const metadata = { title: "Comms · TPAR-DB" };
@@ -62,7 +62,8 @@ export default async function CommsPage({
   const techFilterSuspended = !!q && (!!effectiveTechName || !!tech);
 
   const me = await getCurrentTech().catch(() => null);
-  const canWrite = !!me?.canWrite;
+  // Managers (Madisson) can resolve comms — mirror requireResolver() here.
+  const canWrite = canResolveComms(me);
   const formerShortSet = await getFormerTechShortNames();
 
   const supa = db();

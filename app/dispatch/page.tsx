@@ -18,6 +18,8 @@ import { TechName } from "../../components/ui/TechName";
 import { getFormerTechNames } from "../../lib/former-techs";
 import { getCurrentTech } from "../../lib/current-tech";
 import { DispatchMap, type CustomerPin, type VanPin, type TechPin } from "../../components/DispatchMap";
+import { AdvisorBacklogPanel } from "../../components/AdvisorBacklogPanel";
+import { recommendSchedule } from "../../lib/schedule-advisor";
 import { DispatchAck } from "./DispatchAck";
 import type { DispatchAckStatus, DispatchItemType } from "./actions";
 
@@ -538,7 +540,7 @@ export default async function DispatchPage({
           "Map shows van pins (Bouncie) + customer pins (today's jobs). Click a pin for details.",
           "Tech lanes show each tech's day vertically — clicking a job opens the full /job page.",
           "Top strip = intake to triage / today's revenue / open AR. Each tile is a link.",
-          "If a customer is unreachable or running long, ping Madisson via Slack DM.",
+          "If a customer is unreachable or running long, reach the assigned tech or escalate to the owner.",
         ],
         stuck: <>Map blank? GPS pipeline likely paused; check /admin/system pipeline freshness or text Danny.</>,
       }}
@@ -833,6 +835,14 @@ export default async function DispatchPage({
           </details>
         );
       })()}
+
+      {/* SCHEDULING ADVISOR — recommend a tech + time for each unscheduled job */}
+      {needsSchedulingRows.length > 0 && (
+        <AdvisorBacklogPanel
+          jobs={needsSchedulingRows.map((j) => ({ hcp_job_id: j.hcp_job_id, customer_name: j.customer_name, city: j.city, street: j.street, notes_preview: j.notes_preview, age_days: j.age_days }))}
+          recommend={recommendSchedule}
+        />
+      )}
 
       {/* NEEDS SCHEDULING — Layer 2 decay: split <30d vs 30+d (Madisson's actionable queue) */}
       {needsSchedulingRows.length > 0 && (() => {
