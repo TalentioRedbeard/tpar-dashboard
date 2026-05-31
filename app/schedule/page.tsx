@@ -26,6 +26,8 @@ import { PendingChangesBar } from "../../components/PendingChangesBar";
 import { listPendingChanges, type PendingChange } from "../../lib/schedule-changes";
 import { getTechOrder } from "../../lib/schedule-order";
 import { TechOrderControl } from "../../components/TechOrderControl";
+import { DraggableAppt } from "../../components/DraggableAppt";
+import { DropCell } from "../../components/DropCell";
 
 export const metadata = { title: "Schedule · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -639,6 +641,8 @@ export default async function SchedulePage({
         <span className="text-neutral-300">|</span>
         <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-1 rounded-sm bg-rose-500" /> left-edge = tech color (plaid)</span>
         <span className="inline-flex items-center gap-1 text-neutral-500">+N assist = rides along on N jobs</span>
+        <span className="text-neutral-300">|</span>
+        <span className="inline-flex items-center gap-1 text-neutral-500"><span className="cursor-grab">✋</span> drag a job to another tech/day to propose a move</span>
       </div>
 
       {/* FILTER BAR — GET form preserves date/view/color via hidden inputs */}
@@ -820,7 +824,7 @@ function DayView({
                   <div className="text-[11px] text-neutral-500">{count}{dollars > 0 ? ` · ${fmtMoney(dollars)}` : ""}{assist > 0 ? ` · +${assist} assist` : ""}</div>
                 </div>
               </div>
-              <div className="grid flex-1 grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <DropCell techFull={techFullName} dateKey={dayKey} disabled={isPast} className="grid flex-1 grid-cols-1 gap-1.5 rounded-md sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {cell.length === 0 ? (
                   <div className="col-span-full flex items-center gap-2 text-[11px] text-neutral-400">
                     {isPast ? <span className="text-neutral-300">— Open day</span> : <><span>Open day</span><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></>}
@@ -828,23 +832,28 @@ function DayView({
                 ) : cell.map((a) => {
                   const chg = a.appointment_id ? pendingByAppt.get(a.appointment_id) : undefined;
                   return (
-                    <div key={a.appointment_id ?? a.hcp_job_id ?? Math.random()} className="space-y-0.5">
-                      {a.hcp_job_id ? (
-                        <Link href={`/job/${a.hcp_job_id}`} className="block"><ApptDetail a={a} opts={{ color }} /></Link>
-                      ) : (
-                        <ApptDetail a={a} opts={{ color }} />
-                      )}
-                      {(a.appointment_id && !isPast) || chg ? (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {a.appointment_id && !isPast ? <RescheduleButton appointmentId={a.appointment_id} hcpJobId={a.hcp_job_id} customerName={a.customer_name} currentStart={a.scheduled_start} dateKey={dayKey} /> : null}
-                          {chg ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium text-amber-800">→ proposed {hm12(chg.proposed_start_time)}</span> : null}
-                        </div>
-                      ) : null}
-                    </div>
+                    <DraggableAppt
+                      key={a.appointment_id ?? a.hcp_job_id ?? Math.random()}
+                      payload={{ apptId: a.appointment_id, hcpJobId: a.hcp_job_id, customerName: a.customer_name, currentStart: a.scheduled_start, currentTech: techFullName, currentDate: dayKey }}
+                    >
+                      <div className="space-y-0.5">
+                        {a.hcp_job_id ? (
+                          <Link href={`/job/${a.hcp_job_id}`} className="block"><ApptDetail a={a} opts={{ color }} /></Link>
+                        ) : (
+                          <ApptDetail a={a} opts={{ color }} />
+                        )}
+                        {(a.appointment_id && !isPast) || chg ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {a.appointment_id && !isPast ? <RescheduleButton appointmentId={a.appointment_id} hcpJobId={a.hcp_job_id} customerName={a.customer_name} currentStart={a.scheduled_start} dateKey={dayKey} /> : null}
+                            {chg ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium text-amber-800">→ proposed {hm12(chg.proposed_start_time)}</span> : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </DraggableAppt>
                   );
                 })}
                 {cell.length > 0 && !isPast ? <div className="flex items-center"><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></div> : null}
-              </div>
+              </DropCell>
             </div>
           );
         })}
@@ -932,27 +941,34 @@ function WeekView({
                   const isToday = dayKey === todayKey;
                   const isPast = dayKey < todayKey;
                   return (
-                    <td key={dayKey} className={`min-h-24 border-r border-b border-neutral-200 p-1 align-top ${isToday ? "bg-amber-50/60" : isPast ? "bg-neutral-50/40" : "bg-white"}`}>
-                      {cell.length === 0 ? (
-                        <div className="flex h-full min-h-16 items-center justify-center">
-                          {isPast ? <span className="text-[10px] text-neutral-300">—</span> : <CellAddMenu techFull={techFullName} dateKey={dayKey} compact />}
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          {cell.map((a) => (
-                            a.hcp_job_id ? (
-                              <Link key={a.appointment_id ?? a.hcp_job_id} href={`/job/${a.hcp_job_id}`} title={`${a.customer_name ?? "—"} · ${a.street ?? ""}${a.city ? ", " + a.city : ""} · ${a.status ?? ""}`} className="block">
-                                <ApptBlock a={a} opts={{ color }} />
-                              </Link>
-                            ) : (
-                              <div key={a.appointment_id ?? Math.random()} title={`${a.customer_name ?? "—"} · ${a.status ?? ""}`}>
-                                <ApptBlock a={a} opts={{ color }} />
-                              </div>
-                            )
-                          ))}
-                          {!isPast ? <div className="pt-0.5"><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></div> : null}
-                        </div>
-                      )}
+                    <td key={dayKey} className={`min-h-24 border-r border-b border-neutral-200 align-top ${isToday ? "bg-amber-50/60" : isPast ? "bg-neutral-50/40" : "bg-white"}`}>
+                      <DropCell techFull={techFullName} dateKey={dayKey} disabled={isPast} className="h-full min-h-16 rounded-md p-1">
+                        {cell.length === 0 ? (
+                          <div className="flex h-full min-h-16 items-center justify-center">
+                            {isPast ? <span className="text-[10px] text-neutral-300">—</span> : <CellAddMenu techFull={techFullName} dateKey={dayKey} compact />}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            {cell.map((a) => (
+                              <DraggableAppt
+                                key={a.appointment_id ?? a.hcp_job_id ?? Math.random()}
+                                payload={{ apptId: a.appointment_id, hcpJobId: a.hcp_job_id, customerName: a.customer_name, currentStart: a.scheduled_start, currentTech: techFullName, currentDate: dayKey }}
+                              >
+                                {a.hcp_job_id ? (
+                                  <Link href={`/job/${a.hcp_job_id}`} title={`${a.customer_name ?? "—"} · ${a.street ?? ""}${a.city ? ", " + a.city : ""} · ${a.status ?? ""}`} className="block">
+                                    <ApptBlock a={a} opts={{ color }} />
+                                  </Link>
+                                ) : (
+                                  <div title={`${a.customer_name ?? "—"} · ${a.status ?? ""}`}>
+                                    <ApptBlock a={a} opts={{ color }} />
+                                  </div>
+                                )}
+                              </DraggableAppt>
+                            ))}
+                            {!isPast ? <div className="pt-0.5"><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></div> : null}
+                          </div>
+                        )}
+                      </DropCell>
                     </td>
                   );
                 })}
