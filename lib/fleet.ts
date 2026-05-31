@@ -19,6 +19,25 @@ async function gate(): Promise<{ name: string } | { error: string }> {
   return { name: me.tech?.tech_short_name ?? me.email.split("@")[0] };
 }
 
+// Keep vehicle_tech_map (effective-dated driver history powering trip attribution)
+// in sync with the assignment bar. vehicle_tech_map.vehicle_id = bouncie_vehicles.id
+// = vehicles_master.bouncie_vehicle_id. No-op for vehicles with no Bouncie device.
+async function syncVtm(supa: ReturnType<typeof db>, vehicleId: string, newTech: string | null, now: string): Promise<void> {
+  const { data: v } = await supa.from("vehicles_master").select("bouncie_vehicle_id, vin, imei").eq("id", vehicleId).maybeSingle();
+  const bvId = (v?.bouncie_vehicle_id as string | null | undefined) ?? null;
+  if (!bvId) return;
+  const { data: openRows } = await supa.from("vehicle_tech_map").select("tech_name").eq("vehicle_id", bvId).is("active_to", null).limit(1);
+  const currentDriver = (openRows?.[0]?.tech_name as string | undefined) ?? null;
+  if ((newTech ?? null) === (currentDriver ?? null)) return; // already correct
+  await supa.from("vehicle_tech_map").update({ active_to: now, updated_at: now }).eq("vehicle_id", bvId).is("active_to", null);
+  if (newTech) {
+    await supa.from("vehicle_tech_map").insert({
+      vehicle_id: bvId, vin: (v?.vin as string) ?? null, imei: (v?.imei as string) ?? null,
+      tech_id: newTech.toLowerCase(), tech_name: newTech, assigned_source: "dashboard_assign", active_from: now,
+    });
+  }
+}
+
 export async function assignVehicle(
   techShortName: string,
   vehicleId: string,
@@ -32,15 +51,17 @@ export async function assignVehicle(
 
   const supa = db();
   const now = new Date().toISOString();
-  // One tech ↔ one vehicle: clear this tech off any other vehicle first.
-  await supa.from("vehicles_master")
-    .update({ primary_driver_short_name: null, updated_at: now })
-    .eq("primary_driver_short_name", tech)
-    .neq("id", vehicleId);
+  // One tech ↔ one vehicle: clear this tech off any other vehicle first (+ close those vtm intervals).
+  const { data: others } = await supa.from("vehicles_master").select("id").eq("primary_driver_short_name", tech).neq("id", vehicleId);
+  for (const o of (others ?? []) as Array<{ id: string }>) {
+    await supa.from("vehicles_master").update({ primary_driver_short_name: null, updated_at: now }).eq("id", o.id);
+    await syncVtm(supa, o.id, null, now);
+  }
   const { error } = await supa.from("vehicles_master")
     .update({ primary_driver_short_name: tech, updated_at: now })
     .eq("id", vehicleId);
   if (error) return { ok: false, error: error.message };
+  await syncVtm(supa, vehicleId, tech, now);
 
   const jobLabel = opts?.jobLabel?.trim();
   if (jobLabel) {
@@ -59,10 +80,13 @@ export async function clearVehicleDriver(vehicleId: string): Promise<FleetResult
   const g = await gate();
   if ("error" in g) return { ok: false, error: g.error };
   if (!vehicleId) return { ok: false, error: "No vehicle." };
-  const { error } = await db().from("vehicles_master")
-    .update({ primary_driver_short_name: null, updated_at: new Date().toISOString() })
+  const supa = db();
+  const now = new Date().toISOString();
+  const { error } = await supa.from("vehicles_master")
+    .update({ primary_driver_short_name: null, updated_at: now })
     .eq("id", vehicleId);
   if (error) return { ok: false, error: error.message };
+  await syncVtm(supa, vehicleId, null, now);
   revalidatePath("/dispatch");
   return { ok: true };
 }
