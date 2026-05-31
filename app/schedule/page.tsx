@@ -19,6 +19,7 @@ import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { fmtMoney } from "../../components/Table";
 import { getCurrentTech } from "../../lib/current-tech";
+import { TechAvatar } from "../../components/TechAvatar";
 
 export const metadata = { title: "Schedule · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -50,6 +51,7 @@ type Tech = {
   tech_short_name: string;
   hcp_full_name: string;
   is_lead: boolean | null;
+  avatar_url: string | null;
 };
 
 type ViewMode = "day" | "week" | "month";
@@ -432,7 +434,7 @@ export default async function SchedulePage({
       .order("scheduled_start", { ascending: true }),
     supa
       .from("tech_directory")
-      .select("tech_short_name, hcp_full_name, dashboard_role, is_lead, is_active")
+      .select("tech_short_name, hcp_full_name, dashboard_role, is_lead, is_active, avatar_url")
       .eq("is_active", true)
       .neq("is_test", true)
       .in("dashboard_role", ["tech", "admin"])
@@ -479,6 +481,20 @@ export default async function SchedulePage({
     apptCountByTech.set(tech, (apptCountByTech.get(tech) ?? 0) + 1);
     dollarsByTech.set(tech, (dollarsByTech.get(tech) ?? 0) + (Number(a.total_amount) || 0));
   }
+
+  // Photos by full name (for the row labels).
+  const avatarByFull = new Map<string, string | null>();
+  for (const t of techs) if (t.hcp_full_name) avatarByFull.set(t.hcp_full_name, t.avatar_url ?? null);
+
+  // Assist counts: appts where a tech rides along (on tech_all_names) but isn't the
+  // primary. This is why helpers like Anthony/Chris look empty — they assist, not
+  // lead. We surface "assisting N" on their row so each row reads accurately.
+  const assistCountByTech = new Map<string, number>();
+  for (const a of appts) {
+    for (const n of a.tech_all_names ?? []) {
+      if (n && n !== a.tech_primary_name) assistCountByTech.set(n, (assistCountByTech.get(n) ?? 0) + 1);
+    }
+  }
   const apptCountByDay = new Map<string, number>();
   const dollarsByDay = new Map<string, number>();
   for (const a of appts) {
@@ -510,7 +526,7 @@ export default async function SchedulePage({
   // ────────────────────────────────────────────────────────────────────────────
   return (
     <PageShell
-      title="Schedule"
+      title="🗓️ Schedule"
       description={`${appts.length}${rawAppts.length !== appts.length ? `/${rawAppts.length}` : ""} appointment${appts.length === 1 ? "" : "s"} · ${view} view${filterCount > 0 ? ` · ${filterCount} filter${filterCount === 1 ? "" : "s"} active` : ""}`}
       help={{
         intent: "Visual schedule. Day = one tall column. Week = 7-col tech-row Gantt. Month = calendar grid. Click any block to open the job.",
@@ -573,6 +589,25 @@ export default async function SchedulePage({
             </Link>
           ))}
         </div>
+      </div>
+
+      {/* LEGEND — what the colors mean (the "plaid" key) */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-600">
+        <span className="font-semibold uppercase tracking-wide text-neutral-500">Legend</span>
+        <span className="font-medium text-neutral-700">Tier:</span>
+        <span className="rounded-sm bg-emerald-100 px-1 text-[9px] font-semibold uppercase text-emerald-800">lead</span>
+        <span className="rounded-sm bg-sky-100 px-1 text-[9px] font-semibold uppercase text-sky-800">apprentice</span>
+        <span className="text-neutral-300">|</span>
+        <span className="font-medium text-neutral-700">Status:</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-neutral-200" /> scheduled</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-blue-200" /> in progress</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-200" /> complete</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-amber-200" /> needs sched</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-indigo-200" /> from estimate</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-red-100" /> canceled</span>
+        <span className="text-neutral-300">|</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-1 rounded-sm bg-rose-500" /> left-edge = tech color (plaid)</span>
+        <span className="inline-flex items-center gap-1 text-neutral-500">+N assist = rides along on N jobs</span>
       </div>
 
       {/* FILTER BAR — GET form preserves date/view/color via hidden inputs */}
@@ -653,8 +688,10 @@ export default async function SchedulePage({
           cells={cells}
           techs={techs}
           shortByFull={shortByFull}
+          avatarByFull={avatarByFull}
           apptCountByTech={apptCountByTech}
           dollarsByTech={dollarsByTech}
+          assistCountByTech={assistCountByTech}
           color={color}
           todayKey={todayKey}
         />
@@ -667,8 +704,10 @@ export default async function SchedulePage({
           cells={cells}
           techs={techs}
           shortByFull={shortByFull}
+          avatarByFull={avatarByFull}
           apptCountByTech={apptCountByTech}
           dollarsByTech={dollarsByTech}
+          assistCountByTech={assistCountByTech}
           apptCountByDay={apptCountByDay}
           dollarsByDay={dollarsByDay}
           color={color}
@@ -701,15 +740,17 @@ export default async function SchedulePage({
 // ──────────────────────────────────────────────────────────────────────────────
 
 function DayView({
-  dayKey, rowOrder, cells, techs, shortByFull, apptCountByTech, dollarsByTech, color, todayKey,
+  dayKey, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, color, todayKey,
 }: {
   dayKey: string;
   rowOrder: string[];
   cells: Map<string, Appt[]>;
   techs: Tech[];
   shortByFull: Map<string, string>;
+  avatarByFull: Map<string, string | null>;
   apptCountByTech: Map<string, number>;
   dollarsByTech: Map<string, number>;
+  assistCountByTech: Map<string, number>;
   color: ColorMode;
   todayKey: string;
 }) {
@@ -729,14 +770,21 @@ function DayView({
           const cell = cells.get(`${techFullName}|${dayKey}`) ?? [];
           const dollars = (dollarsByTech.get(techFullName) ?? 0) / 100;
           const count = apptCountByTech.get(techFullName) ?? 0;
+          const assist = assistCountByTech.get(techFullName) ?? 0;
           const tcol = techColor(techFullName);
           return (
             <div key={techFullName} className="flex gap-3 px-3 py-2">
-              <div className={`flex w-40 shrink-0 items-baseline gap-2 border-l-4 ${tcol.border} pl-2`}>
-                <span className="text-sm font-semibold text-neutral-900">{short}</span>
-                {isLead && <span className="rounded-sm bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-800">lead</span>}
-                {techFullName === "Unassigned" && <span className="rounded-sm bg-red-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-red-800">unassigned</span>}
-                <span className="ml-auto text-[11px] text-neutral-500">{count}{dollars > 0 ? ` · ${fmtMoney(dollars)}` : ""}</span>
+              <div className={`flex w-44 shrink-0 items-center gap-2 border-l-4 ${tcol.border} pl-2`}>
+                {techFullName !== "Unassigned" ? <TechAvatar shortName={short} avatarUrl={avatarByFull.get(techFullName) ?? null} /> : null}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-sm font-semibold text-neutral-900">{short}</span>
+                    {isLead ? <span className="rounded-sm bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-800">lead</span>
+                      : techFullName !== "Unassigned" ? <span className="rounded-sm bg-sky-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">apprentice</span> : null}
+                    {techFullName === "Unassigned" && <span className="rounded-sm bg-red-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-red-800">unassigned</span>}
+                  </div>
+                  <div className="text-[11px] text-neutral-500">{count}{dollars > 0 ? ` · ${fmtMoney(dollars)}` : ""}{assist > 0 ? ` · +${assist} assist` : ""}</div>
+                </div>
               </div>
               <div className="grid flex-1 grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {cell.length === 0 ? (
@@ -766,15 +814,17 @@ function DayView({
 // ──────────────────────────────────────────────────────────────────────────────
 
 function WeekView({
-  windowKeys, rowOrder, cells, techs, shortByFull, apptCountByTech, dollarsByTech, apptCountByDay, dollarsByDay, color, todayKey,
+  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey,
 }: {
   windowKeys: string[];
   rowOrder: string[];
   cells: Map<string, Appt[]>;
   techs: Tech[];
   shortByFull: Map<string, string>;
+  avatarByFull: Map<string, string | null>;
   apptCountByTech: Map<string, number>;
   dollarsByTech: Map<string, number>;
+  assistCountByTech: Map<string, number>;
   apptCountByDay: Map<string, number>;
   dollarsByDay: Map<string, number>;
   color: ColorMode;
@@ -814,18 +864,23 @@ function WeekView({
             const short = shortByFull.get(techFullName) ?? techFullName.split(" ")[0];
             const isLead = techs.find((t) => t.hcp_full_name === techFullName)?.is_lead === true;
             const count = apptCountByTech.get(techFullName) ?? 0;
+            const assist = assistCountByTech.get(techFullName) ?? 0;
             const dollars = (dollarsByTech.get(techFullName) ?? 0) / 100;
             const tcol = techColor(techFullName);
             return (
               <tr key={techFullName} className={rowIdx % 2 === 0 ? "bg-white" : "bg-neutral-50/40"}>
-                <td className="sticky left-0 z-10 w-44 border-r border-b border-neutral-200 bg-inherit px-3 py-2 align-top">
-                  <div className={`flex items-baseline gap-1.5 border-l-4 ${tcol.border} pl-2`}>
-                    <span className="text-sm font-semibold text-neutral-900">{short}</span>
-                    {isLead && <span className="rounded-sm bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-800">lead</span>}
-                    {techFullName === "Unassigned" && <span className="rounded-sm bg-red-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-red-800">unassigned</span>}
-                  </div>
-                  <div className="mt-0.5 pl-2 text-[11px] text-neutral-500">
-                    {count} appt{count === 1 ? "" : "s"}{dollars > 0 ? ` · ${fmtMoney(dollars)}` : ""}
+                <td className="sticky left-0 z-10 w-48 border-r border-b border-neutral-200 bg-inherit px-3 py-2 align-top">
+                  <div className={`flex items-center gap-2 border-l-4 ${tcol.border} pl-2`}>
+                    {techFullName !== "Unassigned" ? <TechAvatar shortName={short} avatarUrl={avatarByFull.get(techFullName) ?? null} /> : null}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-sm font-semibold text-neutral-900">{short}</span>
+                        {isLead ? <span className="rounded-sm bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-800">lead</span>
+                          : techFullName !== "Unassigned" ? <span className="rounded-sm bg-sky-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">apprentice</span> : null}
+                        {techFullName === "Unassigned" && <span className="rounded-sm bg-red-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-red-800">unassigned</span>}
+                      </div>
+                      <div className="text-[11px] text-neutral-500">{count} appt{count === 1 ? "" : "s"}{dollars > 0 ? ` · ${fmtMoney(dollars)}` : ""}{assist > 0 ? ` · +${assist} assist` : ""}</div>
+                    </div>
                   </div>
                 </td>
                 {windowKeys.map((dayKey) => {
