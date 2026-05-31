@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentTech, requireScheduler } from "../../../lib/current-tech";
 import { db } from "../../../lib/supabase";
+import { logDispatchAction } from "../../../lib/dispatch-audit";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -75,6 +76,13 @@ export async function createJob(formData: FormData): Promise<CreateJobResult> {
         body: JSON.stringify({ daysBack: 1, daysForward: 7 }),
       });
     } catch { /* best-effort — the cron will catch up within 30 min */ }
+
+    // Attribution: who created this job (for analytics).
+    await logDispatchAction({
+      action: "create_job",
+      hcp_job_id: String(json.job_id ?? ""),
+      detail: { customer_id, date: date_chi, start_time: start_time_chi, tech_employee_id, notify_customer },
+    });
 
     revalidatePath("/dispatch");
     revalidatePath("/schedule");

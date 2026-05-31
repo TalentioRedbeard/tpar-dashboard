@@ -5,7 +5,8 @@
 // these are pending proposals the dispatcher reviews. Admin/manager gated.
 
 import { db } from "@/lib/supabase";
-import { getCurrentTech, requireOwner } from "@/lib/current-tech";
+import { getCurrentTech } from "@/lib/current-tech";
+import { logDispatchAction } from "@/lib/dispatch-audit";
 import { revalidatePath } from "next/cache";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -129,8 +130,10 @@ export async function listPendingChanges(): Promise<PendingChange[]> {
 // row 'applied' and bounces hcp-sync-appointments so /schedule reflects it.
 // Widen to schedulers once the REST write path is proven on a safe job.
 export async function applyChangeRequest(id: string): Promise<Res> {
-  const owner = await requireOwner();
-  if (!owner.ok) return { ok: false, error: owner.error };
+  // MGMT gate (admin|manager) — same as proposing/dismissing. Each apply is
+  // attributed in dispatch_audit below.
+  const me = await gate();
+  if (!me) return { ok: false, error: "dispatch role required" };
   if (!SUPABASE_URL || !SERVICE_KEY) return { ok: false, error: "Server misconfigured — SUPABASE_URL/SERVICE_KEY missing." };
 
   const supa = db();
@@ -143,7 +146,7 @@ export async function applyChangeRequest(id: string): Promise<Res> {
     .update({ status: "applying" })
     .eq("id", id)
     .eq("status", "pending")
-    .select("id, appointment_id, hcp_job_id, kind, current_start, proposed_date, proposed_start_time, proposed_tech")
+    .select("id, appointment_id, hcp_job_id, kind, current_start, proposed_date, proposed_start_time, proposed_tech, customer_name")
     .maybeSingle();
   if (!row) return { ok: false, error: "already applied, dismissed, or in progress" };
 
@@ -168,7 +171,7 @@ export async function applyChangeRequest(id: string): Promise<Res> {
 
   const updateBody: Record<string, unknown> = {
     hcp_job_id: hcpJobId,
-    reason: `schedule_change_requests ${id} applied by ${owner.email}`,
+    reason: `schedule_change_requests ${id} applied by ${me.email}`,
   };
 
   // New slot (Chicago wall-clock -> UTC). Only include schedule if the time
@@ -248,6 +251,22 @@ export async function applyChangeRequest(id: string): Promise<Res> {
       });
     } catch { /* best-effort */ }
   }
+
+  // Attribution: who applied this change (for analytics).
+  await logDispatchAction({
+    action: row.kind,
+    hcp_job_id: hcpJobId,
+    appointment_id: row.appointment_id,
+    change_request_id: id,
+    detail: {
+      customer_name: row.customer_name ?? null,
+      proposed_date: row.proposed_date ?? null,
+      proposed_start_time: row.proposed_start_time ?? null,
+      proposed_tech: row.proposed_tech ?? null,
+      schedule_changed: !!updateBody.scheduled_start,
+      tech_changed: !!updateBody.assigned_employee_ids,
+    },
+  });
 
   // Bounce HCP state back, widened to cover the proposed day. The sync fn reads
   // its window from the URL query (start/end), NOT the body, so pass it there.

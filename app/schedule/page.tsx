@@ -19,7 +19,6 @@ import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { fmtMoney } from "../../components/Table";
 import { getCurrentTech } from "../../lib/current-tech";
-import { isOwner } from "../../lib/admin";
 import { TechAvatar } from "../../components/TechAvatar";
 import { CellAddMenu } from "../../components/CellAddMenu";
 import { RescheduleButton } from "../../components/RescheduleButton";
@@ -389,7 +388,7 @@ export default async function SchedulePage({
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/schedule");
   if (!me.isAdmin && !me.isManager) redirect("/me");
-  const canApply = isOwner(me.email); // Phase 1: only the owner pushes proposals to HCP
+  const canApply = me.isAdmin || me.isManager; // MGMT can apply (page is already MGMT-gated); each apply is logged to dispatch_audit
 
   const params = await searchParams;
   const todayKey = chicagoTodayKey();

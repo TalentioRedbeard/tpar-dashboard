@@ -52,7 +52,7 @@ export function PendingChangesBar({ changes, canApply = false }: { changes: Pend
         ))}
       </ul>
       <div className="mt-1 text-[10px] text-amber-700/80">
-        {canApply ? "Apply pushes the change to the real HCP job (owner only). Whether the customer is notified follows HCP's default." : "Queued proposals — the owner applies them to HCP."}
+        {canApply ? "Apply pushes the change to the real HCP job. Whether the customer is notified follows HCP's default. Each apply is logged." : "Queued proposals — not yet pushed to HCP."}
       </div>
     </div>
   );
