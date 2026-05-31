@@ -23,6 +23,7 @@ import { Pill } from "../components/ui/Pill";
 import { FreshnessStrip } from "../components/FreshnessStrip";
 import { NotesToDannyInbox } from "../components/NotesToDannyInbox";
 import { listNotesToDanny } from "@/lib/tasks";
+import { listPersonalVehicles } from "@/lib/fleet";
 import { isOwner } from "@/lib/admin";
 
 function fmtTime(s: string | null): string {
@@ -83,6 +84,7 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
   const openARCount = openARRes.count ?? 0;
   const followupCount = followupCountRes.count ?? 0;
   const dannyNotes = isOwner(me.realEmail) ? await listNotesToDanny() : [];
+  const myVehicles = isOwner(me.realEmail) ? await listPersonalVehicles() : [];
 
   // Mode-awareness: is the user clocked into a specific job right now?
   const clockedIntoJob =
@@ -153,6 +155,21 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
       {isOwner(me.realEmail) && dannyNotes.length > 0 ? (
         <section className="mb-6">
           <NotesToDannyInbox notes={dannyNotes} />
+        </section>
+      ) : null}
+
+      {/* My personal vehicle (#10 Equinox) — owner-only; hidden from the shared fleet */}
+      {myVehicles.length > 0 ? (
+        <section className="mb-6">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-3 text-sm">
+            {myVehicles.map((v) => (
+              <div key={v.vehicle_id} className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-neutral-800">🚗 {v.display_name}</span>
+                <span className="text-neutral-500">last seen {v.last_seen_at ? new Date(v.last_seen_at).toLocaleString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—"}</span>
+                {v.lat != null && v.lng != null ? <a href={`https://www.google.com/maps?q=${v.lat},${v.lng}`} target="_blank" rel="noreferrer" className="text-brand-700 hover:underline">map →</a> : null}
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
 

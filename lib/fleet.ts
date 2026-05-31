@@ -8,6 +8,7 @@
 
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
+import { isOwner } from "@/lib/admin";
 import { revalidatePath } from "next/cache";
 
 export type FleetResult = { ok: true } | { ok: false; error: string };
@@ -89,6 +90,17 @@ export async function clearVehicleDriver(vehicleId: string): Promise<FleetResult
   await syncVtm(supa, vehicleId, null, now);
   revalidatePath("/dispatch");
   return { ok: true };
+}
+
+// Owner-only: last-known position of Danny's personal vehicle(s) (the Equinox).
+// owner_only vehicles are excluded from every shared fleet surface; this is the
+// only place they surface, and only for the owner.
+export type PersonalVehicle = { vehicle_id: string; display_name: string; driver_short_name: string | null; last_seen_at: string | null; lat: number | null; lng: number | null };
+export async function listPersonalVehicles(): Promise<PersonalVehicle[]> {
+  const me = await getCurrentTech();
+  if (!me || !isOwner(me.realEmail)) return [];
+  const { data } = await db().from("personal_vehicle_position_v").select("vehicle_id, display_name, driver_short_name, last_seen_at, lat, lng");
+  return (data ?? []) as PersonalVehicle[];
 }
 
 // Admin-only inline edit of a vehicle's catalog fields from the fleet strip.
