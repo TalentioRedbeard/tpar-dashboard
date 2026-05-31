@@ -23,6 +23,7 @@ import { recommendSchedule } from "../../lib/schedule-advisor";
 import { DispatchAck } from "./DispatchAck";
 import { RequestReportButton } from "../../components/RequestReportButton";
 import { TechAvatar } from "../../components/TechAvatar";
+import { DownloadCsvButton } from "../../components/DownloadCsvButton";
 import { isResolving, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
@@ -538,7 +539,8 @@ export default async function DispatchPage({
 
   return (
     <PageShell
-      title="Dispatch"
+      title="🚐 Dispatch"
+      titleClassName="text-3xl font-bold tracking-tight text-neutral-900 md:text-4xl"
       description={`Today · ${todayRows.length} appt${todayRows.length === 1 ? "" : "s"} across ${laneByTech.size} lane${laneByTech.size === 1 ? "" : "s"}`}
       help={{
         intent: "Today's flight deck. Where everyone is, what's open, what's owed. Map + per-tech lanes + the dollars side of the day.",
@@ -551,31 +553,19 @@ export default async function DispatchPage({
         stuck: <>Map blank? GPS pipeline likely paused; check /admin/system pipeline freshness or text Danny.</>,
       }}
     >
-      {/* STICKY ACTION BAR — 5 dispatch actions */}
-      <div className="sticky top-0 z-30 -mx-4 mb-4 flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
-        <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">Actions:</span>
-        <Link href="/ask" className="rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-800 hover:bg-brand-100">
-          Ask /ask
-        </Link>
-        <Link href="/dispatch/new-event" className="rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100">
-          + Create event
-        </Link>
-        <Link href="/dispatch/new-job" className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100">
-          + Create job
-        </Link>
-        <Link href="/dispatch/new-estimate" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100">
-          + Create estimate
-        </Link>
-        <button type="button" disabled title="Coming soon — needs bot endpoint for assignment (HCP API doesn't expose it)" className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-400">
-          Assign tech (soon)
-        </button>
-        <span className="ml-auto" />
+      {/* STICKY ACTION BAR — full-width dispatch actions */}
+      <div className="sticky top-0 z-30 -mx-4 mb-4 flex items-stretch gap-2 border-b border-neutral-200 bg-white/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
+        <Link href="/ask" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800 hover:bg-brand-100">🔎 Ask</Link>
+        <Link href="/dispatch/new-event" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100">📅 Create event</Link>
+        <Link href="/dispatch/new-job" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">🧰 Create job</Link>
+        <Link href="/dispatch/new-estimate" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">📝 Create estimate</Link>
+        <button type="button" disabled title="Coming soon — needs bot endpoint for assignment (HCP API doesn't expose it)" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-400">👷 Assign tech (soon)</button>
         <Link
           href={hideResolved ? "/dispatch?show_resolved=1" : "/dispatch"}
-          className={`rounded-md border px-3 py-1.5 text-xs font-medium ${hideResolved ? "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50" : "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-semibold ${hideResolved ? "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50" : "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}
           title={hideResolved ? "Resolved items (declined / done / deferred / awaiting-client / etc.) are hidden. Click to show them." : "Showing resolved items. Click to hide them again."}
         >
-          {hideResolved ? `Show resolved${resolvedCount ? ` (${resolvedCount})` : ""}` : "✓ Showing resolved"}
+          {hideResolved ? `✅ Show resolved${resolvedCount ? ` (${resolvedCount})` : ""}` : "✅ Showing resolved"}
         </Link>
       </div>
 
@@ -843,16 +833,14 @@ export default async function DispatchPage({
         );
       })()}
 
-      {/* SCHEDULING ADVISOR — recommend a tech + time for each unscheduled job */}
+      {/* NEEDS SCHEDULING + ADVISOR — side by side (Madisson works the backlog) */}
       {needsSchedulingRows.length > 0 && (
+      <div className="mb-6 grid items-start gap-4 lg:grid-cols-2">
         <AdvisorBacklogPanel
           jobs={needsSchedulingRows.map((j) => ({ hcp_job_id: j.hcp_job_id, customer_name: j.customer_name, city: j.city, street: j.street, notes_preview: j.notes_preview, age_days: j.age_days }))}
           recommend={recommendSchedule}
         />
-      )}
-
-      {/* NEEDS SCHEDULING — Layer 2 decay: split <30d vs 30+d (Madisson's actionable queue) */}
-      {needsSchedulingRows.length > 0 && (() => {
+        {(() => {
         const renderNeed = (j: typeof needsSchedulingRows[number]) => {
           const ack = getAck("needs_scheduling", j.hcp_job_id);
           if (hideResolved && isResolving(ack?.status)) return null;
@@ -886,7 +874,7 @@ export default async function DispatchPage({
         const fresh = needsSchedulingRows.filter(j => (j.age_days ?? 0) < 30);
         const older = needsSchedulingRows.filter(j => (j.age_days ?? 0) >= 30);
         return (
-          <details className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-4" open>
+          <details className="rounded-2xl border border-sky-200 bg-sky-50 p-4" open>
             <summary className="cursor-pointer text-sm font-semibold text-sky-900">
               Needs scheduling · {needsSchedulingRows.length} job{needsSchedulingRows.length === 1 ? "" : "s"}
               <span className="ml-2 font-normal text-sky-900/70">{fresh.length} recent (≤30d) · {older.length} older (30+d) · no calendar entry yet</span>
@@ -907,12 +895,29 @@ export default async function DispatchPage({
           </details>
         );
       })()}
+      </div>
+      )}
 
       {/* WEEK AHEAD */}
       <details className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4" open>
         <summary className="cursor-pointer text-sm font-semibold text-neutral-800">
           Week ahead · {weekRows.length} appointment{weekRows.length === 1 ? "" : "s"} (tomorrow → +7d)
         </summary>
+        <div className="mt-3">
+          <DownloadCsvButton
+            filename={`week-ahead-${new Date().toISOString().slice(0, 10)}.csv`}
+            headers={["Date", "Time", "Tech", "Customer", "Address", "Status", "Amount"]}
+            rows={weekRows.map((r) => [
+              r.scheduled_start ? new Date(r.scheduled_start).toLocaleDateString("en-CA", { timeZone: "America/Chicago" }) : "",
+              r.scheduled_start ? chicagoTime(r.scheduled_start) : "",
+              r.tech_primary_name ?? "",
+              r.customer_name ?? "",
+              [r.street, r.city].filter(Boolean).join(", "),
+              r.status ?? "",
+              (Number(r.total_amount) || 0) > 0 ? ((Number(r.total_amount) || 0) / 100).toFixed(2) : "",
+            ])}
+          />
+        </div>
         <div className="mt-4 space-y-6">
           {weekKeys.length === 0 ? (
             <div className="rounded-xl border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
@@ -955,7 +960,12 @@ export default async function DispatchPage({
                         return (
                           <tr key={r.appointment_id ?? r.hcp_job_id ?? Math.random()} className={`hover:bg-neutral-50 ${dimmed ? "opacity-60" : ""}`}>
                             <td className="px-3 py-2 align-top whitespace-nowrap font-mono text-xs text-neutral-700">{chicagoTime(r.scheduled_start)}</td>
-                            <td className="px-3 py-2 align-top"><TechName name={r.tech_primary_name} formerSet={formerSet} /></td>
+                            <td className="px-3 py-2 align-top">
+                              <span className="flex items-center gap-2">
+                                <TechAvatar shortName={r.tech_primary_name ?? "?"} avatarUrl={avatarByFullName.get(r.tech_primary_name ?? "") ?? null} size={22} />
+                                <TechName name={r.tech_primary_name} formerSet={formerSet} />
+                              </span>
+                            </td>
                             <td className="px-3 py-2 align-top">
                               <span className="flex items-baseline gap-2">
                                 {r.hcp_customer_id ? (

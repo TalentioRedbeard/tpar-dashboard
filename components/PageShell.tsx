@@ -17,6 +17,7 @@ import { isOwner } from "../lib/admin";
 
 export async function PageShell({
   title,
+  titleClassName,
   description,
   kicker,
   actions,
@@ -28,6 +29,8 @@ export async function PageShell({
   hideAskBar = false,
 }: {
   title: string;
+  /** Override the default title classes (e.g. larger/bolder per page). */
+  titleClassName?: string;
   description?: ReactNode;
   /** Optional small uppercased label above the title — e.g. section name. */
   kicker?: string;
@@ -72,7 +75,7 @@ export async function PageShell({
               {kicker}
             </div>
           ) : null}
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 md:text-3xl">
+          <h1 className={titleClassName || "text-2xl font-semibold tracking-tight text-neutral-900 md:text-3xl"}>
             {title}
           </h1>
           {description ? (
