@@ -26,6 +26,7 @@ import { PendingChangesBar } from "../../components/PendingChangesBar";
 import { listPendingChanges, type PendingChange } from "../../lib/schedule-changes";
 import { getTechOrder } from "../../lib/schedule-order";
 import { TechOrderControl } from "../../components/TechOrderControl";
+import { resolveTechColor } from "../../lib/tech-colors";
 import { DraggableAppt } from "../../components/DraggableAppt";
 import { DropCell } from "../../components/DropCell";
 
@@ -37,6 +38,8 @@ const CHI = "America/Chicago";
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────────────────────────────────────
+
+type CrewMember = { full: string; short: string; avatarUrl: string | null; colorHex: string | null };
 
 type Appt = {
   appointment_id: string | null;
@@ -53,6 +56,10 @@ type Appt = {
   city: string | null;
   total_amount: number | null;
   flags: string[] | null;
+  // Attached server-side: the crew with photos + assigned colors (lead first),
+  // and the lead's color for the card's left border.
+  crew?: CrewMember[];
+  leadColorHex?: string | null;
 };
 
 type Tech = {
@@ -60,6 +67,7 @@ type Tech = {
   hcp_full_name: string;
   is_lead: boolean | null;
   avatar_url: string | null;
+  color_hex: string | null;
 };
 
 type ViewMode = "day" | "week" | "month";
@@ -281,26 +289,40 @@ type CellOpts = {
   compact?: boolean;   // for month view: render as 1-line pill
 };
 
+function CrewAvatars({ crew, size }: { crew: CrewMember[]; size: number }) {
+  if (crew.length === 0) return null;
+  return (
+    <span className="flex items-center gap-0.5">
+      {crew.slice(0, 4).map((m) => (
+        <TechAvatar key={m.full} shortName={m.short} avatarUrl={m.avatarUrl} colorHex={m.colorHex} size={size} />
+      ))}
+      {crew.length > 4 ? <span className="text-[9px] opacity-70">+{crew.length - 4}</span> : null}
+    </span>
+  );
+}
+
 function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
   const stTone = statusTone(a.status);
   const tcol = techColor(a.tech_primary_name);
   const internal = isInternalAppt(a.hcp_customer_id);
-  const coTechs = (a.tech_all_names ?? []).filter((n) => n && n !== a.tech_primary_name);
+  const crew = a.crew ?? [];
   const dollars = (Number(a.total_amount) || 0) / 100;
 
   // Color composition:
   //   "status" mode  → fill = status; left border = neutral
-  //   "tech" mode    → fill = tech tint; left border = tech
-  //   "plaid" mode   → fill = status; left border = tech (the "plaid")
+  //   "tech" mode    → fill = tech tint; left border = LEAD's assigned color
+  //   "plaid" mode   → fill = status; left border = LEAD's assigned color (the "plaid")
   const fillClass = opts.color === "tech" ? tcol.fillTint : stTone.fill;
-  const borderLeftClass = opts.color === "status" ? "border-l-neutral-300" : tcol.border;
   const textClass = opts.color === "tech" ? "text-neutral-900" : stTone.text;
+  const leadBorder = opts.color === "status" ? null : (a.leadColorHex ?? null);
+  const borderLeftClass = (opts.color === "status" || !leadBorder) ? "border-l-neutral-300" : "";
+  const borderStyle = leadBorder ? { borderLeftColor: leadBorder } : undefined;
 
   const containerClass = `relative rounded-md border ${stTone.border} border-l-4 ${borderLeftClass} ${fillClass} ${textClass} hover:brightness-95`;
 
   if (opts.compact) {
     return (
-      <div className={`${containerClass} px-1.5 py-0.5 text-[10px] leading-tight`}>
+      <div className={`${containerClass} px-1.5 py-0.5 text-[10px] leading-tight`} style={borderStyle}>
         <div className="flex items-baseline gap-1">
           <span className="font-mono font-semibold">{chicagoTime(a.scheduled_start)}</span>
           <span className="truncate font-medium">{a.customer_name ?? "—"}</span>
@@ -310,7 +332,7 @@ function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
   }
 
   return (
-    <div className={`${containerClass} px-1.5 py-1 text-[11px] leading-tight`}>
+    <div className={`${containerClass} px-1.5 py-1 text-[11px] leading-tight`} style={borderStyle}>
       <div className="flex items-baseline justify-between gap-1">
         <span className="font-mono text-[10px] font-semibold">{chicagoTime(a.scheduled_start)}</span>
         {dollars > 0 && <span className="text-[10px] font-medium">{fmtMoney(dollars)}</span>}
@@ -321,9 +343,7 @@ function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
           internal
         </span>
       )}
-      {coTechs.length > 0 && (
-        <div className="mt-0.5 truncate text-[10px] opacity-75">+ {coTechs.join(", ")}</div>
-      )}
+      {crew.length > 0 && <div className="mt-0.5"><CrewAvatars crew={crew} size={16} /></div>}
     </div>
   );
 }
@@ -333,19 +353,19 @@ function ApptDetail({ a, opts }: { a: Appt; opts: CellOpts }) {
   const stTone = statusTone(a.status);
   const tcol = techColor(a.tech_primary_name);
   const internal = isInternalAppt(a.hcp_customer_id);
-  const coTechs = (a.tech_all_names ?? []).filter((n) => n && n !== a.tech_primary_name);
+  const crew = a.crew ?? [];
   const dollars = (Number(a.total_amount) || 0) / 100;
   const fillClass = opts.color === "tech" ? tcol.fillTint : stTone.fill;
-  const borderLeftClass = opts.color === "status" ? "border-l-neutral-300" : tcol.border;
   const textClass = opts.color === "tech" ? "text-neutral-900" : stTone.text;
+  const leadBorder = opts.color === "status" ? null : (a.leadColorHex ?? null);
+  const borderLeftClass = (opts.color === "status" || !leadBorder) ? "border-l-neutral-300" : "";
+  const borderStyle = leadBorder ? { borderLeftColor: leadBorder } : undefined;
 
   return (
-    <div className={`rounded-md border ${stTone.border} border-l-4 ${borderLeftClass} ${fillClass} ${textClass} px-2 py-1.5 text-xs hover:brightness-95`}>
-      <div className="flex items-baseline justify-between gap-2">
+    <div className={`rounded-md border ${stTone.border} border-l-4 ${borderLeftClass} ${fillClass} ${textClass} px-2 py-1.5 text-xs hover:brightness-95`} style={borderStyle}>
+      <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[11px] font-semibold">{chicagoTime(a.scheduled_start)}</span>
-        <span className={`rounded-sm px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${tcol.chip}`}>
-          {a.tech_primary_name?.split(" ")[0] ?? "—"}
-        </span>
+        <CrewAvatars crew={crew} size={18} />
       </div>
       <div className="mt-0.5 font-semibold">{a.customer_name ?? "—"}</div>
       {a.street && (
@@ -369,9 +389,6 @@ function ApptDetail({ a, opts }: { a: Appt; opts: CellOpts }) {
         )}
         {dollars > 0 && <span className="ml-auto text-[11px] font-semibold">{fmtMoney(dollars)}</span>}
       </div>
-      {coTechs.length > 0 && (
-        <div className="mt-0.5 text-[10px] opacity-75">+ {coTechs.join(", ")}</div>
-      )}
     </div>
   );
 }
@@ -450,7 +467,7 @@ export default async function SchedulePage({
       .order("scheduled_start", { ascending: true }),
     supa
       .from("tech_directory")
-      .select("tech_short_name, hcp_full_name, dashboard_role, is_lead, is_active, avatar_url")
+      .select("tech_short_name, hcp_full_name, dashboard_role, is_lead, is_active, avatar_url, color_hex")
       .eq("is_active", true)
       .neq("is_test", true)
       .in("dashboard_role", ["tech", "admin"])
@@ -511,6 +528,30 @@ export default async function SchedulePage({
   // Photos by full name (for the row labels).
   const avatarByFull = new Map<string, string | null>();
   for (const t of techs) if (t.hcp_full_name) avatarByFull.set(t.hcp_full_name, t.avatar_url ?? null);
+
+  // Assigned colors + lead set (Madisson #3). Attach to each appt: the crew with
+  // photos + colors (lead first) and the lead's color for the card border.
+  const colorByFull = new Map<string, string | null>();
+  for (const t of techs) if (t.hcp_full_name) colorByFull.set(t.hcp_full_name, t.color_hex ?? null);
+  const leadSet = new Set<string>();
+  for (const t of techs) if (t.hcp_full_name && t.is_lead) leadSet.add(t.hcp_full_name);
+  for (const a of appts) {
+    const members = (a.tech_all_names && a.tech_all_names.length ? a.tech_all_names : (a.tech_primary_name ? [a.tech_primary_name] : []))
+      .filter((n): n is string => !!n);
+    // Lead = the is_lead crew member; prefer the primary if it's a lead, else the
+    // first listed lead, else fall back to the primary (decided default).
+    const primary = a.tech_primary_name ?? null;
+    const leadFull = (primary && leadSet.has(primary)) ? primary
+      : members.find((m) => leadSet.has(m)) ?? primary ?? members[0] ?? null;
+    const ordered = [...new Set([leadFull, ...members].filter((n): n is string => !!n))];
+    a.crew = ordered.map((full) => ({
+      full,
+      short: shortByFull.get(full) ?? full.split(" ")[0],
+      avatarUrl: avatarByFull.get(full) ?? null,
+      colorHex: colorByFull.get(full) ?? null,
+    }));
+    a.leadColorHex = leadFull ? resolveTechColor(leadFull, colorByFull) : null;
+  }
 
   // Assist counts: appts where a tech rides along (on tech_all_names) but isn't the
   // primary. This is why helpers like Anthony/Chris look empty — they assist, not
