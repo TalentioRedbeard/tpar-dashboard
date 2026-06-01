@@ -285,6 +285,60 @@ export async function applyChangeRequest(id: string): Promise<Res> {
   return { ok: true };
 }
 
+// Reassign a job to a different tech (#27, from /dispatch). Same write-path as
+// the apply worker — PATCH assigned_employee_ids via update-hcp-job (no schedule
+// change, so no time move + no reschedule notification). MGMT-gated; audited.
+export async function reassignJob(hcpJobId: string, techFullName: string): Promise<Res> {
+  const me = await gate();
+  if (!me) return { ok: false, error: "dispatch role required" };
+  if (!SUPABASE_URL || !SERVICE_KEY) return { ok: false, error: "Server misconfigured — SUPABASE_URL/SERVICE_KEY missing." };
+  if (!hcpJobId) return { ok: false, error: "no job" };
+  const name = String(techFullName ?? "").trim();
+  if (!name) return { ok: false, error: "pick a tech" };
+
+  const supa = db();
+  const { data: tech } = await supa
+    .from("tech_directory")
+    .select("hcp_employee_id")
+    .ilike("hcp_full_name", name)
+    .eq("is_active", true)
+    .not("hcp_employee_id", "is", null)
+    .maybeSingle();
+  if (!tech?.hcp_employee_id) return { ok: false, error: `no active HCP employee for "${name}"` };
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/update-hcp-job`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+      body: JSON.stringify({ hcp_job_id: hcpJobId, assigned_employee_ids: [tech.hcp_employee_id], reason: `reassigned to ${name} by ${me.email}` }),
+    });
+    const json = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok || !json?.ok) {
+      const status = (json?.status as number) ?? res.status;
+      const hint = status === 404 || status === 405
+        ? " — HCP REST rejected the assignee update; the browser-bot path is needed."
+        : "";
+      return { ok: false, error: String(json?.error ?? `update-hcp-job ${res.status}`) + hint };
+    }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
+  await logDispatchAction({ action: "reassign", hcp_job_id: hcpJobId, detail: { to: name, via: "dispatch" } });
+  try {
+    const start = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    await fetch(`${SUPABASE_URL}/functions/v1/hcp-sync-appointments?start=${start}&end=${end}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+    });
+  } catch { /* cron catches up within 30 min */ }
+  revalidatePath("/dispatch");
+  revalidatePath("/schedule");
+  revalidatePath("/me");
+  return { ok: true };
+}
+
 // Chicago wall-clock -> UTC helpers (mirror app/dispatch/new-job/actions.ts;
 // pure DST math, kept local so the booking flow isn't touched).
 function chicagoDateKey(iso: string): string {

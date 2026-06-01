@@ -24,6 +24,7 @@ import { recommendSchedule } from "../../lib/schedule-advisor";
 import { DispatchAck } from "./DispatchAck";
 import { RequestReportButton } from "../../components/RequestReportButton";
 import { TechAvatar } from "../../components/TechAvatar";
+import { ReassignTech } from "../../components/ReassignTech";
 import { DownloadCsvButton } from "../../components/DownloadCsvButton";
 import { TaskList } from "../../components/TaskList";
 import { AssignmentBar } from "../../components/AssignmentBar";
@@ -419,6 +420,9 @@ export default async function DispatchPage({
     const ordered = [...new Set([leadFull, ...members].filter((n): n is string => !!n))];
     return ordered.map((full) => ({ full, short: shortByFullName.get(full) ?? full.split(" ")[0], avatarUrl: avatarByFullName.get(full) ?? null, colorHex: colorByFullName.get(full) ?? null }));
   };
+  // Job reassignment (#27) — MGMT only; options = active techs (full+short).
+  const canAssign = me.isAdmin || me.isManager;
+  const assignTechOptions = activeTechs.map((t) => ({ full: t.hcp_full_name, short: t.tech_short_name }));
   const dispatchTasks = await listTasks();
   const taskTechNames = activeTechs.map((t) => t.tech_short_name);
   const gpsByAppt = new Map<string, GpsArrival>(
@@ -602,7 +606,7 @@ export default async function DispatchPage({
         <Link href="/dispatch/new-event" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100">📅 Create event</Link>
         <Link href="/dispatch/new-job" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">🧰 Create job</Link>
         <Link href="/dispatch/new-estimate" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">📝 Create estimate</Link>
-        <button type="button" disabled title="Coming soon — needs bot endpoint for assignment (HCP API doesn't expose it)" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-400">👷 Assign tech (soon)</button>
+        <span title="Reassign a job with the ⇄ Assign control on its lane card below" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-medium text-neutral-500">👷 Assign: ⇄ on a job</span>
         <Link
           href={hideResolved ? "/dispatch?show_resolved=1" : "/dispatch"}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-semibold ${hideResolved ? "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50" : "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}
@@ -805,6 +809,9 @@ export default async function DispatchPage({
                             ) : null}
                             {(Number(a.total_amount) || 0) > 0 ? (
                               <span className="text-xs font-medium text-neutral-700">{fmtMoney((Number(a.total_amount) || 0) / 100)}</span>
+                            ) : null}
+                            {canAssign && a.hcp_job_id ? (
+                              <ReassignTech hcpJobId={a.hcp_job_id} current={a.tech_primary_name} techs={assignTechOptions} />
                             ) : null}
                             {a.appointment_id ? (
                               <span className="ml-auto"><DispatchAck itemType="appointment" itemId={a.appointment_id} existing={ack} canWrite={canWriteAck} /></span>
