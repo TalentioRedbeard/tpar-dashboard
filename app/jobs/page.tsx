@@ -354,12 +354,20 @@ export default async function JobsListPage({
       title="Jobs"
       description={description}
       actions={
-        <a
-          href={csvHref}
-          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
-        >
-          Download CSV
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href="/dispatch/new-job"
+            className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+          >
+            + Create job
+          </a>
+          <a
+            href={csvHref}
+            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Download CSV
+          </a>
+        </div>
       }
     >
       <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">

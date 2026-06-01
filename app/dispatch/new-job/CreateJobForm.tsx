@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type Tech = { tech_short_name: string; hcp_full_name: string; hcp_employee_id: string; is_lead: boolean | null };
 type CustomerHit = {
@@ -374,7 +375,14 @@ export function CreateJobForm({
       )}
       {success && (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-          Created job <code className="font-mono text-xs">{success.id}</code>. Webhook will propagate to /dispatch in ~30s.
+          <div className="font-medium">✓ Job created for {selectedDate} at {startTime}.</div>
+          <p className="mt-1 text-xs text-emerald-800/90">
+            It shows on the schedule for <span className="font-medium">{selectedDate}</span> — today&apos;s /dispatch lanes only list <em>today&apos;s</em> jobs, and test-customer bookings are hidden from the lanes by design, so it may not appear there.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Link href={`/job/${success.id}`} className="font-medium text-emerald-800 underline hover:text-emerald-900">Open job to edit →</Link>
+            <button type="button" onClick={() => setSuccess(null)} className="text-xs text-emerald-700 hover:underline">Create another</button>
+          </div>
         </div>
       )}
 
