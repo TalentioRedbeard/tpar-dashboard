@@ -285,6 +285,127 @@ export async function applyChangeRequest(id: string): Promise<Res> {
   return { ok: true };
 }
 
+// Directly edit a job's schedule and/or assigned tech from the job page (#33).
+// Unlike proposeJobMove (which queues a reviewable proposal from the /schedule
+// drag UI), this is a deliberate, single-job owner/manager edit that writes to
+// HCP immediately through the SAME update-hcp-job PATCH, then bounces sync so
+// /job, /schedule, /dispatch reflect it. MGMT-gated; audited. Customer-facing
+// caveat (visibility != notification): HCP MAY notify the customer when the
+// scheduled time changes — surfaced in the UI so it's a deliberate choice.
+export async function editJobSchedule(input: {
+  hcp_job_id: string;
+  date?: string | null;        // YYYY-MM-DD (Chicago day)
+  time?: string | null;        // HH:MM (Chicago wall-clock)
+  tech_full_name?: string | null;
+}): Promise<Res> {
+  const me = await gate();
+  if (!me) return { ok: false, error: "dispatch role required" };
+  if (!SUPABASE_URL || !SERVICE_KEY) return { ok: false, error: "Server misconfigured — SUPABASE_URL/SERVICE_KEY missing." };
+  const hcpJobId = String(input.hcp_job_id ?? "").trim();
+  if (!hcpJobId) return { ok: false, error: "no job" };
+
+  const supa = db();
+
+  // Current slot for this job — preserve the visit duration on a reschedule.
+  const { data: appt } = await supa
+    .from("appointments_master")
+    .select("scheduled_start, scheduled_end")
+    .eq("hcp_job_id", hcpJobId)
+    .is("deleted_at", null)
+    .order("scheduled_start", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const updateBody: Record<string, unknown> = {
+    hcp_job_id: hcpJobId,
+    reason: `job-page edit by ${me.email}`,
+  };
+
+  // Reschedule — only write the schedule if the new slot actually differs, so
+  // a tech-only edit doesn't re-write (and possibly re-notify) the schedule.
+  const dayKey = input.date ?? (appt?.scheduled_start ? chicagoDateKey(appt.scheduled_start) : null);
+  const timeHHMM = input.time ?? null;
+  if (dayKey && timeHHMM) {
+    const startUtc = new Date(`${dayKey}T${timeHHMM}:00${formatOffset(chicagoOffsetForDate(dayKey))}`);
+    if (Number.isNaN(startUtc.getTime())) return { ok: false, error: "invalid date/time" };
+    const sameStart = appt?.scheduled_start && Math.abs(new Date(appt.scheduled_start).getTime() - startUtc.getTime()) < 60_000;
+    if (!sameStart) {
+      let durMs = 120 * 60_000;
+      if (appt?.scheduled_start && appt?.scheduled_end) {
+        const d = new Date(appt.scheduled_end).getTime() - new Date(appt.scheduled_start).getTime();
+        if (d > 0) durMs = d;
+      }
+      updateBody.scheduled_start = startUtc.toISOString();
+      updateBody.scheduled_end = new Date(startUtc.getTime() + durMs).toISOString();
+    }
+  }
+
+  // Reassign — resolve full name -> hcp_employee_id (tolerant match).
+  if (input.tech_full_name && String(input.tech_full_name).trim()) {
+    const name = String(input.tech_full_name).trim();
+    const { data: tech } = await supa
+      .from("tech_directory")
+      .select("hcp_employee_id")
+      .ilike("hcp_full_name", name)
+      .eq("is_active", true)
+      .not("hcp_employee_id", "is", null)
+      .maybeSingle();
+    if (!tech?.hcp_employee_id) return { ok: false, error: `no active HCP employee for "${name}"` };
+    updateBody.assigned_employee_ids = [tech.hcp_employee_id];
+  }
+
+  if (!updateBody.scheduled_start && !updateBody.assigned_employee_ids) {
+    return { ok: false, error: "nothing changed — pick a new date/time or tech" };
+  }
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/update-hcp-job`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+      body: JSON.stringify(updateBody),
+    });
+    const json = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok || !json?.ok) {
+      const status = (json?.status as number) ?? res.status;
+      const hint = status === 404 || status === 405
+        ? " — HCP REST rejected the schedule/assignee update; the browser-bot path is needed for this field."
+        : "";
+      return { ok: false, error: String(json?.error ?? `update-hcp-job ${res.status}`) + hint };
+    }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
+  await logDispatchAction({
+    action: "edit_job",
+    hcp_job_id: hcpJobId,
+    detail: {
+      via: "job_page",
+      schedule_changed: !!updateBody.scheduled_start,
+      tech_changed: !!updateBody.assigned_employee_ids,
+      proposed_date: input.date ?? null,
+      proposed_start_time: input.time ?? null,
+      proposed_tech: input.tech_full_name ?? null,
+    },
+  });
+
+  // Bounce HCP state back so /job + /schedule + /dispatch reflect it.
+  try {
+    const startSync = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const proposedMs = dayKey ? new Date(`${dayKey}T12:00:00Z`).getTime() : Date.now();
+    const endSync = new Date(Math.max(Date.now(), proposedMs) + 3 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    await fetch(`${SUPABASE_URL}/functions/v1/hcp-sync-appointments?start=${startSync}&end=${endSync}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+    });
+  } catch { /* cron catches up within 30 min */ }
+  revalidatePath(`/job/${hcpJobId}`);
+  revalidatePath("/schedule");
+  revalidatePath("/dispatch");
+  revalidatePath("/me");
+  return { ok: true };
+}
+
 // Reassign a job to a different tech (#27, from /dispatch). Same write-path as
 // the apply worker — PATCH assigned_employee_ids via update-hcp-job (no schedule
 // change, so no time move + no reschedule notification). MGMT-gated; audited.

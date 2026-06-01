@@ -28,6 +28,7 @@ import { getCurrentTech } from "../../../lib/current-tech";
 import { getFormerTechNames } from "../../../lib/former-techs";
 import { RecordingPlayer } from "../../../components/RecordingPlayer";
 import { LogReceiptForm } from "../../../components/LogReceiptForm";
+import { EditJobPanel } from "../../../components/EditJobPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const { id } = await params;
   const me = await getCurrentTech().catch(() => null);
   const canWrite = !!me?.canWrite;
+  const canEdit = !!(me?.isAdmin || me?.isManager); // MGMT — direct HCP edit
   const formerSet = await getFormerTechNames();
   const supabase = db();
 
@@ -325,6 +327,37 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const receiptItems = (receiptsRes.data ?? []) as Array<{ id: number; amount: number; vendor_description: string | null; transaction_date: string | null; tech_name: string | null; source: string | null; photo_url: string | null }>;
   const receiptsTotal = receiptItems.reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
+  // Edit-job panel data (#33) — only fetched for MGMT. The current slot gives us
+  // the start time to prefill (job_360 only carries job_date), and the active
+  // tech roster feeds the reassign dropdown.
+  let editSlotStart: string | null = null;
+  let editTechs: Array<{ full: string; short: string }> = [];
+  if (canEdit) {
+    const [slotRes, techsRes] = await Promise.all([
+      supabase
+        .from("appointments_master")
+        .select("scheduled_start")
+        .eq("hcp_job_id", id)
+        .is("deleted_at", null)
+        .order("scheduled_start", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("tech_directory")
+        .select("hcp_full_name, tech_short_name")
+        .eq("is_active", true)
+        .not("hcp_employee_id", "is", null)
+        .order("tech_short_name", { ascending: true }),
+    ]);
+    editSlotStart = (slotRes.data as { scheduled_start?: string } | null)?.scheduled_start ?? null;
+    editTechs = ((techsRes.data ?? []) as Array<{ hcp_full_name: string | null; tech_short_name: string | null }>)
+      .filter((t) => t.hcp_full_name)
+      .map((t) => ({ full: t.hcp_full_name as string, short: t.tech_short_name ?? (t.hcp_full_name as string) }));
+  }
+  const editCurrentTime = editSlotStart
+    ? new Date(editSlotStart).toLocaleTimeString("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hour12: false }).slice(0, 5)
+    : null;
+
   const addressLine = [j.street as string, j.city as string].filter(Boolean).join(", ");
   const description = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -373,6 +406,18 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     >
       <JobBriefingCard hcpJobId={id} briefing={briefing} pinnedEmails={pinnedForJob} />
       <div className="space-y-10">
+        {canEdit ? (
+          <div className="-mt-2">
+            <EditJobPanel
+              hcpJobId={id}
+              currentDate={(j.job_date as string) ?? null}
+              currentTime={editCurrentTime}
+              currentTechFull={(j.tech_primary_name as string) ?? null}
+              techs={editTechs}
+            />
+          </div>
+        ) : null}
+
         <Section title="At a glance">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatCard label="Date" value={(j.job_date as string) ?? "—"} />
