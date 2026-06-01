@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { db } from "../../../lib/supabase";
 import { PageShell } from "../../../components/PageShell";
+import { ScrollPanel } from "../../../components/ui/ScrollPanel";
 
 export const metadata = { title: "Notes feed · TPAR-DB" };
 
@@ -148,6 +149,7 @@ export default async function NotesFeedPage({
           No notes in this window.
         </div>
       ) : (
+        <ScrollPanel tier="primary">
         <ul className="space-y-3">
           {items.map((it) => {
             const href = it.kind === "customer" ? `/customer/${it.entityId}` : `/job/${it.entityId}`;
@@ -172,6 +174,7 @@ export default async function NotesFeedPage({
             );
           })}
         </ul>
+        </ScrollPanel>
       )}
     </PageShell>
   );

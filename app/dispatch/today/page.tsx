@@ -185,6 +185,7 @@ export default async function TodayTimelinePage() {
               </div>
             </div>
 
+            <div className="max-h-[calc(100vh-320px)] overflow-y-auto">
             {lanes.map((lane, i) => (
               <div key={lane.a.appointment_id ?? lane.a.hcp_job_id ?? i} className={`flex items-stretch border-b border-neutral-100 ${i % 2 ? "bg-neutral-50/30" : ""}`}>
                 <div className="w-48 shrink-0 border-r border-neutral-100 px-2 py-1.5" style={{ borderLeft: `3px solid ${lane.leadColor}` }}>
@@ -223,6 +224,7 @@ export default async function TodayTimelinePage() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         </div>
       )}

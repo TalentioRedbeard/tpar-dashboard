@@ -15,6 +15,7 @@ import { CustomerEmails } from "../../../components/CustomerEmails";
 import { getFormerTechNames } from "../../../lib/former-techs";
 import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
+import { ScrollPanel } from "../../../components/ui/ScrollPanel";
 import { StatCard } from "../../../components/ui/StatCard";
 import { Pill } from "../../../components/ui/Pill";
 import { EmptyState } from "../../../components/ui/EmptyState";
@@ -670,6 +671,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             </div>
           )}
           {notes.length > 0 ? (
+            <ScrollPanel tier="standard">
             <ul className="space-y-2">
               {notes.map((n) => (
                 <li key={n.id} className="rounded-2xl border border-neutral-200 bg-white p-4">
@@ -682,6 +684,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                 </li>
               ))}
             </ul>
+            </ScrollPanel>
           ) : (
             <EmptyState title="No notes yet." description="Add one above to keep context across visits." />
           )}
@@ -689,6 +692,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
         <Section title="Recent jobs">
           {recentJobs.data && recentJobs.data.length > 0 ? (
+            <ScrollPanel tier="standard">
             <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
               <table className="w-full text-sm">
                 <thead className="border-b border-neutral-200 bg-neutral-50">
@@ -723,6 +727,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                 </tbody>
               </table>
             </div>
+            </ScrollPanel>
           ) : (
             <EmptyState title="No jobs." />
           )}
@@ -750,6 +755,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
               return <EmptyState title="No HCP notes." description="Notes added on jobs or estimates in HCP land here via webhook." />;
             }
             return (
+              <ScrollPanel tier="standard">
               <ul className="space-y-2">
                 {merged.map((r) => (
                   <li key={`${r.kind}-${r.id}`} className="rounded-2xl border border-neutral-200 bg-white p-4">
@@ -770,6 +776,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                   </li>
                 ))}
               </ul>
+              </ScrollPanel>
             );
           })()}
         </Section>
@@ -786,6 +793,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
         <Section title="Recent communications">
           {recentComms.data && recentComms.data.length > 0 ? (
+            <ScrollPanel tier="standard">
             <ul className="space-y-2">
               {recentComms.data.map((m: Record<string, unknown>) => (
                 <li key={m.id as number} className="rounded-2xl border border-neutral-200 bg-white p-4">
@@ -802,6 +810,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                 </li>
               ))}
             </ul>
+            </ScrollPanel>
           ) : (
             <EmptyState title="No communications." />
           )}

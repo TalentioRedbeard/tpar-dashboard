@@ -8,6 +8,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { dismissChangeRequest, applyChangeRequest, type PendingChange } from "../lib/schedule-changes";
+import { ScrollPanel } from "./ui/ScrollPanel";
 
 function fmt12(t: string | null) {
   if (!t) return "";
@@ -36,6 +37,7 @@ export function PendingChangesBar({ changes, canApply = false }: { changes: Pend
   return (
     <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3">
       <div className="mb-1.5 text-sm font-semibold text-amber-900">⏳ Proposed schedule changes · {changes.length}</div>
+      <ScrollPanel tier="secondary">
       <ul className="space-y-1">
         {changes.map((c) => (
           <li key={c.id} className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
@@ -51,6 +53,7 @@ export function PendingChangesBar({ changes, canApply = false }: { changes: Pend
           </li>
         ))}
       </ul>
+      </ScrollPanel>
       <div className="mt-1 text-[10px] text-amber-700/80">
         {canApply ? "Apply pushes the change to the real HCP job. Whether the customer is notified follows HCP's default. Each apply is logged." : "Queued proposals — not yet pushed to HCP."}
       </div>

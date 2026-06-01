@@ -14,6 +14,7 @@ import { getCurrentState as getClockState, type CurrentClockState } from "./time
 import { ClockButton } from "../components/ClockButton";
 import { PageShell } from "../components/PageShell";
 import { Section } from "../components/ui/Section";
+import { ScrollPanel } from "../components/ui/ScrollPanel";
 import { Pill } from "../components/ui/Pill";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MyTasks } from "../components/MyTasks";
@@ -488,6 +489,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
           {todayAppts.length === 0 ? (
             <EmptyState title="Quiet day." description="Use the time to clean up estimates or follow-ups." />
           ) : (
+            <ScrollPanel tier="standard">
             <ul className="space-y-2">
               {todayAppts.map((a) => {
                 const isHelper = a.tech_primary_name && a.tech_primary_name !== techName;
@@ -516,6 +518,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
                 );
               })}
             </ul>
+            </ScrollPanel>
           )}
         </Section>
 

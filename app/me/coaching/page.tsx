@@ -17,6 +17,7 @@ import Link from "next/link";
 import { db } from "../../../lib/supabase";
 import { getCurrentTech } from "../../../lib/current-tech";
 import { PageShell } from "../../../components/PageShell";
+import { ScrollPanel } from "../../../components/ui/ScrollPanel";
 
 export const metadata = { title: "My coaching · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -399,6 +400,7 @@ export default async function CoachingPage() {
           <h2 className="mb-3 text-base font-semibold text-neutral-800">
             ⚠ Your aged follow-ups ({agedRows.length})
           </h2>
+          <ScrollPanel tier="compact">
           <ul className="space-y-1.5">
             {agedRows.map((r) => {
               const days = Math.floor((Date.now() - new Date(r.occurred_at).getTime()) / 86_400_000);
@@ -415,6 +417,7 @@ export default async function CoachingPage() {
               );
             })}
           </ul>
+          </ScrollPanel>
         </section>
       )}
 

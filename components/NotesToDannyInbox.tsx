@@ -8,6 +8,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { markDannyNoteRead, type DannyNote } from "../lib/tasks";
 import { getRecordingSignedUrl } from "../lib/recordings";
+import { ScrollPanel } from "@/components/ui/ScrollPanel";
 
 export function NotesToDannyInbox({ notes }: { notes: DannyNote[] }) {
   const router = useRouter();
@@ -20,6 +21,7 @@ export function NotesToDannyInbox({ notes }: { notes: DannyNote[] }) {
       {notes.length === 0 ? (
         <div className="text-sm text-neutral-500">No notes yet.</div>
       ) : (
+        <ScrollPanel tier="standard">
         <ul className="space-y-2">
           {notes.map((n) => (
             <li key={n.id} className={`rounded-xl border p-2 text-sm ${n.read_at ? "border-neutral-200 bg-white opacity-70" : "border-amber-300 bg-white"}`}>
@@ -41,6 +43,7 @@ export function NotesToDannyInbox({ notes }: { notes: DannyNote[] }) {
             </li>
           ))}
         </ul>
+        </ScrollPanel>
       )}
     </div>
   );

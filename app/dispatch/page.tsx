@@ -766,7 +766,7 @@ export default async function DispatchPage({
                       {revenue > 0 ? <span className="font-medium text-emerald-700">{fmtMoney(revenue / 100)}</span> : null}
                     </div>
                   </header>
-                  <div className="flex-1 space-y-1.5 p-1.5">
+                  <div className="flex-1 space-y-1.5 p-1.5 max-h-[600px] overflow-y-auto">
                     {lane.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-neutral-200 p-3 text-center text-xs text-neutral-400">
                         Open today

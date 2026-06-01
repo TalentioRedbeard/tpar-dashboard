@@ -9,6 +9,7 @@
 
 import { db } from "../../../lib/supabase";
 import { PageShell } from "../../../components/PageShell";
+import { ScrollPanel } from "../../../components/ui/ScrollPanel";
 import { fmtDateShort } from "../../../components/Table";
 
 export const metadata = { title: "Audit · TPAR-DB" };
@@ -109,6 +110,7 @@ export default async function AuditPage({
           No values-gate decisions in this window.
         </div>
       ) : (
+        <ScrollPanel tier="primary">
         <ul className="space-y-3">
           {rows.map((r, i) => {
             const ctx = r.context ?? {};
@@ -161,6 +163,7 @@ export default async function AuditPage({
             );
           })}
         </ul>
+        </ScrollPanel>
       )}
     </PageShell>
   );

@@ -8,13 +8,14 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { respondToTask, setTaskStatus, type Task } from "../lib/tasks";
+import { ScrollPanel } from "./ui/ScrollPanel";
 
 export function MyTasks({ tasks }: { tasks: Task[] }) {
   if (tasks.length === 0) return null;
   return (
     <div className="rounded-2xl border border-sky-200 bg-sky-50/40 p-4">
       <h3 className="mb-2 text-sm font-semibold text-sky-900">📋 Tasks for you · {tasks.length}</h3>
-      <ul className="space-y-2">{tasks.map((t) => <MyTaskRow key={t.id} task={t} />)}</ul>
+      <ScrollPanel tier="standard"><ul className="space-y-2">{tasks.map((t) => <MyTaskRow key={t.id} task={t} />)}</ul></ScrollPanel>
     </div>
   );
 }

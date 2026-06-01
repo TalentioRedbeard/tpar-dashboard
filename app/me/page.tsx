@@ -18,6 +18,7 @@ import { StartAppointmentButton } from "../../components/StartAppointmentButton"
 import { ClockSuggestionBanner } from "../../components/ClockSuggestionBanner";
 import { LifecycleButtons } from "../../components/LifecycleButtons";
 import { DismissJobButton } from "../../components/DismissJobButton";
+import { ScrollPanel } from "../../components/ui/ScrollPanel";
 import { getCurrentState as getClockState } from "../time/actions";
 import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
 import { getPendingSuggestions } from "../time/suggestions";
@@ -428,6 +429,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
             </div>
           )
         ) : (
+          <ScrollPanel tier="standard">
           <ul className="space-y-2">
             {activeAppts.map((a) => {
               const apptId = a.appointment_id as string | null;
@@ -526,6 +528,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
               );
             })}
           </ul>
+          </ScrollPanel>
         )}
 
         {/* Dismissed today — collapsed restorable list. Hidden when viewing-as
@@ -536,6 +539,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
             <summary className="cursor-pointer px-3 py-2 text-sm text-neutral-600 hover:text-neutral-800">
               {dismissedAppts.length} marked handled today — click to restore
             </summary>
+            <ScrollPanel tier="compact">
             <ul className="space-y-1 border-t border-neutral-100 p-2">
               {dismissedAppts.map((a) => {
                 const apptId = (a.appointment_id as string | null) ?? null;
@@ -550,6 +554,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                 );
               })}
             </ul>
+            </ScrollPanel>
           </details>
         ) : null}
       </section>

@@ -7,6 +7,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createTask, setTaskStatus, assignTask, addRequirement, sendNoteToDanny, type Task } from "../lib/tasks";
+import { ScrollPanel } from "./ui/ScrollPanel";
 
 type Res = { ok: boolean; error?: string };
 
@@ -42,7 +43,7 @@ export function TaskList({ tasks, techNames }: { tasks: Task[]; techNames: strin
       </div>
       {err ? <div className="mb-2 text-xs text-red-700">{err}</div> : null}
       {open.length === 0 ? <div className="text-sm text-neutral-500">No open tasks.</div> : (
-        <ul className="space-y-2">{open.map((t) => <TaskRow key={t.id} task={t} techNames={techNames} run={run} pending={pending} />)}</ul>
+        <ScrollPanel tier="secondary"><ul className="space-y-2">{open.map((t) => <TaskRow key={t.id} task={t} techNames={techNames} run={run} pending={pending} />)}</ul></ScrollPanel>
       )}
       {done.length > 0 && (
         <details className="mt-3">

@@ -10,6 +10,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { suggestTriage, applyTriageDisposition, type TriageProposal, type TriageItemInput } from "../lib/dispatch-triage";
 import { DISPOSITION_LABEL, dispositionChip, type DispatchAckStatus } from "../app/dispatch/dispositions";
+import { ScrollPanel } from "./ui/ScrollPanel";
 
 type TriageItem = { id: string; customer_id: string | null; customer_name: string; age_days: number | null; context: string | null };
 
@@ -57,6 +58,7 @@ export function TriagePanel({ items }: { items: TriageItem[] }) {
       {proposals === null ? null : actionable.length === 0 ? (
         <div className="text-sm text-violet-900/60">{appliedCount ? `${appliedCount} applied. ` : ""}No further changes suggested{noChangeCount ? ` (${noChangeCount} look unchanged)` : ""}.</div>
       ) : (
+        <ScrollPanel tier="standard">
         <ul className="space-y-2">
           {actionable.map((p) => {
             const it = byId.get(p.id);
@@ -78,6 +80,7 @@ export function TriagePanel({ items }: { items: TriageItem[] }) {
             );
           })}
         </ul>
+        </ScrollPanel>
       )}
       {appliedCount > 0 && actionable.length > 0 ? <div className="mt-2 text-[11px] text-emerald-700">Applied items collapse from the needs-scheduling list on refresh.</div> : null}
     </div>

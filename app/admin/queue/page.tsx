@@ -19,6 +19,7 @@ import { getSessionUser } from "@/lib/supabase-server";
 import { isAdmin } from "@/lib/admin";
 import { PageShell } from "@/components/PageShell";
 import { Section } from "@/components/ui/Section";
+import { ScrollPanel } from "@/components/ui/ScrollPanel";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { QueueItemActions } from "./QueueItemActions";
 import { BulkSweepButton } from "./BulkSweepButton";
@@ -234,9 +235,11 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
         {high.length === 0 ? (
           <EmptyState title="No high-importance items pending. 🎉" />
         ) : (
+          <ScrollPanel tier="primary">
           <ul className="space-y-2">
             {high.map((r) => <QueueItem key={`${r.kind}-${r.id}`} row={r} />)}
           </ul>
+          </ScrollPanel>
         )}
       </Section>
 
@@ -246,9 +249,11 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
         {mid.length + low.length === 0 ? (
           <EmptyState title="Queue empty." />
         ) : (
+          <ScrollPanel tier="primary">
           <ul className="space-y-2">
             {[...mid, ...low].map((r) => <QueueItem key={`${r.kind}-${r.id}`} row={r} dim />)}
           </ul>
+          </ScrollPanel>
         )}
       </Section>
     </PageShell>

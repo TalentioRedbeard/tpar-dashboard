@@ -18,6 +18,7 @@ import { getJob360, resolveJobIdentifier, jobRevenueDollars, jobDueDollars } fro
 import { redirect } from "next/navigation";
 import { fmtDollars } from "@/lib/typed-db/money";
 import { Section } from "../../../components/ui/Section";
+import { ScrollPanel } from "../../../components/ui/ScrollPanel";
 import { StatCard } from "../../../components/ui/StatCard";
 import { Pill } from "../../../components/ui/Pill";
 import { EmptyState } from "../../../components/ui/EmptyState";
@@ -486,6 +487,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </h4>
           </div>
           {receiptItems.length > 0 ? (
+            <ScrollPanel tier="standard">
             <ul className="mt-2 divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
               {receiptItems.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
@@ -499,6 +501,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 </li>
               ))}
             </ul>
+            </ScrollPanel>
           ) : (
             <p className="mt-2 text-xs text-neutral-500">
               No receipts logged yet{j.invoice_number ? "" : " — this job has no invoice number to attach to"}.
@@ -616,6 +619,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               No voice notes attached to this job yet. Record one to capture rich context (recommendation, decisions, what you saw on site) — then generate options/lines from it.
             </div>
           ) : (
+            <ScrollPanel tier="standard">
             <ul className="divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
               {voiceNotes.map((vn: any) => (
                 <li key={vn.id}>
@@ -637,6 +641,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 </li>
               ))}
             </ul>
+            </ScrollPanel>
           )}
         </Section>
 
@@ -720,6 +725,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           {firedTriggers.length > 0 && (
             <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50/50 p-3">
               <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">Fired so far</div>
+              <ScrollPanel tier="standard">
               <ul className="space-y-1 text-xs text-neutral-700">
                 {firedTriggers.map((t) => (
                   <li key={t.id} className="flex flex-wrap items-center gap-2">
@@ -734,6 +740,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                   </li>
                 ))}
               </ul>
+              </ScrollPanel>
             </div>
           )}
         </Section>
@@ -747,6 +754,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           }
         >
           {openJobNeeds.length > 0 ? (
+            <ScrollPanel tier="standard">
             <ul className="space-y-2 mb-3">
               {openJobNeeds.map((n) => (
                 <li key={n.id} className="rounded-2xl border border-neutral-200 bg-white p-3 text-sm">
@@ -770,6 +778,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 </li>
               ))}
             </ul>
+            </ScrollPanel>
           ) : null}
           {canWrite ? (
             <LinkButton href={`/shopping?prefill_job=${id}`} variant="secondary">
@@ -795,6 +804,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </div>
           )}
           {notes.length > 0 ? (
+            <ScrollPanel tier="standard">
             <ul className="space-y-2">
               {notes.map((n) => (
                 <li key={n.id} className="rounded-2xl border border-neutral-200 bg-white p-4">
@@ -807,6 +817,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 </li>
               ))}
             </ul>
+            </ScrollPanel>
           ) : (
             <EmptyState title="No notes yet." description="Add one above to keep context for the next visit." />
           )}
@@ -814,6 +825,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
         {recordings.length > 0 ? (
           <Section title="Recordings" description="Voice notes captured on this job via the Record button. Playback is private (signed, expires).">
+            <ScrollPanel tier="standard">
             <ul className="space-y-2">
               {recordings.map((r) => (
                 <li key={r.id} className="rounded-2xl border border-neutral-200 bg-white p-4">
@@ -828,6 +840,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 </li>
               ))}
             </ul>
+            </ScrollPanel>
           </Section>
         ) : null}
 
@@ -836,6 +849,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           description="Calls, texts, and emails surrounding this appointment window."
         >
           {comms && comms.length > 0 ? (
+            <ScrollPanel tier="standard">
             <ul className="space-y-2">
               {comms.map((m: Record<string, unknown>) => (
                 <li key={m.id as number} className="rounded-2xl border border-neutral-200 bg-white p-4">
@@ -852,6 +866,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 </li>
               ))}
             </ul>
+            </ScrollPanel>
           ) : (
             <EmptyState title="No communications." />
           )}

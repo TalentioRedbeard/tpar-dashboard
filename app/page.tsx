@@ -7,6 +7,7 @@ import { AckButton } from "../components/AckButton";
 import { ClockButton } from "../components/ClockButton";
 import { PageShell } from "../components/PageShell";
 import { Section } from "../components/ui/Section";
+import { ScrollPanel } from "../components/ui/ScrollPanel";
 import { Pill } from "../components/ui/Pill";
 import { EmptyState } from "../components/ui/EmptyState";
 import { TechName } from "../components/ui/TechName";
@@ -391,6 +392,7 @@ export default async function Today() {
           {followups.length === 0 ? (
             <EmptyState title="All caught up." description="No open follow-ups in window." />
           ) : (
+            <ScrollPanel tier="standard">
             <ul className="space-y-2">
               {followups.map((f) => (
                 <li key={f.id} className="rounded-2xl border border-neutral-200 bg-white p-4 transition hover:border-neutral-300 hover:shadow-sm">
@@ -424,6 +426,7 @@ export default async function Today() {
                 </li>
               ))}
             </ul>
+            </ScrollPanel>
           )}
         </Section>
 
@@ -435,6 +438,7 @@ export default async function Today() {
             <EmptyState title="No customer has open follow-ups." />
           ) : (
             <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+              <ScrollPanel tier="secondary">
               <table className="w-full text-sm">
                 <thead className="border-b border-neutral-200 bg-neutral-50">
                   <tr>
@@ -471,6 +475,7 @@ export default async function Today() {
                   ))}
                 </tbody>
               </table>
+              </ScrollPanel>
             </div>
           )}
         </Section>
@@ -483,6 +488,7 @@ export default async function Today() {
             <EmptyState title="No jobs in window." />
           ) : (
             <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+              <ScrollPanel tier="standard">
               <table className="w-full text-sm">
                 <thead className="border-b border-neutral-200 bg-neutral-50">
                   <tr>
@@ -517,6 +523,7 @@ export default async function Today() {
                   ))}
                 </tbody>
               </table>
+              </ScrollPanel>
             </div>
           )}
         </Section>
