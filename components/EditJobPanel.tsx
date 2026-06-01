@@ -35,6 +35,7 @@ export function EditJobPanel({
   const [date, setDate] = useState(currentDate ?? "");
   const [time, setTime] = useState(currentTime ?? "");
   const [tech, setTech] = useState(currentTechFull ?? "");
+  const [notify, setNotify] = useState(false);
 
   if (!open) {
     return (
@@ -99,9 +100,10 @@ export function EditJobPanel({
       </div>
 
       {scheduleChanged ? (
-        <p className="mt-2 text-[11px] text-amber-700">
-          Changing the date/time updates the real HCP job — HCP may text the customer about the new time.
-        </p>
+        <label className="mt-2 flex items-center gap-2 text-[11px] text-neutral-600">
+          <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} disabled={pending} />
+          Notify the customer of the new time (off = update quietly, no text)
+        </label>
       ) : null}
 
       <div className="mt-3 flex items-center gap-3">
@@ -109,13 +111,14 @@ export function EditJobPanel({
           type="button"
           disabled={pending || nothingChanged}
           onClick={() => {
-            if (scheduleChanged && !window.confirm(`Update this job's schedule on HCP?\n\nThe customer may be notified of the new time.`)) return;
+            if (scheduleChanged && notify && !window.confirm(`Update this job's schedule on HCP AND text the customer the new time?`)) return;
             start(async () => {
               const r = await editJobSchedule({
                 hcp_job_id: hcpJobId,
                 date: dateChanged ? date : null,
                 time: scheduleChanged ? (time || currentTime) : null,
                 tech_full_name: techChanged ? tech : null,
+                notify_customer: !!(scheduleChanged && notify),
               });
               if (!r.ok) { setErr(r.error ?? "failed"); setOk(false); return; }
               setErr(null);

@@ -297,6 +297,7 @@ export async function editJobSchedule(input: {
   date?: string | null;        // YYYY-MM-DD (Chicago day)
   time?: string | null;        // HH:MM (Chicago wall-clock)
   tech_full_name?: string | null;
+  notify_customer?: boolean;   // opt-in customer text on reschedule (default false)
 }): Promise<Res> {
   const me = await gate();
   if (!me) return { ok: false, error: "dispatch role required" };
@@ -318,6 +319,7 @@ export async function editJobSchedule(input: {
 
   const updateBody: Record<string, unknown> = {
     hcp_job_id: hcpJobId,
+    notify_customer: input.notify_customer === true, // deliberate opt-in
     reason: `job-page edit by ${me.email}`,
   };
 
