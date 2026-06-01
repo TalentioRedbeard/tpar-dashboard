@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { fireLifecycleTrigger, getLifecycleHcpStatus, type HcpMirrorStatus } from "@/app/me/lifecycle-actions";
 import { captureTechLocation } from "@/lib/capture-tech-location";
 import { bounceHcpAppointments } from "@/lib/bounce-hcp-appointments";
+import { getOpenJobForTech, type OpenJob } from "@/lib/omw-guard-actions";
+import { OmwGuardModal } from "./OmwGuardModal";
 
 type Props = {
   hcpJobId: string;
@@ -59,6 +61,8 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
   const [pending, startTransition] = useTransition();
   const [lastFired, setLastFired] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // OMW-without-Finish guard: a prior open job to resolve before On-My-Way fires.
+  const [guardJob, setGuardJob] = useState<OpenJob | null>(null);
   // Seed mirror state from server-rendered initialMirrors so pills survive
   // page refreshes. After in-session fires, live polling overwrites entries.
   const [mirror, setMirror] = useState<Record<number, MirrorEntry>>(() => {
@@ -145,29 +149,41 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     }
   }, [mirror, router]);
 
+  // The actual trigger fire (no guard). Reused by onFire and by the OMW guard
+  // modal once a prior open job is resolved.
+  const runFire = async (triggerNumber: TriggerNum) => {
+    setError(null);
+    const res = await fireLifecycleTrigger({
+      trigger_number: triggerNumber,
+      hcp_job_id: hcpJobId,
+      hcp_appointment_id: hcpAppointmentId ?? undefined,
+    });
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setLastFired(triggerNumber);
+    // Start tracking HCP mirror status if this trigger has one.
+    if (HCP_MIRRORED_TRIGGERS.has(triggerNumber)) {
+      setMirror((prev) => ({
+        ...prev,
+        [triggerNumber]: { firedAt: res.fired_at, status: { state: "pending" } },
+      }));
+    }
+  };
+
   const onFire = (triggerNumber: TriggerNum) => {
     // Universal location ping for the per-action audit + dispatch map
     // (fire-and-forget). Pairs the button press with the tech's GPS.
     captureTechLocation(TRIGGER_ACTION[triggerNumber], { hcpJobId });
     startTransition(async () => {
-      setError(null);
-      const res = await fireLifecycleTrigger({
-        trigger_number: triggerNumber,
-        hcp_job_id: hcpJobId,
-        hcp_appointment_id: hcpAppointmentId ?? undefined,
-      });
-      if (!res.ok) {
-        setError(res.error);
-        return;
+      // OMW guard: before On-My-Way, check for a prior job left open (started,
+      // never Finished). If found, prompt Finish/Pause/Other and defer the fire.
+      if (triggerNumber === 2) {
+        const open = await getOpenJobForTech(hcpJobId);
+        if (open) { setGuardJob(open); return; }
       }
-      setLastFired(triggerNumber);
-      // Start tracking HCP mirror status if this trigger has one.
-      if (HCP_MIRRORED_TRIGGERS.has(triggerNumber)) {
-        setMirror((prev) => ({
-          ...prev,
-          [triggerNumber]: { firedAt: res.fired_at, status: { state: "pending" } },
-        }));
-      }
+      await runFire(triggerNumber);
     });
   };
 
@@ -203,6 +219,13 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
         })}
       </div>
       {error ? <div className="mt-1 text-xs text-red-700">{error}</div> : null}
+      {guardJob ? (
+        <OmwGuardModal
+          openJob={guardJob}
+          onProceed={() => { setGuardJob(null); startTransition(async () => { await runFire(2); }); }}
+          onCancel={() => setGuardJob(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -13,6 +13,8 @@ import {
   type CustomerDisposition, type PaymentMethod, type FiredTrigger,
 } from "./trigger-actions";
 import { markBriefingReviewed, type Briefing } from "./briefing-actions";
+import { getOpenJobForTech, type OpenJob } from "@/lib/omw-guard-actions";
+import { OmwGuardModal } from "@/components/OmwGuardModal";
 
 const DISPOSITION_OPTIONS: Array<{ value: CustomerDisposition; label: string; emoji: string }> = [
   { value: "approved_now",       label: "Approved — pay now",      emoji: "✅" },
@@ -167,6 +169,16 @@ function OnMyWayForm({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // OMW-without-Finish guard: a prior open job to resolve before OMW fires.
+  const [guardJob, setGuardJob] = useState<OpenJob | null>(null);
+
+  const doFireOmw = async () => {
+    const res = await fireOnMyWay({
+      hcp_job_id: hcpJobId, hcp_customer_id: hcpCustomerId, appointment_id: appointmentId,
+      customer_called: customerCalled, notes: notes || undefined,
+    });
+    if (res.ok) setDone(true); else setError(res.error);
+  };
 
   return (
     <Wrapper title="🚐 On My Way" onClose={onClose} done={done} doneText="On-my-way logged.">
@@ -177,11 +189,11 @@ function OnMyWayForm({
             e.preventDefault();
             setError(null);
             startTransition(async () => {
-              const res = await fireOnMyWay({
-                hcp_job_id: hcpJobId, hcp_customer_id: hcpCustomerId, appointment_id: appointmentId,
-                customer_called: customerCalled, notes: notes || undefined,
-              });
-              if (res.ok) setDone(true); else setError(res.error);
+              // Guard: if a prior job is still open (started, never Finished),
+              // prompt Finish/Pause/Other before sending On-My-Way.
+              const open = await getOpenJobForTech(hcpJobId);
+              if (open) { setGuardJob(open); return; }
+              await doFireOmw();
             });
           }}
         >
@@ -191,6 +203,13 @@ function OnMyWayForm({
           <SubmitRow isPending={isPending} error={error} label="Log On-My-Way" />
         </form>
       )}
+      {guardJob ? (
+        <OmwGuardModal
+          openJob={guardJob}
+          onProceed={() => { setGuardJob(null); startTransition(async () => { await doFireOmw(); }); }}
+          onCancel={() => setGuardJob(null)}
+        />
+      ) : null}
     </Wrapper>
   );
 }
