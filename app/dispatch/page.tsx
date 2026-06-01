@@ -606,6 +606,7 @@ export default async function DispatchPage({
         <Link href="/dispatch/new-event" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100">📅 Create event</Link>
         <Link href="/dispatch/new-job" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">🧰 Create job</Link>
         <Link href="/dispatch/new-estimate" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">📝 Create estimate</Link>
+        <Link href="/dispatch/today" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-100">📊 Today timeline</Link>
         <span title="Reassign a job with the ⇄ Assign control on its lane card below" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-medium text-neutral-500">👷 Assign: ⇄ on a job</span>
         <Link
           href={hideResolved ? "/dispatch?show_resolved=1" : "/dispatch"}
