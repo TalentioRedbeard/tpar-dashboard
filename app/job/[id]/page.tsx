@@ -787,14 +787,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           ) : null}
         </Section>
 
-        <Section title="Operator notes">
+        <Section
+          title="Internal notes"
+          description="🔒 Visible to anyone assigned to this job (the crew) plus leadership — a tech not on the job can't see them. Never shown to the customer."
+        >
           {canWrite ? (
             <div className="mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
               <NoteForm
                 action={addJobNote}
                 hiddenFieldName="hcp_job_id"
                 hiddenFieldValue={id}
-                placeholder="Internal note about this job (not customer-facing)…"
+                placeholder="Internal note for the crew on this job (not customer-facing)…"
                 label="Add note"
               />
             </div>

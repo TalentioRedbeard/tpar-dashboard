@@ -654,7 +654,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           )}
         </Section>
 
-        <Section title="Operator notes">
+        <Section
+          title="Internal notes"
+          description="🔒 Internal — visible to staff who can see this customer. Never shown to the customer."
+        >
           {canWrite ? (
             <div className="mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
               <NoteForm
