@@ -24,6 +24,7 @@ export type CustomerPin = {
   scheduled_start: string;
   status: string | null;
   tech_primary_name: string | null;
+  color_hex?: string | null;          // assigned color of the primary/lead tech
   lat: number;
   lng: number;
 };
@@ -33,6 +34,8 @@ export type VanPin = {
   display_name: string;
   driver_short_name: string | null;
   driver_full_name: string | null;
+  avatar_url?: string | null;         // driver photo for the marker
+  color_hex?: string | null;
   lat: number;
   lng: number;
   last_seen_at: string;
@@ -42,6 +45,8 @@ export type TechPin = {
   id: string;                         // tech_email
   tech_short_name: string | null;
   tech_full_name: string | null;      // for stable color mapping vs lanes
+  avatar_url?: string | null;         // tech photo for the marker
+  color_hex?: string | null;          // assigned color
   lat: number;
   lng: number;
   last_action: string;                // e.g. 'start', 'omw', 'finish'
@@ -74,6 +79,35 @@ function colorForTech(name: string | null | undefined, allTechs: string[]): stri
   return TECH_COLORS[idx % TECH_COLORS.length];
 }
 
+function initials(name: string | null | undefined): string {
+  const p = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  return ((p[0]?.[0] ?? "") + (p.length > 1 ? p[p.length - 1][0] : "")).toUpperCase() || "?";
+}
+
+// Round photo marker (tech / van) with a colored ring; falls back to a colored
+// initials circle when there's no photo. `badge` overlays a small glyph (🚐).
+function PhotoMarker({ avatarUrl, color, label, badge, size = 34 }: {
+  avatarUrl?: string | null; color: string; label: string | null; badge?: string; size?: number;
+}) {
+  const ring = `0 0 0 3px ${color}, 0 1px 4px rgba(0,0,0,0.45)`;
+  return (
+    <div style={{ width: size, height: size, position: "relative" }}>
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={avatarUrl} alt={label ?? ""} width={size} height={size}
+          style={{ width: size, height: size, borderRadius: "9999px", objectFit: "cover", boxShadow: ring }} />
+      ) : (
+        <div style={{ width: size, height: size, borderRadius: "9999px", background: color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: Math.round(size * 0.36), boxShadow: ring }}>
+          {initials(label)}
+        </div>
+      )}
+      {badge ? (
+        <span style={{ position: "absolute", right: -3, bottom: -3, fontSize: 13, lineHeight: 1, background: "#fff", borderRadius: "9999px", padding: "1px 2px", boxShadow: "0 1px 2px rgba(0,0,0,0.35)" }}>{badge}</span>
+      ) : null}
+    </div>
+  );
+}
+
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", {
     timeZone: "America/Chicago",
@@ -101,6 +135,19 @@ export function DispatchMap({ customers, vans, techs }: Props) {
     for (const t of techs) if (t.tech_full_name) set.add(t.tech_full_name);
     return Array.from(set).sort();
   }, [customers, vans, techs]);
+
+  // Assigned per-tech colors (from the pins) take priority; index palette is the
+  // fallback so the same tech is the same color on the map + lanes + avatars.
+  // Plain object (not Map) — `Map` is the imported Google Maps component here.
+  const colorByName = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const t of techs) if (t.tech_full_name && t.color_hex) m[t.tech_full_name] = t.color_hex;
+    for (const v of vans) if (v.driver_full_name && v.color_hex) m[v.driver_full_name] = v.color_hex;
+    for (const c of customers) if (c.tech_primary_name && c.color_hex) m[c.tech_primary_name] = c.color_hex;
+    return m;
+  }, [techs, vans, customers]);
+  const pinColor = (name: string | null | undefined): string =>
+    (name ? colorByName[name] : undefined) || colorForTech(name, techList);
 
   // Center on Tulsa shop if no pins, else center on mean of all pins.
   const center = useMemo(() => {
@@ -155,7 +202,7 @@ export function DispatchMap({ customers, vans, techs }: Props) {
           >
             {customers.map((c) => {
               const id = c.appointment_id ?? c.hcp_job_id ?? `${c.lat},${c.lng}`;
-              const color = colorForTech(c.tech_primary_name, techList);
+              const color = pinColor(c.tech_primary_name);
               return (
                 <AdvancedMarker
                   key={`cust-${id}`}
@@ -168,7 +215,7 @@ export function DispatchMap({ customers, vans, techs }: Props) {
               );
             })}
             {vans.map((v) => {
-              const color = colorForTech(v.driver_full_name, techList);
+              const color = pinColor(v.driver_full_name);
               return (
                 <AdvancedMarker
                   key={`van-${v.vehicle_id}`}
@@ -176,14 +223,12 @@ export function DispatchMap({ customers, vans, techs }: Props) {
                   onClick={() => setActivePin({ kind: "van", id: v.vehicle_id })}
                   title={`${v.display_name} · ${v.driver_short_name ?? "—"} · ${fmtAgo(v.last_seen_at)}`}
                 >
-                  <Pin background={color} borderColor="#000000" glyphColor="#ffffff" scale={1.4}>
-                    <span style={{ fontSize: 14, lineHeight: 1 }}>🚐</span>
-                  </Pin>
+                  <PhotoMarker avatarUrl={v.avatar_url} color={color} label={v.driver_short_name ?? v.display_name} badge="🚐" size={36} />
                 </AdvancedMarker>
               );
             })}
             {techs.map((t) => {
-              const color = colorForTech(t.tech_full_name, techList);
+              const color = pinColor(t.tech_full_name);
               return (
                 <AdvancedMarker
                   key={`tech-${t.id}`}
@@ -191,9 +236,7 @@ export function DispatchMap({ customers, vans, techs }: Props) {
                   onClick={() => setActivePin({ kind: "tech", id: t.id })}
                   title={`${t.tech_short_name ?? "tech"} · ${t.last_action} · ${fmtAgo(t.last_at)}`}
                 >
-                  <Pin background={color} borderColor="#000000" glyphColor="#ffffff" scale={1.1}>
-                    <span style={{ fontSize: 12, lineHeight: 1 }}>👤</span>
-                  </Pin>
+                  <PhotoMarker avatarUrl={t.avatar_url} color={color} label={t.tech_short_name} size={34} />
                 </AdvancedMarker>
               );
             })}
@@ -265,9 +308,9 @@ export function DispatchMap({ customers, vans, techs }: Props) {
         </div>
       </APIProvider>
       <div className="flex flex-wrap items-center gap-3 border-t border-neutral-100 px-3 py-2 text-xs text-neutral-600">
-        <span><span className="inline-block h-2 w-2 rounded-full bg-blue-600"></span> Customer pin</span>
-        <span>🚐 Van (Bouncie)</span>
-        <span>👤 Tech (app ping)</span>
+        <span><span className="inline-block h-2 w-2 rounded-full bg-neutral-400"></span> Customer (tinted by tech)</span>
+        <span>🚐 Van (photo)</span>
+        <span>🧑 Tech (photo)</span>
         <span className="text-neutral-400">·</span>
         <span>{customers.length} customer{customers.length === 1 ? "" : "s"}</span>
         <span>·</span>
@@ -276,9 +319,9 @@ export function DispatchMap({ customers, vans, techs }: Props) {
         <span>{techs.length} tech ping{techs.length === 1 ? "" : "s"}</span>
         {techList.length > 0 && (
           <span className="ml-auto flex flex-wrap items-center gap-2">
-            {techList.map((t, i) => (
+            {techList.map((t) => (
               <span key={t} className="flex items-center gap-1">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: TECH_COLORS[i % TECH_COLORS.length] }}></span>
+                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: pinColor(t) }}></span>
                 {t.split(" ")[0]}
               </span>
             ))}

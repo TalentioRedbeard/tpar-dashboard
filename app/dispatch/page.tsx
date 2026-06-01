@@ -261,7 +261,7 @@ export default async function DispatchPage({
     // Active techs (everyone on duty today, even those without an appt) — for empty-lane rendering
     supa
       .from("tech_directory")
-      .select("tech_short_name, hcp_full_name, dashboard_role, is_lead, is_active, avatar_url")
+      .select("tech_short_name, hcp_full_name, dashboard_role, is_lead, is_active, avatar_url, color_hex")
       .eq("is_active", true)
       .neq("is_test", true)
       .in("dashboard_role", ["tech", "admin"])
@@ -405,8 +405,20 @@ export default async function DispatchPage({
   const last24hRows = (last24hRes.data ?? []) as Array<{ total_amount: number | null }>;
   const intakeCount = intakeRes.count ?? 0;
   const paidToday = (paidTodayRes.data ?? []) as Array<{ hcp_job_id: string; amount: number }>;
-  const activeTechs = (activeTechsRes.data ?? []) as Array<{ tech_short_name: string; hcp_full_name: string; is_lead: boolean | null; avatar_url: string | null }>;
+  const activeTechs = (activeTechsRes.data ?? []) as Array<{ tech_short_name: string; hcp_full_name: string; is_lead: boolean | null; avatar_url: string | null; color_hex: string | null }>;
   const avatarByFullName = new Map<string, string | null>(activeTechs.map((t) => [t.hcp_full_name, t.avatar_url ?? null]));
+  const colorByFullName = new Map<string, string | null>(activeTechs.map((t) => [t.hcp_full_name, t.color_hex ?? null]));
+  const shortByFullName = new Map<string, string>(activeTechs.map((t) => [t.hcp_full_name, t.tech_short_name]));
+  const leadFullSet = new Set<string>(activeTechs.filter((t) => t.is_lead).map((t) => t.hcp_full_name));
+  // Crew (lead first) with photos + assigned colors for an appt's cards/markers.
+  const crewFor = (a: Appt): Array<{ full: string; short: string; avatarUrl: string | null; colorHex: string | null }> => {
+    const members = (a.tech_all_names && a.tech_all_names.length ? a.tech_all_names : (a.tech_primary_name ? [a.tech_primary_name] : []))
+      .filter((n): n is string => !!n);
+    const primary = a.tech_primary_name ?? null;
+    const leadFull = (primary && leadFullSet.has(primary)) ? primary : members.find((m) => leadFullSet.has(m)) ?? primary ?? members[0] ?? null;
+    const ordered = [...new Set([leadFull, ...members].filter((n): n is string => !!n))];
+    return ordered.map((full) => ({ full, short: shortByFullName.get(full) ?? full.split(" ")[0], avatarUrl: avatarByFullName.get(full) ?? null, colorHex: colorByFullName.get(full) ?? null }));
+  };
   const dispatchTasks = await listTasks();
   const taskTechNames = activeTechs.map((t) => t.tech_short_name);
   const gpsByAppt = new Map<string, GpsArrival>(
@@ -461,6 +473,7 @@ export default async function DispatchPage({
       scheduled_start: r.scheduled_start,
       status: r.status,
       tech_primary_name: r.tech_primary_name,
+      color_hex: colorByFullName.get(r.tech_primary_name ?? "") ?? null,
       lat: Number(r.cust_lat),
       lng: Number(r.cust_lng),
     }));
@@ -476,6 +489,8 @@ export default async function DispatchPage({
     display_name: v.display_name,
     driver_short_name: v.driver_short_name,
     driver_full_name: v.driver_full_name,
+    avatar_url: avatarByFullName.get(v.driver_full_name ?? "") ?? null,
+    color_hex: colorByFullName.get(v.driver_full_name ?? "") ?? null,
     lat: Number(v.lat),
     lng: Number(v.lng),
     last_seen_at: v.last_seen_at,
@@ -495,6 +510,8 @@ export default async function DispatchPage({
     last_action: t.last_action,
     last_at: t.last_at,
     hcp_job_id: t.hcp_job_id,
+    avatar_url: avatarByFullName.get(t.tech_full_name ?? "") ?? null,
+    color_hex: colorByFullName.get(t.tech_full_name ?? "") ?? null,
   }));
 
   const adherenceFlags = (adherenceFarRes.data ?? []) as Array<{
@@ -734,7 +751,7 @@ export default async function DispatchPage({
                   <header className="border-b border-neutral-100 p-2">
                     <div className="flex items-baseline justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <TechAvatar shortName={shortName} avatarUrl={avatarByFullName.get(techName) ?? null} />
+                        <TechAvatar shortName={shortName} avatarUrl={avatarByFullName.get(techName) ?? null} colorHex={colorByFullName.get(techName) ?? null} />
                         <div className="text-sm font-semibold text-neutral-900">{shortName}</div>
                       </div>
                       <div className="text-xs text-neutral-500">{lane.length} appt{lane.length === 1 ? "" : "s"}</div>
@@ -754,6 +771,7 @@ export default async function DispatchPage({
                       const lifecycleEvents = a.hcp_job_id ? (lifecycleByJob.get(a.hcp_job_id) ?? []) : [];
                       const state = techStateFromEvents(lifecycleEvents);
                       const ack = getAck("appointment", a.appointment_id);
+                      const crew = crewFor(a);
                       if (hideResolved && isResolving(ack?.status)) return null;
                       const dimmed = isResolving(ack?.status);
                       return (
@@ -793,8 +811,12 @@ export default async function DispatchPage({
                             ) : null}
                           </div>
                           {ack?.note ? <div className="mt-1 text-[11px] italic text-neutral-700">“{ack.note}”</div> : null}
-                          {a.tech_all_names && a.tech_all_names.length > 1 ? (
-                            <div className="mt-1 text-[10px] text-neutral-500">+ {a.tech_all_names.filter((n) => n !== a.tech_primary_name).join(", ")}</div>
+                          {crew.length > 1 ? (
+                            <div className="mt-1 flex items-center gap-0.5">
+                              {crew.map((m) => (
+                                <TechAvatar key={m.full} shortName={m.short} avatarUrl={m.avatarUrl} colorHex={m.colorHex} size={16} />
+                              ))}
+                            </div>
                           ) : null}
                         </div>
                       );
@@ -998,7 +1020,7 @@ export default async function DispatchPage({
                             <td className="px-3 py-2 align-top whitespace-nowrap font-mono text-xs text-neutral-700">{chicagoTime(r.scheduled_start)}</td>
                             <td className="px-3 py-2 align-top">
                               <span className="flex items-center gap-2">
-                                <TechAvatar shortName={r.tech_primary_name ?? "?"} avatarUrl={avatarByFullName.get(r.tech_primary_name ?? "") ?? null} size={22} />
+                                <TechAvatar shortName={r.tech_primary_name ?? "?"} avatarUrl={avatarByFullName.get(r.tech_primary_name ?? "") ?? null} colorHex={colorByFullName.get(r.tech_primary_name ?? "") ?? null} size={22} />
                                 <TechName name={r.tech_primary_name} formerSet={formerSet} />
                               </span>
                             </td>
