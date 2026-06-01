@@ -26,6 +26,8 @@ import { TechName } from "../../../components/ui/TechName";
 import { ProvenanceCard, type ProvenanceItem } from "../../../components/ui/ProvenanceCard";
 import { getCurrentTech } from "../../../lib/current-tech";
 import { getFormerTechNames } from "../../../lib/former-techs";
+import { RecordingPlayer } from "../../../components/RecordingPlayer";
+import { LogReceiptForm } from "../../../components/LogReceiptForm";
 
 export const dynamic = "force-dynamic";
 
@@ -295,6 +297,34 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const notes = (notesRes.data ?? []) as JobNote[];
   const openJobNeeds = jobNeeds.filter((n) => n.status !== "fulfilled" && n.status !== "cancelled");
 
+  // Job-page additions (Madisson meeting): surface recordings captured on this
+  // job (the Record button already writes them, target_kind='job'), the 3-factor
+  // Job Cost from job_cost_v2, and the itemized receipts that roll into it.
+  const invoiceTrunk = String((j.invoice_number as string) ?? "").split("-")[0].trim();
+  const [recordingsRes, jobCostRes, receiptsRes] = await Promise.all([
+    supabase
+      .from("recordings")
+      .select("id, label, transcript, duration_ms, created_by, created_at")
+      .eq("target_kind", "job").eq("target_ref", id)
+      .order("created_at", { ascending: false }).limit(20),
+    supabase
+      .from("job_cost_v2")
+      .select("materials_cost, receipts_cost, derived_labor_cost, derived_labor_minutes, derived_total_cost, derived_gross_margin_pct, margin_data_quality, burden_rate_used")
+      .eq("hcp_job_id", id).maybeSingle(),
+    invoiceTrunk
+      ? supabase
+          .from("receipts_master")
+          .select("id, amount, vendor_description, transaction_date, tech_name, source, photo_url")
+          .eq("is_overhead", false)
+          .or(`invoice_number.eq.${invoiceTrunk},invoice_number.like.${invoiceTrunk}-%`)
+          .order("transaction_date", { ascending: false, nullsFirst: false }).limit(50)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+  ]);
+  const recordings = (recordingsRes.data ?? []) as Array<{ id: string; label: string | null; transcript: string | null; duration_ms: number | null; created_by: string | null; created_at: string }>;
+  const jobCost = (jobCostRes.data ?? null) as Record<string, unknown> | null;
+  const receiptItems = (receiptsRes.data ?? []) as Array<{ id: number; amount: number; vendor_description: string | null; transaction_date: string | null; tech_name: string | null; source: string | null; photo_url: string | null }>;
+  const receiptsTotal = receiptItems.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
   const addressLine = [j.street as string, j.city as string].filter(Boolean).join(", ");
   const description = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -383,6 +413,57 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             />
             <StatCard label="Photos" value={(j.photo_count as number) ?? 0} />
           </div>
+        </Section>
+
+        <Section
+          title="Job cost"
+          description="Three factors: HCP line-item materials + logged receipts + GPS-derived labor. Receipts attach by invoice number."
+        >
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatCard label="Materials (HCP)" value={fmtMoney((jobCost?.materials_cost as number) ?? j.materials_cost)} />
+            <StatCard label="Receipts" value={fmtMoney((jobCost?.receipts_cost as number) ?? j.receipts_cost)} />
+            <StatCard label="Labor (GPS-derived)" value={fmtMoney(jobCost?.derived_labor_cost)} />
+            <StatCard label="Est. total cost" value={fmtMoney(jobCost?.derived_total_cost)} />
+          </div>
+          {jobCost?.derived_labor_cost == null ? (
+            <p className="mt-2 text-xs text-neutral-500">GPS-derived labor isn&apos;t available for this job yet (needs matched trips + on-site time).</p>
+          ) : (
+            <p className="mt-2 text-xs text-neutral-500">
+              Labor estimate quality: {String(jobCost?.margin_data_quality ?? "—")}
+              {jobCost?.derived_gross_margin_pct != null ? ` · est. margin ${Number(jobCost.derived_gross_margin_pct).toFixed(0)}%` : ""}
+              {jobCost?.burden_rate_used != null ? ` · burden ${fmtMoney(jobCost.burden_rate_used)}/hr` : ""}
+            </p>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-neutral-800">
+              Receipts · {fmtMoney(receiptsTotal)}{receiptItems.length ? ` (${receiptItems.length})` : ""}
+            </h4>
+          </div>
+          {receiptItems.length > 0 ? (
+            <ul className="mt-2 divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+              {receiptItems.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium text-neutral-800">{r.vendor_description ?? "—"}</span>
+                    <span className="ml-2 text-xs text-neutral-500">
+                      {r.transaction_date ?? ""}{r.tech_name ? ` · ${r.tech_name}` : ""}{r.source ? ` · ${r.source}` : ""}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-neutral-900">{fmtMoney(r.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs text-neutral-500">
+              No receipts logged yet{j.invoice_number ? "" : " — this job has no invoice number to attach to"}.
+            </p>
+          )}
+          {canWrite && j.invoice_number ? (
+            <div className="mt-3">
+              <LogReceiptForm invoiceNumber={String(j.invoice_number)} jobId={id} />
+            </div>
+          ) : null}
         </Section>
 
         {Array.isArray(j.topics_in_window) && (j.topics_in_window as string[]).length > 0 && (
@@ -685,6 +766,25 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <EmptyState title="No notes yet." description="Add one above to keep context for the next visit." />
           )}
         </Section>
+
+        {recordings.length > 0 ? (
+          <Section title="Recordings" description="Voice notes captured on this job via the Record button. Playback is private (signed, expires).">
+            <ul className="space-y-2">
+              {recordings.map((r) => (
+                <li key={r.id} className="rounded-2xl border border-neutral-200 bg-white p-4">
+                  <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
+                    <span>{new Date(r.created_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}</span>
+                    {r.created_by ? <><span>·</span><span>{r.created_by}</span></> : null}
+                    {r.duration_ms ? <><span>·</span><span>{Math.round(r.duration_ms / 1000)}s</span></> : null}
+                    {r.label ? <><span>·</span><span className="font-medium text-neutral-700">{r.label}</span></> : null}
+                    <span className="ml-auto"><RecordingPlayer id={r.id} /></span>
+                  </div>
+                  {r.transcript ? <p className="whitespace-pre-wrap text-sm text-neutral-800">{r.transcript}</p> : null}
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
 
         <Section
           title="Recent communications for this customer"

@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { LogoMenu } from "./LogoMenu";
 import { MobileNavMenu } from "./MobileNavMenu";
+import { NavLinks } from "./NavLinks";
 import { FlagRibbon } from "./FlagRibbon";
 
 // Full nav set — used by the logo dropdown + mobile drawer (not the banner row).
@@ -115,29 +116,9 @@ export function Nav({
         <LogoMenu sections={mobileSections} />
 
         {/* Desktop banner — a few daily-driver links; everything else lives in
-            the logo dropdown (left), so the banner stays clean. */}
-        <ul className="ml-2 hidden flex-1 items-center gap-1.5 text-sm md:flex">
-          {showMyDay ? (
-            <li>
-              <Link
-                href="/me"
-                className="inline-block whitespace-nowrap rounded-md bg-navy-800 px-3 py-1.5 font-medium text-white ring-1 ring-inset ring-navy-900/40 transition hover:bg-navy-900"
-              >
-                My day
-              </Link>
-            </li>
-          ) : null}
-          {PRIMARY_ITEMS.map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                className="inline-block whitespace-nowrap rounded-md px-3 py-1.5 font-medium text-navy-900 transition hover:bg-gold-400"
-              >
-                {item.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
+            the logo dropdown (left), so the banner stays clean. Active-page
+            highlight is computed client-side in NavLinks (usePathname). */}
+        <NavLinks showMyDay={showMyDay} items={PRIMARY_ITEMS} />
 
         {/* Mobile spacer pushes hamburger + email to the right */}
         <div className="ml-auto md:hidden" />
