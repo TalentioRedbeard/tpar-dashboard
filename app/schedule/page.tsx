@@ -421,6 +421,9 @@ export default async function SchedulePage({
   const view: ViewMode = (params.view === "day" || params.view === "month" ? params.view : "week");
   const color: ColorMode = (params.color === "status" || params.color === "tech" ? params.color : "plaid");
   const filters = parseFilters(params);
+  // Test-customer jobs (Danny-as-customer artifacts) are hidden from the lanes by
+  // default; ?include_test=1 reveals them so create/edit flows can be validated.
+  const includeTest = params.include_test === "1";
 
   // Compute window keys per view
   let windowKeys: string[];
@@ -454,17 +457,18 @@ export default async function SchedulePage({
   const supa = db();
   const nowIso = new Date().toISOString();
 
+  let apptQuery = supa
+    .from("appointments_master")
+    .select(
+      "appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags",
+    )
+    .is("deleted_at", null)
+    .gte("scheduled_start", windowStartUtc)
+    .lt("scheduled_start", windowEndUtc);
+  if (!includeTest) apptQuery = apptQuery.not("hcp_customer_id", "in", TEST_CUSTOMER_SQL);
+
   const [apptRes, techRes] = await Promise.all([
-    supa
-      .from("appointments_master")
-      .select(
-        "appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags",
-      )
-      .is("deleted_at", null)
-      .gte("scheduled_start", windowStartUtc)
-      .lt("scheduled_start", windowEndUtc)
-      .not("hcp_customer_id", "in", TEST_CUSTOMER_SQL)
-      .order("scheduled_start", { ascending: true }),
+    apptQuery.order("scheduled_start", { ascending: true }),
     supa
       .from("tech_directory")
       .select("tech_short_name, hcp_full_name, dashboard_role, is_lead, is_active, avatar_url, color_hex")
@@ -665,6 +669,16 @@ export default async function SchedulePage({
       {view !== "month" ? <div className="mb-3"><TechOrderControl techs={orderedTechsForControl} /></div> : null}
 
       <PendingChangesBar changes={pendingChanges} canApply={canApply} />
+
+      <div className="mb-3 text-[11px]">
+        {includeTest ? (
+          <span className="rounded bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
+            Showing test-customer jobs · <Link href="/schedule" className="underline">hide</Link>
+          </span>
+        ) : (
+          <Link href="/schedule?include_test=1" className="text-neutral-400 hover:text-neutral-600 hover:underline">show test-customer jobs</Link>
+        )}
+      </div>
 
       {/* LEGEND — what the colors mean (the "plaid" key) */}
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] text-neutral-600">
