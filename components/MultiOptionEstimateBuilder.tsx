@@ -16,7 +16,9 @@ import { getPricebookOptions, type PriceItem } from "@/lib/job-line-actions";
 import {
   createMultiOptionEstimate,
   searchEstimateCustomers,
+  getExcavatorModifier,
   type EstimateCustomerHit,
+  type ModifierDef,
 } from "@/lib/multi-option-estimate-actions";
 
 function rateFor(crew: number): number {
@@ -31,10 +33,10 @@ type Line = {
   q1: string; q2: string; q3: string; item: string; customName: string;
   hours: string; crew: string; materials: string; description: string;
 };
-type Opt = { name: string; lines: Line[] };
+type Opt = { name: string; lines: Line[]; excavator: boolean };
 
 const blankLine = (): Line => ({ q1: "", q2: "", q3: "", item: "", customName: "", hours: "4", crew: "2", materials: "0", description: "" });
-const blankOpt = (i: number): Opt => ({ name: `Option ${i + 1}`, lines: [blankLine()] });
+const blankOpt = (i: number): Opt => ({ name: `Option ${i + 1}`, lines: [blankLine()], excavator: true });
 
 function chosenName(l: Line): string { return l.item === CUSTOM ? l.customName.trim() : l.item; }
 function linePrice(l: Line): number {
@@ -78,6 +80,11 @@ export function MultiOptionEstimateBuilder({
   useEffect(() => { if (opts === null) getPricebookOptions().then(setOpts).catch(() => setOpts([])); }, [opts]);
   const q1s = useMemo(() => [...new Set((opts ?? []).map((o) => o.q1))].sort(), [opts]);
 
+  // Excavator equipment modifier (data-driven from price_modifiers). Auto-offered
+  // per option when a chosen item suggests it (e.g. Sewer dig work).
+  const [exc, setExc] = useState<ModifierDef | null>(null);
+  useEffect(() => { getExcavatorModifier().then(setExc).catch(() => setExc(null)); }, []);
+
   // ── Options + lines state ───────────────────────────────────────────────
   const [options, setOptions] = useState<Opt[]>([blankOpt(0)]);
   const [note, setNote] = useState("");
@@ -91,8 +98,25 @@ export function MultiOptionEstimateBuilder({
   const addLine = (oi: number) => setOptions((p) => p.map((o, i) => i !== oi ? o : { ...o, lines: [...o.lines, blankLine()] }));
   const removeLine = (oi: number, li: number) => setOptions((p) => p.map((o, i) => i !== oi ? o : o.lines.length === 1 ? o : { ...o, lines: o.lines.filter((_, j) => j !== li) }));
   const setOptName = (oi: number, name: string) => setOptions((p) => p.map((o, i) => i !== oi ? o : { ...o, name }));
+  const setOptExcavator = (oi: number, v: boolean) => setOptions((p) => p.map((o, i) => i !== oi ? o : { ...o, excavator: v }));
 
-  const optTotal = (o: Opt) => o.lines.reduce((s, l) => s + (chosenName(l) ? linePrice(l) : 0), 0);
+  // Excavator-fee helpers (per option). Days derived from the option's total
+  // labor hours (÷8), half-day-ceiling per the modifier's min_increment.
+  const itemModifiers = (l: Line): string[] => {
+    const name = chosenName(l);
+    if (!name) return [];
+    return (opts ?? []).find((x) => x.q1 === l.q1 && x.q2 === l.q2 && x.q3 === l.q3 && x.item === name)?.modifiers ?? [];
+  };
+  const optionSuggestsExcavator = (o: Opt): boolean => !!exc && o.lines.some((l) => itemModifiers(l).includes("excavator_daily"));
+  const sumHours = (o: Opt): number => o.lines.reduce((s, l) => s + (chosenName(l) ? (parseFloat(l.hours) || 0) : 0), 0);
+  const excavatorDays = (o: Opt): number => {
+    if (!exc) return 0;
+    const inc = exc.minIncrement || 0.5;
+    return Math.max(inc, Math.ceil((sumHours(o) / 8) / inc) * inc);
+  };
+  const excavatorFee = (o: Opt): number => (exc && o.excavator && optionSuggestsExcavator(o)) ? (excavatorDays(o) * exc.dailyRate + exc.deliveryCharge) : 0;
+
+  const optTotal = (o: Opt) => o.lines.reduce((s, l) => s + (chosenName(l) ? linePrice(l) : 0), 0) + excavatorFee(o);
   const grandTotal = options.reduce((s, o) => s + optTotal(o), 0);
   const hasValid = options.some((o) => o.lines.some((l) => chosenName(l)));
 
@@ -122,14 +146,13 @@ export function MultiOptionEstimateBuilder({
       return;
     }
     inFlight.current = true;
-    const payloadOptions = options.map((o) => ({
-      name: o.name.trim() || "Option",
+    const payloadOptions = options.map((o) => {
       // quantity is intentionally 1: the 4-question form computes a full LINE
       // total (labor + materials ×1.3), so there's no per-unit multiplier — a
       // "5 fixtures" line captures all 5 in its hours/materials. unit_cost =
       // raw materials cost in cents, so HCP tracks materials cost separately
       // from the sell price (matches /estimate-draft + Add-line-item).
-      line_items: o.lines
+      const line_items = o.lines
         .filter((l) => chosenName(l))
         .map((l) => ({
           name: chosenName(l),
@@ -137,8 +160,22 @@ export function MultiOptionEstimateBuilder({
           quantity: 1,
           unit_price_cents: Math.round(linePrice(l) * 100),
           unit_cost_cents: Math.round(Math.max(0, parseFloat(l.materials) || 0) * 100),
-        })),
-    })).filter((o) => o.line_items.length > 0);
+        }));
+      // Optional excavator equipment fee → its own transparent line item so the
+      // customer sees the rental + delivery, and margin reporting treats it as cost.
+      const fee = excavatorFee(o);
+      if (fee > 0 && exc) {
+        const days = excavatorDays(o);
+        line_items.push({
+          name: `${exc.label} (${days} day${days === 1 ? "" : "s"})`,
+          description: "Excavator daily rental + round-trip delivery.",
+          quantity: 1,
+          unit_price_cents: Math.round(fee * 100),
+          unit_cost_cents: Math.round(fee * 100),
+        });
+      }
+      return { name: o.name.trim() || "Option", line_items };
+    }).filter((o) => o.line_items.length > 0);
 
     start(async () => {
       const r = await createMultiOptionEstimate({
@@ -303,6 +340,17 @@ export function MultiOptionEstimateBuilder({
           })}
 
           <button type="button" onClick={() => addLine(oi)} className="mt-1 text-xs font-medium text-brand-700 underline hover:text-brand-900">+ add line item to this option</button>
+
+          {optionSuggestsExcavator(o) ? (
+            <label className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <input type="checkbox" checked={o.excavator} onChange={(e) => setOptExcavator(oi, e.target.checked)} />
+              <span className="font-medium">🚜 {exc?.label ?? "Excavator equipment fee"}</span>
+              {o.excavator ? (
+                <span className="font-semibold">{excavatorDays(o)} day{excavatorDays(o) === 1 ? "" : "s"} → {money(excavatorFee(o))}</span>
+              ) : <span className="text-amber-600">(off)</span>}
+              <span className="ml-auto text-[10px] text-amber-600">auto-suggested for excavation · ${exc?.dailyRate ?? 250}/day + ${exc?.deliveryCharge ?? 125} delivery, ½-day ceiling from hours</span>
+            </label>
+          ) : null}
         </div>
       ))}
 

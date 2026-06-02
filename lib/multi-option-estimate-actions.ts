@@ -15,6 +15,38 @@ import { db } from "./supabase";
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SECRET = process.env.CREATE_ESTIMATE_DIRECT_SECRET ?? "";
 
+// An optional equipment/pricing modifier the builder can offer per option
+// (e.g. excavator_daily). Data-driven from price_modifiers so rate edits flow
+// through without a code change.
+export type ModifierDef = {
+  key: string;
+  label: string;
+  dailyRate: number;
+  deliveryCharge: number;
+  minIncrement: number;
+};
+
+// Fetch the excavator equipment-fee modifier definition. Returns null if it's
+// not configured/active. Half-day-ceiling daily rental + flat delivery.
+export async function getExcavatorModifier(): Promise<ModifierDef | null> {
+  const writer = await requireWriter();
+  if (!writer.ok) return null;
+  const { data } = await db()
+    .from("price_modifiers")
+    .select("modifier_key, name, daily_rate, delivery_charge, min_increment")
+    .eq("modifier_key", "excavator_daily")
+    .eq("active", true)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    key: data.modifier_key as string,
+    label: (data.name as string | null) ?? "Excavator equipment fee",
+    dailyRate: Number(data.daily_rate) || 0,
+    deliveryCharge: Number(data.delivery_charge) || 0,
+    minIncrement: Number(data.min_increment) || 0.5,
+  };
+}
+
 export type EstLineInput = {
   name: string;
   description?: string;

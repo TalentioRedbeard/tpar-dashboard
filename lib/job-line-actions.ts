@@ -14,7 +14,7 @@ import { revalidatePath } from "next/cache";
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
-export type PriceItem = { q1: string; q2: string; q3: string; item: string; ref_price: number };
+export type PriceItem = { q1: string; q2: string; q3: string; item: string; ref_price: number; modifiers: string[] };
 
 async function allowed() {
   const me = await getCurrentTech().catch(() => null);
@@ -37,10 +37,10 @@ export async function getPricebookOptions(): Promise<PriceItem[]> {
   if (!(await allowed())) return [];
   const { data } = await db()
     .from("pricebook_classifications_latest")
-    .select("q1_service_type, q2_category, q3_work_type, pb_item_name, pb_sell_price")
+    .select("q1_service_type, q2_category, q3_work_type, pb_item_name, pb_sell_price, suggested_modifier_slugs")
     .not("pb_item_name", "is", null)
     .limit(2000);
-  const rows = (data ?? []) as Array<{ q1_service_type: string | null; q2_category: string | null; q3_work_type: string | null; pb_item_name: string | null; pb_sell_price: number | null }>;
+  const rows = (data ?? []) as Array<{ q1_service_type: string | null; q2_category: string | null; q3_work_type: string | null; pb_item_name: string | null; pb_sell_price: number | null; suggested_modifier_slugs: unknown }>;
   const seen = new Set<string>();
   const out: PriceItem[] = [];
   for (const r of rows) {
@@ -48,7 +48,10 @@ export async function getPricebookOptions(): Promise<PriceItem[]> {
     const key = `${r.q1_service_type}|${r.q2_category}|${r.q3_work_type}|${r.pb_item_name}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ q1: r.q1_service_type, q2: r.q2_category, q3: r.q3_work_type, item: r.pb_item_name, ref_price: Number(r.pb_sell_price) || 0 });
+    const modifiers = Array.isArray(r.suggested_modifier_slugs)
+      ? (r.suggested_modifier_slugs as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    out.push({ q1: r.q1_service_type, q2: r.q2_category, q3: r.q3_work_type, item: r.pb_item_name, ref_price: Number(r.pb_sell_price) || 0, modifiers });
   }
   return out;
 }
