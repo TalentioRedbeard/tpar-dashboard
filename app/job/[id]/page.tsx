@@ -420,6 +420,28 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     >
       <JobBriefingCard hcpJobId={id} briefing={briefing} pinnedEmails={pinnedForJob} />
       <div className="space-y-10">
+        {/* Work order / HCP job note — for FM accounts (Vasa/Nfr FM etc.) the
+            booking arrives via the vendor's portal and the scope is logged into
+            the HCP note, NOT as a captured call/text. Surface it up top so the
+            tech sees scope + PO# + contact on arrival without digging. */}
+        {jobRaw?.hcp_notes || estRaw?.hcp_notes ? (
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+            <div className="mb-1.5 flex items-center gap-2">
+              <span className="text-base leading-none">📋</span>
+              <h3 className="text-sm font-semibold text-amber-900">Work order / HCP note</h3>
+              <span className="ml-auto text-[10px] font-medium uppercase tracking-wide text-amber-600">from Housecall Pro</span>
+            </div>
+            {jobRaw?.hcp_notes ? (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-amber-950">{jobRaw.hcp_notes}</p>
+            ) : null}
+            {estRaw?.hcp_notes && estRaw.hcp_notes !== jobRaw?.hcp_notes ? (
+              <p className="mt-2 whitespace-pre-wrap border-t border-amber-200 pt-2 text-sm leading-relaxed text-amber-900">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600">from the estimate · </span>
+                {estRaw.hcp_notes}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {canEdit ? (
           <div className="-mt-2">
             <EditJobPanel
