@@ -17,6 +17,7 @@ import { fmtMoney } from "../../components/Table";
 import { TechName } from "../../components/ui/TechName";
 import { getFormerTechNames } from "../../lib/former-techs";
 import { getCurrentTech } from "../../lib/current-tech";
+import { isOwner } from "../../lib/admin";
 import { DispatchMap, type CustomerPin, type VanPin, type TechPin } from "../../components/DispatchMap";
 import { AdvisorBacklogPanel } from "../../components/AdvisorBacklogPanel";
 import { TriagePanel } from "../../components/TriagePanel";
@@ -1076,7 +1077,7 @@ export default async function DispatchPage({
       {/* PAST GPS DATA — NL query window (reuses gps-query edge fn + AskResult) */}
       {(me.isAdmin || me.isManager) ? (
         <div className="mb-6">
-          <GpsQueryWindow />
+          <GpsQueryWindow canResearch={isOwner(me.realEmail ?? me.email ?? "")} />
         </div>
       ) : null}
 
