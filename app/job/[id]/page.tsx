@@ -13,6 +13,7 @@ import { getBriefingForJob } from "./briefing-actions";
 import { listPinnedEmailsForJob } from "../../customer/[id]/email-actions";
 import { TriggerForms } from "./TriggerForms";
 import { JobBriefingCard } from "../../../components/JobBriefingCard";
+import { AddJobLineItem } from "../../../components/AddJobLineItem";
 import { PageShell } from "../../../components/PageShell";
 import { getJob360, resolveJobIdentifier, jobRevenueDollars, jobDueDollars } from "@/lib/typed-db/job-360";
 import { redirect } from "next/navigation";
@@ -453,6 +454,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             />
           </div>
         ) : null}
+
+        {canEdit ? <AddJobLineItem hcpJobId={id} /> : null}
 
         <Section title="At a glance">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
