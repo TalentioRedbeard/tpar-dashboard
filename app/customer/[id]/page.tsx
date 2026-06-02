@@ -12,6 +12,7 @@ import { CustomerReports } from "../../../components/CustomerReports";
 import type { CustomerReport } from "../../../lib/customer-reports";
 import { listPinnedEmails } from "./email-actions";
 import { CustomerEmails } from "../../../components/CustomerEmails";
+import { CommHistoryTable, type CommRow } from "../../../components/CommHistoryTable";
 import { getFormerTechNames } from "../../../lib/former-techs";
 import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
@@ -82,7 +83,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       .select("id, occurred_at, channel, direction, importance, sentiment, flags, tech_short_name, summary")
       .eq("hcp_customer_id", id)
       .order("occurred_at", { ascending: false })
-      .limit(30),
+      .limit(500),
     supabase
       .from("job_360")
       .select("hcp_job_id, customer_name, tech_primary_name, job_date, revenue, gross_margin_pct, gps_matched, time_on_site_minutes, on_time, due_amount, days_outstanding")
@@ -320,7 +321,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         actions: [
           "Pricing brief (top) shows open AR + open estimates + current rates. Read off, don't invent.",
           "Recent jobs lists every job with revenue + AR — click any to drill in.",
-          "Recent communications shows the last 30 calls/texts/emails with AI summary + sentiment.",
+          "Communications history is a sortable, searchable table of every call + text — sort by date/importance/sentiment and download CSV for a report (most recent 500).",
           "HCP notes section pulls every job/estimate note HCP has on this customer.",
           "Customer notes (you write these) live separately and persist forever.",
         ],
@@ -794,26 +795,25 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </div>
         ) : null}
 
-        <Section title="Recent communications">
+        <Section
+          title="Communications history"
+          description="Every call + text on this customer. Sort, search, or download CSV for a report."
+        >
           {recentComms.data && recentComms.data.length > 0 ? (
-            <ScrollPanel tier="standard">
-            <ul className="space-y-2">
-              {recentComms.data.map((m: Record<string, unknown>) => (
-                <li key={m.id as number} className="rounded-2xl border border-neutral-200 bg-white p-4">
-                  <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
-                    <span className="font-mono">
-                      {new Date(m.occurred_at as string).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
-                    </span>
-                    <Pill tone="slate">{m.channel as string}</Pill>
-                    {m.direction ? <Pill tone="slate">{m.direction as string}</Pill> : null}
-                    {m.tech_short_name ? <span>· {m.tech_short_name as string}</span> : null}
-                    <span className="ml-auto">imp {(m.importance as number) ?? "—"}</span>
-                  </div>
-                  <p className="text-sm text-neutral-800">{m.summary as string}</p>
-                </li>
-              ))}
-            </ul>
-            </ScrollPanel>
+            <CommHistoryTable
+              rows={(recentComms.data as Record<string, unknown>[]).map((m): CommRow => ({
+                id: m.id as number | string,
+                occurred_at: m.occurred_at as string,
+                channel: (m.channel as string | null) ?? null,
+                direction: (m.direction as string | null) ?? null,
+                importance: (m.importance as number | null) ?? null,
+                sentiment: (m.sentiment as string | null) ?? null,
+                tech_short_name: (m.tech_short_name as string | null) ?? null,
+                summary: (m.summary as string | null) ?? null,
+              }))}
+              customerName={displayName}
+              truncated={(recentComms.data?.length ?? 0) >= 500}
+            />
           ) : (
             <EmptyState title="No communications." />
           )}
