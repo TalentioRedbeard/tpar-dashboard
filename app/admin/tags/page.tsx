@@ -8,11 +8,12 @@
 import { redirect } from "next/navigation";
 import { db } from "../../../lib/supabase";
 import { getSessionUser } from "../../../lib/supabase-server";
-import { isAdmin } from "../../../lib/admin";
+import { isAdmin, isOwner } from "../../../lib/admin";
 import { PageShell } from "../../../components/PageShell";
 import { Section } from "../../../components/ui/Section";
 import { ScrollPanel } from "../../../components/ui/ScrollPanel";
 import { StatCard } from "../../../components/ui/StatCard";
+import { RunClassificationButton } from "../../../components/RunClassificationButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Call + Job Tags · Admin · TPAR-DB" };
@@ -44,17 +45,19 @@ type JobRow = {
   customer_type: string | null; derived_customer_type: string | null;
   job_category: string | null; estimate_type: string | null; source: string | null;
   quality_recall: string | null; process_marker: string | null;
+  pb_service_type: string | null; pb_work_category: string | null; pb_job_name: string | null;
 };
 
 export default async function TagsPage() {
   const user = await getSessionUser();
   if (!user || !isAdmin(user.email)) redirect("/");
+  const owner = isOwner(user.email);
   const supa = db();
 
   const [covRes, callsRes, jobsRes, jobMetaRes] = await Promise.all([
     supa.from("entity_tags").select("entity_kind, source, entity_id"),
     supa.from("call_tag_compare_v").select("call_id, call_time, caller_phone, summary, gpt_call_type, gpt_call_outcome, gpt_customer_type, gpt_job_category, gpt_source, gpt_internal, va_call_type, va_call_outcome, va_internal").order("call_time", { ascending: false }).limit(60),
-    supa.from("job_tag_v").select("hcp_job_id, day_structure, derived_day_structure, lead_tech, derived_lead_tech, customer_type, derived_customer_type, job_category, estimate_type, source, quality_recall, process_marker").limit(60),
+    supa.from("job_tag_v").select("hcp_job_id, day_structure, derived_day_structure, lead_tech, derived_lead_tech, customer_type, derived_customer_type, job_category, estimate_type, source, quality_recall, process_marker, pb_service_type, pb_work_category, pb_job_name").limit(60),
     supa.from("job_360").select("hcp_job_id, customer_name, job_date").order("job_date", { ascending: false }).limit(400),
   ]);
 
@@ -64,6 +67,7 @@ export default async function TagsPage() {
   const callsGpt = uniq("call", "tpar_gpt");
   const callsVa = uniq("call", "callrail_va");
   const jobsMad = uniq("job", "hcp_madisson");
+  const jobsPb = uniq("job", "tpar_pricebook");
 
   const calls = (callsRes.data ?? []) as CallRow[];
 
@@ -88,15 +92,22 @@ export default async function TagsPage() {
     >
       <div className="space-y-8">
         <Section title="Coverage">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             <StatCard label="Calls auto-tagged (GPT)" value={callsGpt} tone="brand" />
             <StatCard label="Calls hand-tagged (VAs)" value={callsVa} />
             <StatCard label="Jobs tagged (Madisson)" value={jobsMad} />
-            <StatCard label="Tag dimensions" value={12} />
+            <StatCard label="Jobs pricebook-classified" value={jobsPb} tone="brand" />
+            <StatCard label="Tag dimensions" value={15} />
           </div>
           <p className="mt-2 text-xs text-neutral-500">
-            VA hand-tags are mostly who-answered attribution; the GPT auto-tagger applies the full 7-dimension taxonomy. The point of v1 is to see both side-by-side.
+            VA hand-tags are mostly who-answered attribution; the GPT auto-tagger applies the full 7-dimension taxonomy. Jobs are also classified into the Q1–Q4 pricebook taxonomy by semantic-nearest-item (#29 v2).
           </p>
+          {owner ? (
+            <div className="mt-3">
+              <RunClassificationButton />
+              <p className="mt-1 text-[11px] text-neutral-400">Owner-only. Embeds pricebook items + line-item names and matches them — chunked, so click again until it says &quot;done&quot;.</p>
+            </div>
+          ) : null}
         </Section>
 
         <Section title="Calls — auto (TPAR-GPT) vs human (CallRail VA)" description="Most recent 60. Auto tags are the full taxonomy; the human row shows what the VA actually applied (often just CSR/HCPA).">
@@ -140,7 +151,7 @@ export default async function TagsPage() {
                 <tr>
                   <th className="p-2">Job</th><th className="p-2">Lead tech</th><th className="p-2">Day</th>
                   <th className="p-2">Customer</th><th className="p-2">Job category</th><th className="p-2">Estimate</th>
-                  <th className="p-2">Source</th><th className="p-2">Quality/recall</th>
+                  <th className="p-2">Source</th><th className="p-2">Quality/recall</th><th className="p-2">Pricebook (auto)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
@@ -157,6 +168,7 @@ export default async function TagsPage() {
                     <td className="p-2">{chips(j.estimate_type, "job")}</td>
                     <td className="p-2">{chips(j.source, "job")}</td>
                     <td className="p-2">{chips(j.quality_recall, "job")}</td>
+                    <td className="p-2"><div className="space-y-1">{j.pb_work_category ? chips(j.pb_work_category, "auto") : null}{j.pb_job_name ? chips(j.pb_job_name, "auto") : null}</div></td>
                   </tr>
                 ))}
               </tbody>
