@@ -407,8 +407,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       actions={
         canWrite ? (
           <div className="flex flex-wrap gap-2">
-            <LinkButton href={`/job/${id}/estimate/new`} variant="primary">
-              + Multi-option estimate
+            <LinkButton href={`/estimate/new?job=${id}`} variant="primary">
+              + Multi-option estimate (4-question)
+            </LinkButton>
+            <LinkButton href={`/job/${id}/estimate/new`} variant="secondary">
+              + Estimate (freeform / voice note)
             </LinkButton>
             {customerId ? (
               <LinkButton href={`/membership/enroll?customer=${customerId}&job=${id}`} variant="secondary">

@@ -316,6 +316,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       }
       backHref="/customers"
       backLabel="All customers"
+      actions={canWrite ? (
+        <LinkButton href={`/estimate/new?customer=${id}`} variant="primary">
+          + Build estimate
+        </LinkButton>
+      ) : undefined}
       help={{
         intent: "Everything we know about this customer in one place. Open this BEFORE you call them so you're not flying blind.",
         actions: [

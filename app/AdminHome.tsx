@@ -102,6 +102,7 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
       ? { label: "Estimate current job", emoji: "✏️", href: `/job/${clockedIntoJob}/estimate/new`, primary: true, subtitle: "You're clocked in" }
       : { label: "Estimate current job", emoji: "✏️", href: "#", disabled: true, subtitle: "Clock into a job first" },
     { label: "Estimate for job", emoji: "📝", href: "/jobs", subtitle: "Pick the job" },
+    { label: "Build estimate", emoji: "📋", href: "/estimate/new", subtitle: "Multi-option (4-question)" },
     { label: "Photos / videos", emoji: "📸", href: "/photos", subtitle: "For a job" },
     { label: "Request parts", emoji: "🔧", href: "/shopping", subtitle: "Add a need" },
     { label: "Membership", emoji: "🎟️", href: "/customers", subtitle: "Enroll a customer" },

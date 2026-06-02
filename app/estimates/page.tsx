@@ -36,12 +36,20 @@ export default async function EstimatesPage() {
       title="Estimates"
       description="Drafts, previewed, approved, pushed-to-HCP, and archived estimates. Click any row to view + edit."
       actions={canCreate ? (
-        <Link
-          href="/dispatch/new-estimate"
-          className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
-        >
-          + Create Estimate(s)
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/estimate/new"
+            className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
+          >
+            + Build multi-option estimate
+          </Link>
+          <Link
+            href="/dispatch/new-estimate"
+            className="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Schedule estimate visit
+          </Link>
+        </div>
       ) : undefined}
     >
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
