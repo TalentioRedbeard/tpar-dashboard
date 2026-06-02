@@ -8,6 +8,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { toE164US } from "./lib/phone";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? "";
@@ -42,6 +43,26 @@ function isAllowed(email: string | null | undefined): boolean {
   const e = email.toLowerCase();
   if (e.endsWith(`@${ALLOWED_DOMAIN}`)) return true;
   return ALLOWED_EXTRA.includes(e);
+}
+
+// Phone-OTP logins have no email, so the email allow-list can't gate them.
+// Allow a phone user iff their number matches an ACTIVE tech_directory row
+// (service-role read via PostgREST). Only runs for phone users (email === null),
+// so the common email path keeps its single getUser() round-trip.
+async function isAllowedPhone(phone: string | null | undefined): Promise<boolean> {
+  const e164 = toE164US(phone);
+  if (!e164 || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return false;
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/tech_directory?select=tech_id&is_active=eq.true&phone=eq.${encodeURIComponent(e164)}&limit=1`,
+      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } },
+    );
+    if (!r.ok) return false;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 // Decide whether a request is worth logging as a page view. Skip:
@@ -129,7 +150,8 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (!isAllowed(user.email)) {
+  const allowed = user.email ? isAllowed(user.email) : await isAllowedPhone(user.phone);
+  if (!allowed) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("error", "not_allowed");
@@ -137,8 +159,10 @@ export async function middleware(req: NextRequest) {
   }
 
   // Authenticated, allow-listed request — record a page view if appropriate.
-  if (user.email && shouldLogPageView(req, path)) {
-    recordPageView(req, path, user.email);
+  // Phone users have no email; log their E.164 as the actor instead.
+  const actor = user.email ?? (user.phone ? toE164US(user.phone) : null);
+  if (actor && shouldLogPageView(req, path)) {
+    recordPageView(req, path, actor);
   }
 
   return res;

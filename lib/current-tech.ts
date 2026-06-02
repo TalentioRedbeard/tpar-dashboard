@@ -4,6 +4,7 @@
 import { db } from "./supabase";
 import { getSessionUser } from "./supabase-server";
 import { isAdmin, isOwner } from "./admin";
+import { toE164US } from "./phone";
 import { cookies } from "next/headers";
 
 export type DashboardRole = "admin" | "manager" | "production_manager" | "tech" | null;
@@ -36,17 +37,45 @@ const VIEW_AS_COOKIE = "tpar_view_as";
 
 export async function getCurrentTech(): Promise<CurrentTech | null> {
   const user = await getSessionUser();
-  if (!user?.email) return null;
+  if (!user || (!user.email && !user.phone)) return null;
 
   const supa = db();
-  // Match on primary email OR any secondary email. Lowercase compare on both sides.
-  const lowerEmail = user.email.toLowerCase();
-  const { data } = await supa
-    .from("tech_directory")
-    .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, secondary_emails, dashboard_role")
-    .or(`email.ilike.${lowerEmail},secondary_emails.cs.{${lowerEmail}}`)
-    .eq("is_active", true)
-    .maybeSingle();
+  const COLS = "tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, secondary_emails, dashboard_role";
+
+  // Resolve the tech_directory row by EMAIL (Google / magic-link) or, for
+  // phone-OTP logins (field techs who sign in with a texted code), by PHONE.
+  let data: Record<string, unknown> | null = null;
+  if (user.email) {
+    // Match on primary email OR any secondary email. Lowercase compare on both sides.
+    const lowerEmail = user.email.toLowerCase();
+    const res = await supa
+      .from("tech_directory")
+      .select(COLS)
+      .or(`email.ilike.${lowerEmail},secondary_emails.cs.{${lowerEmail}}`)
+      .eq("is_active", true)
+      .maybeSingle();
+    data = (res.data ?? null) as Record<string, unknown> | null;
+  } else if (user.phone) {
+    const e164 = toE164US(user.phone);
+    if (e164) {
+      const res = await supa
+        .from("tech_directory")
+        .select(COLS)
+        .eq("phone", e164)
+        .eq("is_active", true)
+        .maybeSingle();
+      data = (res.data ?? null) as Record<string, unknown> | null;
+    }
+  }
+
+  // Stable identity used as me.email everywhere (durable author key + per-tech
+  // read scoping). A phone-only tech with no real email gets a DETERMINISTIC
+  // synthetic so the write author (me.email) and the read scope (me.tech.email)
+  // always agree. Must never resemble an allow-listed address (it never gains
+  // admin/owner — correct for a tech).
+  const phoneE164 = user.phone ? toE164US(user.phone) : null;
+  const syntheticEmail = phoneE164 ? `${phoneE164.replace(/\D/g, "")}@phone.tpar.local` : null;
+  const identityEmail = (user.email ?? (data?.email as string | null) ?? syntheticEmail ?? user.id) as string;
 
   const dashboardRole = ((data?.dashboard_role as string | null) ?? null) as DashboardRole;
   const envAdmin = isAdmin(user.email);
@@ -75,14 +104,14 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
         // so the impersonator sees exactly what the real tech would see —
         // including the scope-limited home page + URL-scope auth on /job + /customer.
         return {
-          email: user.email,                          // keep real email so action audit trails work
+          email: identityEmail,                       // keep real identity so action audit trails work
           isAdmin: false,
           isManager: false,
           canWrite: true,
           dashboardRole: "tech",
           isImpersonating: true,
           realRole: dashboardRole,
-          realEmail: user.email,
+          realEmail: identityEmail,
           tech: {
             tech_id: targetTech.tech_id as string,
             tech_short_name: targetTech.tech_short_name as string,
@@ -100,14 +129,14 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
   }
 
   return {
-    email: user.email,
+    email: identityEmail,
     isAdmin: isAdminFinal,
     isManager: isManagerFinal,
     canWrite,
     dashboardRole,
     isImpersonating: false,
     realRole: dashboardRole,
-    realEmail: user.email,
+    realEmail: identityEmail,
     tech: data ? {
       tech_id: data.tech_id as string,
       tech_short_name: data.tech_short_name as string,
@@ -117,7 +146,9 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
       is_lead: !!(data.is_lead as boolean | null),
       slack_user_id: data.slack_user_id as string | null,
       notes: data.notes as string | null,
-      email: (data.email as string | null) ?? null,
+      // Phone-only techs have no DB email; fall back to the synthetic identity
+      // so per-tech reads (me.tech.email) match write authorship (me.email).
+      email: (data.email as string | null) ?? (user.email ? null : identityEmail),
     } : null,
   };
 }

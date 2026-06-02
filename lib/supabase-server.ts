@@ -28,9 +28,10 @@ export async function supabaseServer() {
   });
 }
 
-export async function getSessionUser(): Promise<{ id: string; email: string | null } | null> {
+export async function getSessionUser(): Promise<{ id: string; email: string | null; phone: string | null } | null> {
   const supa = await supabaseServer();
   const { data } = await supa.auth.getUser();
   if (!data?.user) return null;
-  return { id: data.user.id, email: data.user.email ?? null };
+  // phone is populated for phone-OTP logins (email is null in that case).
+  return { id: data.user.id, email: data.user.email ?? null, phone: data.user.phone ?? null };
 }

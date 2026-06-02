@@ -11,6 +11,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BrandMark } from "../../components/ui/Brand";
+import { lookupTechByPhone } from "./phone-actions";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -30,6 +31,14 @@ function LoginInner() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Phone-OTP flow (parallel state so it never disturbs the email/Google paths).
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [phoneStep, setPhoneStep] = useState<"phone" | "code">("phone");
+  const [smsE164, setSmsE164] = useState<string | null>(null);
+  const [smsStatus, setSmsStatus] = useState<"idle" | "sending" | "verifying" | "error">("idle");
+  const [smsErr, setSmsErr] = useState<string | null>(null);
 
   // Default flow (PKCE). The PKCE verifier is stored in a cookie by
   // @supabase/ssr; /auth/callback is now a server-side Route Handler
@@ -59,6 +68,33 @@ function LoginInner() {
     } else {
       setStatus("sent");
     }
+  }
+
+  // Step 1: confirm the number is a known active tech (server), then have the
+  // browser client text the OTP (which is what will set the session cookie on verify).
+  async function sendCode(e: React.FormEvent) {
+    e.preventDefault();
+    setSmsStatus("sending");
+    setSmsErr(null);
+    const look = await lookupTechByPhone(phone);
+    if (!look.ok) { setSmsErr(look.error); setSmsStatus("error"); return; }
+    const { error } = await supa.auth.signInWithOtp({ phone: look.e164 });
+    if (error) { setSmsErr(error.message); setSmsStatus("error"); return; }
+    setSmsE164(look.e164);
+    setPhoneStep("code");
+    setSmsStatus("idle");
+  }
+
+  // Step 2: verify the 6-digit code; verifyOtp sets the session cookie, then a
+  // full nav so middleware re-reads it.
+  async function verifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!smsE164) return;
+    setSmsStatus("verifying");
+    setSmsErr(null);
+    const { error } = await supa.auth.verifyOtp({ phone: smsE164, token: code.trim(), type: "sms" });
+    if (error) { setSmsErr(error.message); setSmsStatus("error"); return; }
+    window.location.assign(fromParam);
   }
 
   return (
@@ -114,7 +150,7 @@ function LoginInner() {
 
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Sign in</h1>
           <p className="mt-2 text-sm text-neutral-600">
-            Use your TPAR Google account, or get a one-time link by email.
+            Use your TPAR Google account, a one-time link by email, or a code by text.
           </p>
 
           {errorParam === "not_allowed" && (
@@ -172,6 +208,73 @@ function LoginInner() {
           {status === "error" && errorMsg && (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {errorMsg}
+            </div>
+          )}
+
+          <div className="my-5 flex items-center gap-2 text-xs text-neutral-400">
+            <div className="h-px flex-1 bg-neutral-200" />
+            <span>or sign in with your phone</span>
+            <div className="h-px flex-1 bg-neutral-200" />
+          </div>
+
+          {phoneStep === "phone" ? (
+            <form onSubmit={sendCode} className="space-y-3">
+              <label className="block">
+                <span className="block text-xs font-medium text-neutral-600">Mobile number</span>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  required
+                  placeholder="(918) 555-1234"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={smsStatus === "sending" || !phone}
+                className="w-full rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-800 disabled:opacity-50"
+              >
+                {smsStatus === "sending" ? "Texting…" : "Text me a code"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={verifyCode} className="space-y-3">
+              <label className="block">
+                <span className="block text-xs font-medium text-neutral-600">Enter the 6-digit code</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                  maxLength={6}
+                  placeholder="123456"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm tracking-[0.4em] text-neutral-900 placeholder-neutral-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={smsStatus === "verifying" || code.length < 6}
+                className="w-full rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-800 disabled:opacity-50"
+              >
+                {smsStatus === "verifying" ? "Signing in…" : "Verify & sign in"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPhoneStep("phone"); setCode(""); setSmsErr(null); }}
+                className="w-full text-xs text-neutral-500 hover:underline"
+              >
+                ← Use a different number
+              </button>
+            </form>
+          )}
+          {smsErr && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {smsErr}
             </div>
           )}
 
