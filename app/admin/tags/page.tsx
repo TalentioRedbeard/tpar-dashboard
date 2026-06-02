@@ -39,7 +39,8 @@ type CallRow = {
   va_call_type: string | null; va_call_outcome: string | null; va_internal: string | null;
 };
 type JobRow = {
-  hcp_job_id: string; day_structure: string | null; lead_tech: string | null; derived_lead_tech: string | null;
+  hcp_job_id: string; day_structure: string | null; derived_day_structure: string | null;
+  lead_tech: string | null; derived_lead_tech: string | null;
   customer_type: string | null; derived_customer_type: string | null;
   job_category: string | null; estimate_type: string | null; source: string | null;
   quality_recall: string | null; process_marker: string | null;
@@ -53,7 +54,7 @@ export default async function TagsPage() {
   const [covRes, callsRes, jobsRes, jobMetaRes] = await Promise.all([
     supa.from("entity_tags").select("entity_kind, source, entity_id"),
     supa.from("call_tag_compare_v").select("call_id, call_time, caller_phone, summary, gpt_call_type, gpt_call_outcome, gpt_customer_type, gpt_job_category, gpt_source, gpt_internal, va_call_type, va_call_outcome, va_internal").order("call_time", { ascending: false }).limit(60),
-    supa.from("job_tag_v").select("hcp_job_id, day_structure, lead_tech, derived_lead_tech, customer_type, derived_customer_type, job_category, estimate_type, source, quality_recall, process_marker").limit(60),
+    supa.from("job_tag_v").select("hcp_job_id, day_structure, derived_day_structure, lead_tech, derived_lead_tech, customer_type, derived_customer_type, job_category, estimate_type, source, quality_recall, process_marker").limit(60),
     supa.from("job_360").select("hcp_job_id, customer_name, job_date").order("job_date", { ascending: false }).limit(400),
   ]);
 
@@ -132,7 +133,7 @@ export default async function TagsPage() {
           </p>
         </Section>
 
-        <Section title="Jobs — Madisson (HCP) vs TPAR-derived" description="Most recent 60. Madisson's HCP job tags (amber) structured by dimension. Lead Tech + Customer Type now also auto-derived (blue) from the assignment + customer history. Day-structure (multi-day) needs HCP per-visit data — #30. Job Category auto-tagging is v2.">
+        <Section title="Jobs — Madisson (HCP) vs TPAR-derived" description="Most recent 60. Madisson's HCP job tags (amber) structured by dimension. Lead Tech + Customer Type + Day-structure now auto-derived (blue) — multi-day from the invoice-trunk -N segments (#30). Job Category auto-tagging is v2.">
           <ScrollPanel tier="primary">
             <table className="w-full text-left text-xs">
               <thead className="sticky top-0 bg-neutral-50 text-[10px] uppercase tracking-wide text-neutral-500">
@@ -150,7 +151,7 @@ export default async function TagsPage() {
                       <div className="text-[10px] text-neutral-400">{j.meta?.job_date ?? "—"}</div>
                     </td>
                     <td className="p-2"><div className="space-y-1">{chips(j.lead_tech, "job")}{j.derived_lead_tech ? chips(j.derived_lead_tech, "auto") : null}</div></td>
-                    <td className="p-2">{chips(j.day_structure, "job")}</td>
+                    <td className="p-2"><div className="space-y-1">{chips(j.day_structure, "job")}{j.derived_day_structure ? chips(j.derived_day_structure, "auto") : null}</div></td>
                     <td className="p-2"><div className="space-y-1">{chips(j.customer_type, "job")}{j.derived_customer_type ? chips(j.derived_customer_type, "auto") : null}</div></td>
                     <td className="p-2">{chips(j.job_category, "job")}</td>
                     <td className="p-2">{chips(j.estimate_type, "job")}</td>

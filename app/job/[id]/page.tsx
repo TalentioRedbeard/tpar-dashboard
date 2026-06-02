@@ -328,6 +328,18 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const receiptItems = (receiptsRes.data ?? []) as Array<{ id: number; amount: number; vendor_description: string | null; transaction_date: string | null; tech_name: string | null; source: string | null; photo_url: string | null }>;
   const receiptsTotal = receiptItems.reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
+  // Multi-day "plumbing project" (#30): segments share an invoice trunk with -N
+  // suffixes. HCP has no native multi-day model — the trunk IS the project.
+  const projectRes = invoiceTrunk
+    ? await supabase
+        .from("job_project_v")
+        .select("hcp_job_id, invoice_number, seg_no, status, scheduled_start, project_segment_count")
+        .eq("trunk", invoiceTrunk)
+        .order("seg_no", { ascending: true, nullsFirst: true })
+    : { data: [] as Record<string, unknown>[] };
+  const projectSegments = (projectRes.data ?? []) as Array<{ hcp_job_id: string; invoice_number: string | null; seg_no: number | null; status: string | null; scheduled_start: string | null; project_segment_count: number }>;
+  const isProject = projectSegments.length > 1;
+
   // Edit-job panel data (#33) — only fetched for MGMT. The current slot gives us
   // the start time to prefill (job_360 only carries job_date), and the active
   // tech roster feeds the reassign dropdown.
@@ -460,6 +472,39 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <StatCard label="Photos" value={(j.photo_count as number) ?? 0} />
           </div>
         </Section>
+
+        {isProject ? (
+          <Section
+            title={`Multi-day project · ${projectSegments.length} segments`}
+            description={`Invoice ${invoiceTrunk} is worked across ${projectSegments.length} day-segments (HCP carries them as -1, -2, … on the job number). Each segment is its own visit; together they're one project.`}
+          >
+            <ScrollPanel tier="standard">
+              <ol className="space-y-2">
+                {projectSegments.map((s) => {
+                  const current = s.hcp_job_id === id;
+                  return (
+                    <li key={s.hcp_job_id}>
+                      <Link
+                        href={`/job/${s.hcp_job_id}`}
+                        className={`flex flex-wrap items-center gap-2 rounded-2xl border p-3 ${current ? "border-brand-400 bg-brand-50" : "border-neutral-200 bg-white hover:border-neutral-300"}`}
+                      >
+                        <span className="font-mono text-sm font-semibold text-neutral-900">{s.invoice_number ?? "—"}</span>
+                        {s.seg_no ? <Pill tone="slate" mono>day {s.seg_no}</Pill> : null}
+                        <span className="text-xs text-neutral-500">
+                          {s.scheduled_start ? new Date(s.scheduled_start).toLocaleDateString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", year: "numeric" }) : "no date"}
+                        </span>
+                        {s.status ? <Pill tone="slate">{s.status}</Pill> : null}
+                        {current
+                          ? <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-brand-700">this segment</span>
+                          : <span className="ml-auto text-xs text-brand-700">open →</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ol>
+            </ScrollPanel>
+          </Section>
+        ) : null}
 
         <Section
           title="Job cost"
