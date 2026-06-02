@@ -106,7 +106,21 @@ export function MultiOptionEstimateBuilder({
     if (inFlight.current || pending) return;
     setErr(null);
     if (!customer) { setErr("Pick a customer first."); return; }
-    if (!hasValid) { setErr("Add at least one option with a line item (pick an item + set hours)."); return; }
+    if (!hasValid) { setErr("Add at least one option with a line item — pick an item (Q4) or a Custom name."); return; }
+    // Never silently drop an option/line. If the user filled something but left
+    // no item name, block with a precise message so no option vanishes
+    // (the 2026-06-02 "only 1 of 2 options reached HCP" bug).
+    const problems: string[] = [];
+    options.forEach((o, oi) => {
+      const hasItem = o.lines.some((l) => chosenName(l));
+      const startedNoName = o.lines.some((l) => !chosenName(l) && (l.q1 || l.q2 || l.q3 || l.description.trim() || (l.materials && l.materials !== "0") || (l.hours && l.hours !== "4")));
+      if (!hasItem) problems.push(`Option ${oi + 1} has no item picked`);
+      else if (startedNoName) problems.push(`Option ${oi + 1} has a started line with no item`);
+    });
+    if (problems.length > 0) {
+      setErr(`Nothing sent — ${problems.join("; ")}. Pick an item (Q4) or a Custom name on each option, or remove the empty line/option.`);
+      return;
+    }
     inFlight.current = true;
     const payloadOptions = options.map((o) => ({
       name: o.name.trim() || "Option",
@@ -242,15 +256,15 @@ export function MultiOptionEstimateBuilder({
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                   <label className="block"><span className="text-xs font-medium text-neutral-600">1 · Type</span>
                     <select value={l.q1} onChange={(e) => updateLine(oi, li, { q1: e.target.value, q2: "", q3: "", item: "" })} className={inputCls}>
-                      <option value="">—</option>{q1s.map((v) => <option key={v} value={v}>{v}</option>)}
+                      <option value="">—</option>{q1s.map((v) => <option key={v} value={v}>{v} ({(opts ?? []).filter((x) => x.q1 === v).length})</option>)}
                     </select></label>
                   <label className="block"><span className="text-xs font-medium text-neutral-600">2 · Category</span>
                     <select value={l.q2} onChange={(e) => updateLine(oi, li, { q2: e.target.value, q3: "", item: "" })} disabled={!l.q1} className={inputCls}>
-                      <option value="">—</option>{q2s.map((v) => <option key={v} value={v}>{v}</option>)}
+                      <option value="">—</option>{q2s.map((v) => <option key={v} value={v}>{v} ({(opts ?? []).filter((x) => x.q1 === l.q1 && x.q2 === v).length})</option>)}
                     </select></label>
                   <label className="block"><span className="text-xs font-medium text-neutral-600">3 · Work type</span>
                     <select value={l.q3} onChange={(e) => updateLine(oi, li, { q3: e.target.value, item: "" })} disabled={!l.q2} className={inputCls}>
-                      <option value="">—</option>{q3s.map((v) => <option key={v} value={v}>{v}</option>)}
+                      <option value="">—</option>{q3s.map((v) => <option key={v} value={v}>{v} ({(opts ?? []).filter((x) => x.q1 === l.q1 && x.q2 === l.q2 && x.q3 === v).length})</option>)}
                     </select></label>
                   <label className="block"><span className="text-xs font-medium text-neutral-600">4 · Item</span>
                     <select value={l.item} onChange={(e) => updateLine(oi, li, { item: e.target.value })} disabled={!l.q3} className={inputCls}>
