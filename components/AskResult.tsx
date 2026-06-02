@@ -30,13 +30,26 @@ type Props = {
 };
 
 export function AskResult({ plan, rows, sqlError, scope }: Props) {
+  const csvCols = plan.columns && plan.columns.length > 0 ? plan.columns : rows[0] ? Object.keys(rows[0]) : [];
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-      <div className="mb-3 flex items-baseline gap-2">
+      <div className="mb-3 flex items-center gap-2">
         <h3 className="text-base font-semibold text-neutral-900">{plan.title}</h3>
-        <span className="ml-auto rounded-md bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-600">
-          {plan.kind}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          {!sqlError && rows.length > 0 && csvCols.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => downloadCsv(`${slugify(plan.title)}-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(rows, csvCols))}
+              className="rounded-md border border-neutral-300 bg-white px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50"
+              title={`Download all ${rows.length} row${rows.length === 1 ? "" : "s"} as CSV`}
+            >
+              ⬇ CSV
+            </button>
+          ) : null}
+          <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-600">
+            {plan.kind}
+          </span>
+        </div>
       </div>
       {plan.narrative && (
         <p className="mb-4 whitespace-pre-wrap text-sm leading-relaxed text-neutral-700">{plan.narrative}</p>
@@ -202,4 +215,39 @@ function formatCell(v: unknown): string {
   if (typeof v === "string") return v;
   if (typeof v === "boolean") return v ? "true" : "false";
   try { return JSON.stringify(v); } catch { return String(v); }
+}
+
+// --- CSV export (client-side; no server round-trip) ---
+// Raw value (NOT the display formatter — no locale commas, no em-dash for null),
+// quoted per RFC 4180 when it contains a comma/quote/newline.
+function csvCell(v: unknown): string {
+  let s: string;
+  if (v == null) s = "";
+  else if (typeof v === "number" || typeof v === "boolean") s = String(v);
+  else if (typeof v === "string") s = v;
+  else { try { s = JSON.stringify(v); } catch { s = String(v); } }
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function buildCsv(rows: Record<string, unknown>[], cols: string[]): string {
+  const head = cols.map(csvCell).join(",");
+  const body = rows.map((r) => cols.map((c) => csvCell(r[c])).join(","));
+  return [head, ...body].join("\r\n");
+}
+
+function slugify(s: string): string {
+  return (s || "export").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "export";
+}
+
+function downloadCsv(filename: string, csv: string): void {
+  // Prepend a UTF-8 BOM so Excel opens it with the right encoding.
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
