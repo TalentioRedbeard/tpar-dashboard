@@ -30,6 +30,7 @@ import { getFormerTechNames } from "../../../lib/former-techs";
 import { RecordingPlayer } from "../../../components/RecordingPlayer";
 import { LogReceiptForm } from "../../../components/LogReceiptForm";
 import { EditJobPanel } from "../../../components/EditJobPanel";
+import { JobMediaGallery } from "../../../components/JobMediaGallery";
 
 export const dynamic = "force-dynamic";
 
@@ -503,6 +504,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 })}
               </ol>
             </ScrollPanel>
+          </Section>
+        ) : null}
+
+        {invoiceTrunk ? (
+          <Section
+            title="Job media"
+            description="Photos + videos from the Slack #job-media flow, served from Google Drive (thumbnails load on demand — no heavy storage). Click any tile to open it in Drive."
+          >
+            <JobMediaGallery invoiceTrunk={invoiceTrunk} />
           </Section>
         ) : null}
 
