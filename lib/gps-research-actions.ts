@@ -17,7 +17,7 @@ export async function runEndpointResearch(): Promise<{ ok: boolean; error?: stri
     const res = await fetch(`${SUPABASE_URL}/functions/v1/research-gps-endpoints`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
-      body: JSON.stringify({ max: 120 }),
+      body: JSON.stringify({ max: 700 }),
     });
     const j = await res.json().catch(() => ({} as Record<string, unknown>));
     if (!res.ok || !j?.ok) return { ok: false, error: String(j?.error ?? `research ${res.status}`) };
