@@ -18,6 +18,7 @@ import { StartAppointmentButton } from "../../components/StartAppointmentButton"
 import { ClockSuggestionBanner } from "../../components/ClockSuggestionBanner";
 import { LifecycleButtons } from "../../components/LifecycleButtons";
 import { DismissJobButton } from "../../components/DismissJobButton";
+import { GpsLifecyclePrompt } from "../../components/GpsLifecyclePrompt";
 import { ScrollPanel } from "../../components/ui/ScrollPanel";
 import { getCurrentState as getClockState } from "../time/actions";
 import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
@@ -48,6 +49,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   //   (per reference_tech_name_fields_2026-05-04.md)
   const sp = await searchParams;
   const asOverride = sp?.as?.trim() ?? "";
+  // Owner-only walkthrough flag: ?demo=1 shows the GPS adherence prompt on every
+  // job card regardless of distance, so it can be demoed indoors (e.g. a meeting)
+  // without being physically at a job site. Techs never see this path.
+  const demoMode = me.isAdmin && sp?.demo === "1";
   let techName: string | null = null;
   let techFullName: string | null = null;
   let viewingAs: string | null = null;
@@ -104,7 +109,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     // testing functionality on his own customer record).
     supa
       .from("appointment_location_v")
-      .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_start_chicago, customer_name, street, city, zip, status, total_amount, tech_primary_name, tech_all_names")
+      .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_start_chicago, customer_name, street, city, zip, status, total_amount, tech_primary_name, tech_all_names, cust_lat, cust_lng")
       .or(`tech_primary_name.eq."${techFullName ?? techName}",tech_all_names.cs.{"${techFullName ?? techName}"}`)
       .gte("appt_date_chicago", today)
       .lte("appt_date_chicago", today)
@@ -500,6 +505,18 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       {/* appointments_master.total_amount is stored in cents — divide for display */}
                       Quoted: ${(Number(a.total_amount) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </div>
+                  ) : null}
+                  {!viewingAs && me.tech && jobId ? (
+                    <GpsLifecyclePrompt
+                      hcpJobId={jobId}
+                      hcpAppointmentId={apptId}
+                      hcpCustomerId={a.hcp_customer_id as string | null}
+                      customerName={a.customer_name as string | null}
+                      custLat={a.cust_lat as number | null}
+                      custLng={a.cust_lng as number | null}
+                      firedTriggers={lifecycleByJob.get(jobId) ?? []}
+                      demo={demoMode}
+                    />
                   ) : null}
                   {!viewingAs && me.tech && (
                     <div className="mt-2.5">

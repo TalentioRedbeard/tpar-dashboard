@@ -199,6 +199,11 @@ export async function fireLifecycleTrigger(input: {
   hcp_appointment_id?: string;
   hcp_customer_id?: string;
   context?: Record<string, unknown>;
+  // How the trigger was initiated. Defaults to 'dashboard' (a button press).
+  // The GPS adherence prompt passes 'gps_confirmed' so the row records that it
+  // was surfaced from GPS proximity and confirmed by the tech (audit trail);
+  // put the evidence (lat/lng/dist) in `context`.
+  origin?: string;
 }): Promise<FireResult> {
   const me = await getCurrentTech();
   if (!me?.tech) return { ok: false, error: "Not signed in as a tech." };
@@ -216,7 +221,7 @@ export async function fireLifecycleTrigger(input: {
       appointment_id: input.hcp_appointment_id ?? null,
       hcp_customer_id: input.hcp_customer_id ?? null,
       fired_by: me.tech.tech_short_name,
-      origin: "dashboard",
+      origin: input.origin ?? "dashboard",
       context: input.context ?? {},
     })
     .select("id")
