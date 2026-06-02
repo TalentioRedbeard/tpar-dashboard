@@ -18,6 +18,8 @@ import { redirect } from "next/navigation";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { fmtMoney } from "../../components/Table";
+import { AutoRefresh } from "../../components/AutoRefresh";
+import { TechDayTimeline, type TLRow, type TLActivity, type TLJob, type TLLifeSeg } from "../../components/TechDayTimeline";
 import { getCurrentTech } from "../../lib/current-tech";
 import { TechAvatar } from "../../components/TechAvatar";
 import { CellAddMenu } from "../../components/CellAddMenu";
@@ -72,6 +74,22 @@ type Tech = {
 
 type ViewMode = "day" | "week" | "month";
 type ColorMode = "status" | "tech" | "plaid";
+
+// Minute-of-day helpers for the Day-tab timeline (#24).
+const TZ_CHI = "America/Chicago";
+function chiMinOfDay(iso: string): number {
+  const s = new Date(iso).toLocaleTimeString("en-GB", { timeZone: TZ_CHI, hour: "2-digit", minute: "2-digit", hour12: false });
+  const [h, m] = s.split(":").map(Number);
+  return h * 60 + m;
+}
+function chiClockOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", { timeZone: TZ_CHI, hour: "numeric", minute: "2-digit" });
+}
+// tech_day_segments_v start/end are Chicago wall-clock timestamps (no tz) — read H:M directly.
+function wallMinOfDay(ts: string): number {
+  const m = ts.match(/[ T](\d\d):(\d\d)/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+}
 
 type Filters = {
   status: string[] | null;   // null = all
@@ -578,6 +596,137 @@ export default async function SchedulePage({
     dollarsByDay.set(k, (dollarsByDay.get(k) ?? 0) + (Number(a.total_amount) || 0));
   }
 
+  // ── Day-tab timeline (#24): paint the day in lanes — clock + lifecycle + GPS
+  // movement + running cost / live clock. Day-view-ONLY fetches; Week/Month untouched.
+  let timelineRows: TLRow[] = [];
+  let dayNowMin: number | null = null;
+  if (view === "day") {
+    const isTodayDay = centerKey === todayKey;
+    dayNowMin = isTodayDay ? chiMinOfDay(nowIso) : null;
+    const dayJobIds = [...new Set(appts.map((a) => a.hcp_job_id).filter((x): x is string => !!x))];
+
+    const [lifeRes, clockRes, segRes, costRes] = await Promise.all([
+      supa.from("job_lifecycle_events").select("hcp_job_id, trigger_number, fired_at")
+        .gte("fired_at", windowStartUtc).lt("fired_at", windowEndUtc),
+      supa.from("tech_time_entries").select("tech_short_name, kind, ts")
+        .is("voided_at", null).gte("ts", windowStartUtc).lt("ts", windowEndUtc).order("ts", { ascending: true }),
+      supa.from("tech_day_segments_v").select("tech_name, start_time, end_time, kind, label")
+        .eq("trip_date_chicago", centerKey),
+      dayJobIds.length
+        ? supa.from("job_cost_v2").select("hcp_job_id, receipts_cost").in("hcp_job_id", dayJobIds)
+        : Promise.resolve({ data: [] as Array<{ hcp_job_id: string; receipts_cost: string | null }> }),
+    ]);
+
+    const lifeByJob = new Map<string, { trigger_number: number; fired_at: string }[]>();
+    for (const e of (lifeRes.data ?? []) as Array<{ hcp_job_id: string | null; trigger_number: number; fired_at: string }>) {
+      if (!e.hcp_job_id) continue;
+      const arr = lifeByJob.get(e.hcp_job_id) ?? [];
+      arr.push({ trigger_number: e.trigger_number, fired_at: e.fired_at });
+      lifeByJob.set(e.hcp_job_id, arr);
+    }
+
+    const matByJob = new Map<string, number>();
+    for (const r of (costRes.data ?? []) as Array<{ hcp_job_id: string; receipts_cost: string | null }>) {
+      matByJob.set(r.hcp_job_id, Number(r.receipts_cost) || 0);
+    }
+
+    const clockByShort = new Map<string, { startMin: number; endMin: number; open: boolean }[]>();
+    const byTech = new Map<string, { kind: string; ts: string }[]>();
+    for (const c of (clockRes.data ?? []) as Array<{ tech_short_name: string | null; kind: string; ts: string }>) {
+      if (!c.tech_short_name) continue;
+      const arr = byTech.get(c.tech_short_name) ?? [];
+      arr.push({ kind: c.kind, ts: c.ts });
+      byTech.set(c.tech_short_name, arr);
+    }
+    byTech.forEach((evs, short) => {
+      const spans: { startMin: number; endMin: number; open: boolean }[] = [];
+      let openIn: number | null = null;
+      for (const e of evs) {
+        if (e.kind === "in") openIn = chiMinOfDay(e.ts);
+        else if (e.kind === "out" && openIn != null) { spans.push({ startMin: openIn, endMin: chiMinOfDay(e.ts), open: false }); openIn = null; }
+      }
+      if (openIn != null) spans.push({ startMin: openIn, endMin: isTodayDay && dayNowMin != null ? dayNowMin : 20 * 60, open: true });
+      clockByShort.set(short, spans);
+    });
+
+    const actByShort = new Map<string, TLActivity[]>();
+    for (const s of (segRes.data ?? []) as Array<{ tech_name: string | null; start_time: string; end_time: string | null; kind: string; label: string }>) {
+      if (!s.tech_name || !s.end_time) continue;
+      const arr = actByShort.get(s.tech_name) ?? [];
+      arr.push({ startMin: wallMinOfDay(s.start_time), endMin: wallMinOfDay(s.end_time), kind: s.kind, label: s.label });
+      actByShort.set(s.tech_name, arr);
+    }
+
+    const BURDEN = 35; // $/hr fully-burdened labor cost (flat placeholder; tech_burden_rates)
+    const STATE: Record<number, { label: string; color: string }> = {
+      2: { label: "On my way", color: "#2563eb" }, 3: { label: "Started", color: "#f59e0b" },
+      4: { label: "Estimating", color: "#8b5cf6" }, 5: { label: "Presenting", color: "#a855f7" },
+      6: { label: "Finished", color: "#16a34a" }, 7: { label: "Collected", color: "#15803d" },
+    };
+    const PLANNED = "#cbd5e1";
+
+    const buildJob = (a: Appt, leadColor: string): TLJob => {
+      const schedStart = chiMinOfDay(a.scheduled_start);
+      const schedEnd = a.scheduled_end ? chiMinOfDay(a.scheduled_end) : schedStart + 60;
+      const evs = (lifeByJob.get(a.hcp_job_id ?? "") ?? [])
+        .filter((e) => e.trigger_number >= 2 && e.trigger_number <= 7)
+        .sort((x, y) => (x.fired_at < y.fired_at ? -1 : 1));
+      const segs: TLLifeSeg[] = [];
+      if (evs.length === 0) {
+        segs.push({ startMin: schedStart, endMin: Math.max(schedEnd, schedStart + 10), color: PLANNED, label: "Scheduled", planned: true });
+      } else {
+        const firstMin = chiMinOfDay(evs[0].fired_at);
+        if (schedStart < firstMin) segs.push({ startMin: schedStart, endMin: firstMin, color: PLANNED, label: "Scheduled", planned: true });
+        for (let i = 0; i < evs.length; i++) {
+          const t = evs[i].trigger_number; const st = STATE[t]; if (!st) continue;
+          const s = chiMinOfDay(evs[i].fired_at); const terminal = t === 6 || t === 7;
+          let e2 = i < evs.length - 1 ? chiMinOfDay(evs[i + 1].fired_at) : (terminal ? s + 8 : (isTodayDay && dayNowMin != null ? dayNowMin : Math.max(schedEnd, s + 20)));
+          if (e2 < s) e2 = s + 8;
+          segs.push({ startMin: s, endMin: e2, color: st.color, label: `${st.label} ${chiClockOf(evs[i].fired_at)}`, planned: false });
+        }
+      }
+      const lastEv = evs[evs.length - 1];
+      const startEv = evs.find((e) => e.trigger_number === 3);
+      const finished = evs.some((e) => e.trigger_number === 6 || e.trigger_number === 7);
+      const liveMinutes = startEv && isTodayDay && dayNowMin != null && !finished ? Math.max(0, dayNowMin - chiMinOfDay(startEv.fired_at)) : null;
+      const crewSize = Math.max(1, a.tech_all_names?.length ?? 1);
+      const materials = a.hcp_job_id ? matByJob.get(a.hcp_job_id) ?? 0 : 0;
+      const laborEst = liveMinutes != null ? (liveMinutes / 60) * BURDEN * crewSize : null;
+      return {
+        key: a.appointment_id ?? a.hcp_job_id ?? `${a.scheduled_start}-${a.customer_name ?? ""}`,
+        hcpJobId: a.hcp_job_id, customer: a.customer_name,
+        startMin: segs[0].startMin, endMin: segs[segs.length - 1].endMin,
+        segs,
+        curColor: lastEv ? STATE[lastEv.trigger_number]?.color ?? PLANNED : PLANNED,
+        curState: lastEv ? STATE[lastEv.trigger_number]?.label ?? "Scheduled" : "Scheduled",
+        leadColor, liveMinutes, materials, laborEst,
+      };
+    };
+
+    timelineRows = rowOrder.map((full) => {
+      const short = shortByFull.get(full) ?? full.split(" ")[0];
+      const unassigned = full === "Unassigned";
+      const rowAppts = appts.filter((a) => {
+        if (unassigned) return !a.tech_primary_name;
+        const crew = a.tech_all_names && a.tech_all_names.length ? a.tech_all_names : (a.tech_primary_name ? [a.tech_primary_name] : []);
+        return a.tech_primary_name === full || crew.includes(full);
+      });
+      const jobs = rowAppts.map((a) => buildJob(a, a.leadColorHex ?? resolveTechColor(full, colorByFull)));
+      return {
+        full, short,
+        avatarUrl: avatarByFull.get(full) ?? null,
+        colorHex: colorByFull.get(full) ?? null,
+        isLead: leadSet.has(full),
+        unassigned,
+        apptCount: jobs.length,
+        dollars: (dollarsByTech.get(full) ?? 0) / 100,
+        clockSpans: clockByShort.get(short) ?? [],
+        activity: actByShort.get(short) ?? [],
+        jobs,
+      };
+    });
+  }
+
   const linkFor = (overrides: Record<string, string | null>): string => buildUrl(params, overrides);
 
   const centerLabel = (() => {
@@ -773,20 +922,13 @@ export default async function SchedulePage({
 
       {/* VIEW DISPATCH */}
       {view === "day" && (
-        <DayView
-          dayKey={centerKey}
-          rowOrder={rowOrder}
-          cells={cells}
-          techs={techs}
-          shortByFull={shortByFull}
-          avatarByFull={avatarByFull}
-          apptCountByTech={apptCountByTech}
-          dollarsByTech={dollarsByTech}
-          assistCountByTech={assistCountByTech}
-          pendingByAppt={pendingByAppt}
-          color={color}
-          todayKey={todayKey}
-        />
+        <div className="space-y-2">
+          {centerKey === todayKey ? <AutoRefresh seconds={60} /> : null}
+          <div className={`rounded-t-2xl border px-4 py-2 text-sm font-semibold ${centerKey === todayKey ? "border-amber-300 bg-amber-50 text-amber-900" : "border-neutral-200 bg-neutral-50 text-neutral-800"}`}>
+            {centerLabel}
+          </div>
+          <TechDayTimeline rows={timelineRows} isToday={centerKey === todayKey} nowMin={dayNowMin} />
+        </div>
       )}
 
       {view === "week" && (
