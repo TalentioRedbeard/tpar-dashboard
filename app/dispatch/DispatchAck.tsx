@@ -27,11 +27,13 @@ type Existing = {
 export function DispatchAck({
   itemType,
   itemId,
+  hcpJobId,
   existing,
   canWrite = true,
 }: {
   itemType: DispatchItemType;
   itemId: string;
+  hcpJobId?: string | null;
   existing: Existing;
   canWrite?: boolean;
 }) {
@@ -54,6 +56,7 @@ export function DispatchAck({
     const fd = new FormData();
     fd.set("item_type", itemType);
     fd.set("item_id", itemId);
+    if (hcpJobId) fd.set("hcp_job_id", hcpJobId);
     fd.set("status", status);
     if (status !== "clear") fd.set("note", note);
     startTransition(async () => {

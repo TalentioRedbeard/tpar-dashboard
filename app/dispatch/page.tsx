@@ -34,7 +34,7 @@ import { LaneDropZone } from "../../components/LaneDropZone";
 import { NoteToDanny } from "../../components/NoteToDanny";
 import { GpsQueryWindow } from "../../components/GpsQueryWindow";
 import { listTasks } from "../../lib/tasks";
-import { isResolving, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
+import { isResolving, dispositionEntityKey, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -42,6 +42,7 @@ export const dynamic = "force-dynamic";
 type AckRow = {
   item_type: string;
   item_id: string;
+  entity_key: string | null;
   status: DispatchAckStatus;
   note: string | null;
   set_by_short_name: string | null;
@@ -357,19 +358,29 @@ export default async function DispatchPage({
     // All dispatch_acks — small table, fetch all and bucket client-side
     supa
       .from("dispatch_acks")
-      .select("item_type, item_id, status, note, set_by_short_name, set_at"),
+      .select("item_type, item_id, entity_key, status, note, set_by_short_name, set_at"),
   ]);
 
   const ackRows = (acksRes.data ?? []) as AckRow[];
   const ackByKey = new Map<string, AckRow>();
   for (const a of ackRows) ackByKey.set(`${a.item_type}:${a.item_id}`, a);
-  const resolvedCount = Array.from(ackByKey.values()).filter((a) => isResolving(a.status)).length;
-  function getAck(item_type: DispatchItemType, item_id: string | null | undefined): AckRow | null {
-    if (!item_id) return null;
-    return ackByKey.get(`${item_type}:${item_id}`) ?? null;
+  // Entity-keyed index for cross-window status sync (Danny 2026-06-03). The same
+  // job in a lane / Stale / Needs-scheduling / Week-ahead shares one disposition;
+  // most-recent wins per entity (handles legacy rows pre-dating entity_key).
+  const ackByEntity = new Map<string, AckRow>();
+  for (const a of ackRows) {
+    if (!a.entity_key) continue;
+    const prev = ackByEntity.get(a.entity_key);
+    if (!prev || new Date(a.set_at) > new Date(prev.set_at)) ackByEntity.set(a.entity_key, a);
   }
-  function isAddressed(item_type: DispatchItemType, item_id: string | null | undefined): boolean {
-    return getAck(item_type, item_id)?.status === "addressed";
+  const resolvedCount = Array.from(ackByEntity.values()).filter((a) => isResolving(a.status)).length;
+  function getAck(item_type: DispatchItemType, item_id: string | null | undefined, hcpJobId?: string | null): AckRow | null {
+    if (!item_id) return null;
+    const ek = dispositionEntityKey(item_type, item_id, hcpJobId ?? null);
+    return ackByEntity.get(ek) ?? ackByKey.get(`${item_type}:${item_id}`) ?? null;
+  }
+  function isAddressed(item_type: DispatchItemType, item_id: string | null | undefined, hcpJobId?: string | null): boolean {
+    return getAck(item_type, item_id, hcpJobId)?.status === "addressed";
   }
 
   const todayRows = (todayRes.data ?? []) as Appt[];
@@ -776,7 +787,7 @@ export default async function DispatchPage({
                       const gps = a.appointment_id ? gpsByAppt.get(a.appointment_id) : undefined;
                       const lifecycleEvents = a.hcp_job_id ? (lifecycleByJob.get(a.hcp_job_id) ?? []) : [];
                       const state = techStateFromEvents(lifecycleEvents);
-                      const ack = getAck("appointment", a.appointment_id);
+                      const ack = getAck("appointment", a.appointment_id, a.hcp_job_id);
                       const crew = crewFor(a);
                       if (hideResolved && isResolving(ack?.status)) return null;
                       const dimmed = isResolving(ack?.status);
@@ -816,7 +827,7 @@ export default async function DispatchPage({
                               <ReassignTech hcpJobId={a.hcp_job_id} current={a.tech_primary_name} techs={assignTechOptions} />
                             ) : null}
                             {a.appointment_id ? (
-                              <span className="ml-auto"><DispatchAck itemType="appointment" itemId={a.appointment_id} existing={ack} canWrite={canWriteAck} /></span>
+                              <span className="ml-auto"><DispatchAck itemType="appointment" itemId={a.appointment_id} hcpJobId={a.hcp_job_id} existing={ack} canWrite={canWriteAck} /></span>
                             ) : null}
                           </div>
                           {ack?.note ? <div className="mt-1 text-[11px] italic text-neutral-700">“{ack.note}”</div> : null}
@@ -845,7 +856,7 @@ export default async function DispatchPage({
       {staleRows.length > 0 ? (() => {
         const FOURTEEN_DAYS_MS = 14 * 86_400_000;
         const renderStale = (s: typeof staleRows[number]) => {
-          const ack = getAck("stale_appointment", s.appointment_id);
+          const ack = getAck("stale_appointment", s.appointment_id, s.hcp_job_id);
           if (hideResolved && isResolving(ack?.status)) return null;
           const dimmed = isResolving(ack?.status);
           const ageDays = Math.round((Date.now() - new Date(s.scheduled_start).getTime()) / 86_400_000);
@@ -863,7 +874,7 @@ export default async function DispatchPage({
                 · status: {s.status}
               </span>
               {s.appointment_id ? (
-                <span className="ml-auto"><DispatchAck itemType="stale_appointment" itemId={s.appointment_id} existing={ack} canWrite={canWriteAck} /></span>
+                <span className="ml-auto"><DispatchAck itemType="stale_appointment" itemId={s.appointment_id} hcpJobId={s.hcp_job_id} existing={ack} canWrite={canWriteAck} /></span>
               ) : null}
               {ack?.note ? <span className="w-full pl-12 text-[11px] italic text-amber-900/80">“{ack.note}”</span> : null}
             </li>
@@ -927,7 +938,7 @@ export default async function DispatchPage({
               <Link href={`/job/${j.hcp_job_id}`} className="font-mono text-[10px] text-sky-700 hover:underline">{j.hcp_job_id.slice(0, 12)}…</Link>
               <span className="ml-auto flex items-center gap-1">
                 {canWriteAck ? <RequestReportButton hcpCustomerId={j.hcp_customer_id} /> : null}
-                <DispatchAck itemType="needs_scheduling" itemId={j.hcp_job_id} existing={ack} canWrite={canWriteAck} />
+                <DispatchAck itemType="needs_scheduling" itemId={j.hcp_job_id} hcpJobId={j.hcp_job_id} existing={ack} canWrite={canWriteAck} />
               </span>
               {(j.notes_preview || ack?.note) ? (
                 <span className="w-full pl-12 text-xs italic text-sky-900/70">
@@ -1024,7 +1035,7 @@ export default async function DispatchPage({
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
                       {dayRows.map((r) => {
-                        const ack = getAck("appointment", r.appointment_id);
+                        const ack = getAck("appointment", r.appointment_id, r.hcp_job_id);
                         if (hideResolved && isResolving(ack?.status)) return null;
                         const dimmed = isResolving(ack?.status);
                         return (
@@ -1055,7 +1066,7 @@ export default async function DispatchPage({
                             </td>
                             <td className="px-3 py-2 align-top text-right font-medium text-neutral-700">{(Number(r.total_amount) || 0) > 0 ? fmtMoney((Number(r.total_amount) || 0) / 100) : ""}</td>
                             <td className="px-3 py-2 align-top text-right">
-                              {r.appointment_id ? <DispatchAck itemType="appointment" itemId={r.appointment_id} existing={ack} canWrite={canWriteAck} /> : null}
+                              {r.appointment_id ? <DispatchAck itemType="appointment" itemId={r.appointment_id} hcpJobId={r.hcp_job_id} existing={ack} canWrite={canWriteAck} /> : null}
                             </td>
                           </tr>
                         );

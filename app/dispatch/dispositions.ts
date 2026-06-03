@@ -106,3 +106,19 @@ export function ackBorder(status: DispatchAckStatus | undefined): string {
     default:                 return "border-neutral-200";
   }
 }
+
+// Canonical entity key for cross-window status sync (Danny 2026-06-03). The SAME
+// job shown in a tech lane, in Stale, in Needs-scheduling, and in Week-ahead all
+// resolve to one key ('job:<hcp_job_id>'), so a disposition set in any window
+// reflects in every window that shows that job. Comms stay their own domain.
+// Shared by BOTH the write action and the page read so they always agree.
+export function dispositionEntityKey(
+  itemType: DispatchItemType,
+  itemId: string,
+  hcpJobId?: string | null,
+): string {
+  if (itemType === "comm_event") return `comm:${itemId}`;
+  if (itemType === "needs_scheduling") return `job:${itemId}`; // item_id IS the job id
+  if (hcpJobId) return `job:${hcpJobId}`;                        // appointment / stale → its job
+  return `appt:${itemId}`;                                       // no job id known → appointment scope
+}

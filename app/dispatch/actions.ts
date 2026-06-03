@@ -14,6 +14,7 @@ import {
   ALL_STATUSES,
   VALID_ITEM_TYPES,
   DISPOSITION_LABEL,
+  dispositionEntityKey,
 } from "./dispositions";
 
 export type AckActionResult =
@@ -46,19 +47,20 @@ export async function setDispatchAck(
   const status    = String(formData.get("status")    ?? "").trim() as DispatchAckStatus | "clear";
   const noteRaw   = formData.get("note");
   const note      = typeof noteRaw === "string" ? noteRaw.trim().slice(0, 500) || null : null;
+  const hcp_job_id = (String(formData.get("hcp_job_id") ?? "").trim()) || null;
 
   if (!(VALID_ITEM_TYPES as string[]).includes(item_type)) return { ok: false, message: `invalid item_type: ${item_type}` };
   if (!item_id) return { ok: false, message: "missing item_id" };
 
   const supa = db();
 
-  // Clear = delete the row (item returns to "unset" state)
+  // Canonical entity key — the SAME job across lane / Stale / Needs-scheduling /
+  // Week-ahead resolves to one key, so a status set in any window syncs to all.
+  const entity_key = dispositionEntityKey(item_type, item_id, hcp_job_id);
+
+  // Clear = remove the disposition for this entity everywhere it shows.
   if (status === "clear") {
-    const { error } = await supa
-      .from("dispatch_acks")
-      .delete()
-      .eq("item_type", item_type)
-      .eq("item_id", item_id);
+    const { error } = await supa.from("dispatch_acks").delete().eq("entity_key", entity_key);
     if (error) return { ok: false, message: error.message };
     revalidatePath("/dispatch");
     return { ok: true, message: "cleared" };
@@ -68,20 +70,21 @@ export async function setDispatchAck(
     return { ok: false, message: `invalid status: ${status}` };
   }
 
-  // Upsert: one row per (item_type, item_id), updated_at refreshes on change
+  // One disposition per entity: clear any prior rows for this entity (set from
+  // any window), then write the new one — keeps cross-window state consistent.
   const now = new Date().toISOString();
-  const { error } = await supa
-    .from("dispatch_acks")
-    .upsert({
-      item_type,
-      item_id,
-      status,
-      note,
-      set_by_email: writer.email,
-      set_by_short_name: writer.short_name,
-      set_at: now,        // first-set time (overwritten on each change for simplicity)
-      updated_at: now,
-    }, { onConflict: "item_type,item_id" });
+  await supa.from("dispatch_acks").delete().eq("entity_key", entity_key);
+  const { error } = await supa.from("dispatch_acks").insert({
+    item_type,
+    item_id,
+    entity_key,
+    status,
+    note,
+    set_by_email: writer.email,
+    set_by_short_name: writer.short_name,
+    set_at: now,
+    updated_at: now,
+  });
 
   if (error) return { ok: false, message: error.message };
   revalidatePath("/dispatch");
