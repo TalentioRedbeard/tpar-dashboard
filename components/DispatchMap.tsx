@@ -12,7 +12,7 @@
 // Requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in env (Vercel + local).
 // Without it the map renders a placeholder pointing to setup steps.
 
-import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useApiLoadingStatus, APILoadingStatus } from "@vis.gl/react-google-maps";
 import { useMemo, useState } from "react";
 
 export type CustomerPin = {
@@ -124,6 +124,33 @@ function fmtAgo(iso: string): string {
   return `${Math.floor(ms / 86_400_000)}d ago`;
 }
 
+// Covers the map box while Google's JS is loading, and offers a Reload on
+// failure — so a slow/flaky/quota-throttled script load shows "Loading map…"
+// instead of a blank white box (the intermittent symptom caught 2026-06-02).
+function MapStatusOverlay() {
+  const status = useApiLoadingStatus();
+  if (status === APILoadingStatus.LOADED) return null;
+  const failed = status === APILoadingStatus.FAILED || status === APILoadingStatus.AUTH_FAILURE;
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/95 text-sm text-neutral-600">
+      {failed ? (
+        <div className="text-center">
+          <div className="font-medium text-red-700">Map didn&rsquo;t load</div>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Reload
+          </button>
+        </div>
+      ) : (
+        <span className="animate-pulse">Loading map&hellip;</span>
+      )}
+    </div>
+  );
+}
+
 export function DispatchMap({ customers, vans, techs }: Props) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const [activePin, setActivePin] = useState<{ kind: "customer" | "van" | "tech"; id: string } | null>(null);
@@ -189,7 +216,8 @@ export function DispatchMap({ customers, vans, techs }: Props) {
   return (
     <div className="mb-6 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
       <APIProvider apiKey={apiKey}>
-        <div className="h-[420px] w-full">
+        <div className="relative h-[420px] w-full">
+          <MapStatusOverlay />
           <Map
             defaultCenter={center}
             defaultZoom={customers.length + vans.length + techs.length > 0 ? 11 : 10}
