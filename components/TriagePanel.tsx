@@ -46,7 +46,7 @@ export function TriagePanel({ items }: { items: TriageItem[] }) {
   const appliedCount = Object.values(handled).filter((v) => v === "applied").length;
 
   return (
-    <div className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
+    <div className="rounded-2xl border border-violet-200 border-t-[3px] border-t-violet-400 bg-violet-50/40 p-4">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-violet-900">✨ Suggested triage</h3>
         <button type="button" onClick={run} disabled={pending || items.length === 0} className="rounded-md bg-violet-700 px-3 py-1 text-xs font-medium text-white hover:bg-violet-800 disabled:opacity-50">

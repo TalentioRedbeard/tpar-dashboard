@@ -22,7 +22,7 @@ export function NoteToDanny() {
   }
 
   return (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+    <div className="rounded-2xl border border-amber-200 border-t-[3px] border-t-amber-400 bg-amber-50/50 p-4">
       <h3 className="mb-2 text-sm font-semibold text-amber-900">📨 Note to Danny</h3>
       <textarea
         value={body}

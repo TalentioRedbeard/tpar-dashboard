@@ -31,7 +31,7 @@ export function TaskList({ tasks, techNames }: { tasks: Task[]; techNames: strin
   const done = tasks.filter((t) => t.status === "done");
 
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+    <div className="rounded-2xl border border-neutral-200 border-t-[3px] border-t-slate-400 bg-white p-4">
       <h3 className="mb-2 text-sm font-semibold text-neutral-900">📋 Task List</h3>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New task…" className="min-w-[180px] flex-1 rounded-md border border-neutral-300 px-2 py-1 text-sm" />

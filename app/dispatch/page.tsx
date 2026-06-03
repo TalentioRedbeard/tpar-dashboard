@@ -745,7 +745,7 @@ export default async function DispatchPage({
             No active techs to render.
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 pb-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="flex gap-2 overflow-x-auto pb-3">
             {techLaneOrder.map((techName) => {
               const lane = laneByTech.get(techName) ?? [];
               const shortName = activeTechs.find((t) => t.hcp_full_name === techName)?.tech_short_name
@@ -753,7 +753,7 @@ export default async function DispatchPage({
               const van = vanByDriver.get(shortName);
               const revenue = revenueByTechToday.get(techName) ?? 0;
               return (
-                <LaneDropZone key={techName} techShortName={shortName !== "Unassigned" ? shortName : null} className="flex flex-col rounded-2xl border border-neutral-200 bg-white">
+                <LaneDropZone key={techName} techShortName={shortName !== "Unassigned" ? shortName : null} className="flex w-[208px] shrink-0 flex-col rounded-2xl border border-neutral-200 border-t-[3px] border-t-slate-400 bg-white">
                   <header className="border-b border-neutral-100 p-2">
                     <div className="flex items-baseline justify-between gap-2">
                       <div className="flex items-center gap-2">
@@ -839,8 +839,10 @@ export default async function DispatchPage({
         <VehicleStrip vehicles={assignableVehicles} canEdit={me.isAdmin} techShortNames={taskTechNames} />
       </section>
 
-      {/* STALE — Layer 2 decay: split <14d vs 14+d */}
-      {staleRows.length > 0 && (() => {
+      {/* STALE + SUGGESTED TRIAGE — side by side (Danny 2026-06-03) */}
+      {(staleRows.length > 0 || (needsSchedulingRows.length > 0 && (me.isAdmin || me.isManager))) && (
+      <div className="mb-6 grid items-start gap-4 lg:grid-cols-2">
+      {staleRows.length > 0 ? (() => {
         const FOURTEEN_DAYS_MS = 14 * 86_400_000;
         const renderStale = (s: typeof staleRows[number]) => {
           const ack = getAck("stale_appointment", s.appointment_id);
@@ -870,7 +872,7 @@ export default async function DispatchPage({
         const fresh = staleRows.filter(s => (Date.now() - new Date(s.scheduled_start).getTime()) < FOURTEEN_DAYS_MS);
         const older = staleRows.filter(s => (Date.now() - new Date(s.scheduled_start).getTime()) >= FOURTEEN_DAYS_MS);
         return (
-          <details className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <details className="rounded-2xl border border-amber-200 border-t-[3px] border-t-amber-400 bg-amber-50 p-4">
             <summary className="cursor-pointer text-sm font-semibold text-amber-900">
               Stale: {staleRows.length} appointment{staleRows.length === 1 ? "" : "s"} (7-60d past, still &quot;scheduled&quot; / &quot;needs scheduling&quot;)
               <span className="ml-2 font-normal text-amber-900/70">{fresh.length} recent (≤14d) · {older.length} older (14+d) · click to expand</span>
@@ -890,7 +892,12 @@ export default async function DispatchPage({
             )}
           </details>
         );
-      })()}
+      })() : null}
+      {needsSchedulingRows.length > 0 && (me.isAdmin || me.isManager) ? (
+        <TriagePanel items={needsSchedulingRows.map((j) => ({ id: j.hcp_job_id, customer_id: j.hcp_customer_id ?? null, customer_name: j.customer_name, age_days: j.age_days, context: j.notes_preview }))} />
+      ) : null}
+      </div>
+      )}
 
       {/* NEEDS SCHEDULING + ADVISOR — side by side (Madisson works the backlog) */}
       {needsSchedulingRows.length > 0 && (
@@ -959,11 +966,7 @@ export default async function DispatchPage({
       </div>
       )}
 
-      {needsSchedulingRows.length > 0 && (me.isAdmin || me.isManager) ? (
-        <div className="mb-6">
-          <TriagePanel items={needsSchedulingRows.map((j) => ({ id: j.hcp_job_id, customer_id: j.hcp_customer_id ?? null, customer_name: j.customer_name, age_days: j.age_days, context: j.notes_preview }))} />
-        </div>
-      ) : null}
+      {/* Suggested triage moved up beside Stale (Danny 2026-06-03) */}
 
       {/* WEEK AHEAD */}
       <details className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4" open>
