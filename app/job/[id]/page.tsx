@@ -374,9 +374,24 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     : null;
 
   const addressLine = [j.street as string, j.city as string].filter(Boolean).join(", ");
+  // Turn-by-turn deep link (free Maps URL, not the paid Directions API).
+  const directionsUrl = addressLine
+    ? `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(addressLine)}`
+    : null;
   const description = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {addressLine ? <span>{addressLine}</span> : null}
+      {directionsUrl ? (
+        <a
+          href={directionsUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 rounded-md border border-teal-300 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-800 transition hover:bg-teal-100"
+          title="Open turn-by-turn directions to the job site"
+        >
+          🧭 Directions
+        </a>
+      ) : null}
       <span className="font-mono text-xs text-neutral-500">{id}</span>
       {customerId ? (
         <Link href={`/customer/${customerId}`} className="text-brand-700 hover:underline">
