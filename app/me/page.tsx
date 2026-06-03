@@ -534,6 +534,9 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       hcpAppointmentId={apptId}
                       firedTriggers={lifecycleByJob.get(jobId) ?? []}
                       initialMirrors={initialMirrorsByJob.get(jobId) ?? {}}
+                      destAddress={[a.street, a.city, a.zip].filter(Boolean).join(", ")}
+                      destLat={a.cust_lat as number | null}
+                      destLng={a.cust_lng as number | null}
                     />
                   )}
                   {!viewingAs && (apptId || jobId) ? (

@@ -22,6 +22,12 @@ type Props = {
     message?: string;
     elapsed_ms?: number;
   }>;
+  // Job-site destination for the "Directions" deep link (turn-by-turn in the
+  // tech's maps app). Address is preferred (Google geocodes it + shows a
+  // readable destination); coords are the fallback when no address.
+  destAddress?: string | null;
+  destLat?: number | null;
+  destLng?: number | null;
 };
 
 type TriggerNum = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -57,7 +63,7 @@ const TRIGGER_ACTION: Record<TriggerNum, string> = {
 
 type MirrorEntry = { firedAt: string; status: HcpMirrorStatus };
 
-export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors }: Props) {
+export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors, destAddress, destLat, destLng }: Props) {
   const [pending, startTransition] = useTransition();
   const [lastFired, setLastFired] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -187,9 +193,32 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     });
   };
 
+  // Turn-by-turn deep link (not the paid Directions API) — launches the tech's
+  // maps app (Google Maps app/web, or Apple Maps on iOS) straight to the job.
+  const directionsUrl = (() => {
+    const base = "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=";
+    const addr = (destAddress ?? "").trim();
+    if (addr) return base + encodeURIComponent(addr);
+    if (typeof destLat === "number" && typeof destLng === "number" && !(destLat === 0 && destLng === 0)) {
+      return base + encodeURIComponent(`${destLat},${destLng}`);
+    }
+    return null;
+  })();
+
   return (
     <div className="mt-2.5">
       <div className="flex flex-wrap gap-1.5">
+        {directionsUrl ? (
+          <a
+            href={directionsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-md border border-teal-300 bg-teal-50 px-2.5 py-1.5 text-xs font-medium text-teal-800 transition hover:bg-teal-100"
+            title="Open turn-by-turn directions to the job site"
+          >
+            🧭 Directions
+          </a>
+        ) : null}
         {BUTTONS.map((b) => {
           const wasFired = firedTriggers.includes(b.trigger) || lastFired === b.trigger;
           const mirrorEntry = mirror[b.trigger];
