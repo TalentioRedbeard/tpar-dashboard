@@ -16,7 +16,7 @@ import { PageShell } from "../../components/PageShell";
 import { AppGuide } from "../../components/AppGuide";
 import { Table, Pagination, FilterBar, StatusPill, fmtMoney, fmtPct, fmtDateShort, type Column } from "../../components/Table";
 import { StatCard } from "../../components/ui/StatCard";
-import { getEffectiveTechName } from "../../lib/current-tech";
+import { getEffectiveTechName, getCurrentTech } from "../../lib/current-tech";
 import { getFormerTechNames } from "../../lib/former-techs";
 import { TechName } from "../../components/ui/TechName";
 
@@ -72,6 +72,11 @@ export default async function JobsListPage({
 }: {
   searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; include_internal?: string; mine?: string; as?: string; page?: string; full_history?: string }>;
 }) {
+  // Tech-tier shows only their own work via /me + scoped /job/[id]. The list
+  // exposes company-wide revenue + gross margin, so gate to admin/manager
+  // (same pattern as /dispatch + /schedule + /reports).
+  const me = await getCurrentTech().catch(() => null);
+  if (!me?.isAdmin && !me?.isManager) redirect("/me");
   const params = await searchParams;
   const q = (params.q ?? "").trim();
   const tech = (params.tech ?? "").trim();

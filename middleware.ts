@@ -27,7 +27,11 @@ const PUBLIC_PREFIXES = [
   "/login", "/auth", "/_next", "/favicon", "/api/health",
   // PWA assets must be publicly fetchable so the browser can install the app
   // before the user signs in. Manifest + auto-generated icons are non-sensitive.
-  "/manifest.webmanifest", "/icon", "/apple-icon",
+  // Next emits the icon routes as /icon1, /icon2, /apple-icon (numbered when
+  // there are multiple sizes) — whitelist the numbered variants too, or Android
+  // "Add to Home Screen" 307-redirects the icon fetch to /login and installs a
+  // blank placeholder. iOS is unaffected but include apple-icon for parity.
+  "/manifest.webmanifest", "/icon", "/icon1", "/icon2", "/apple-icon",
   // Service worker — must be fetchable at /sw.js without auth so the browser
   // can register it. The SW does not bypass middleware for protected routes;
   // it just caches responses the user already had access to.

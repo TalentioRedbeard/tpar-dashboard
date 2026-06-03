@@ -1,5 +1,7 @@
 // Search page — find customers, jobs, communications by name / phone / id / topic
 import { db } from "@/lib/supabase";
+import { redirect } from "next/navigation";
+import { getCurrentTech } from "@/lib/current-tech";
 import Link from "next/link";
 import { PageShell } from "../../components/PageShell";
 import { Section } from "../../components/ui/Section";
@@ -95,6 +97,9 @@ function fmtMoney(n: unknown): string {
 }
 
 export default async function SearchPage({ searchParams }: SearchProps) {
+  // Cross-entity search returns customer revenue + job margins; gate to admin/manager.
+  const me = await getCurrentTech().catch(() => null);
+  if (!me?.isAdmin && !me?.isManager) redirect("/me");
   const { q = "" } = await searchParams;
   const results = q ? await loadResults(q) : null;
 

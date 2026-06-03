@@ -4,6 +4,7 @@
 // "Mine only" = filter to the signed-in tech (admins can ?as=Anthony).
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { AppGuide } from "../../components/AppGuide";
@@ -39,6 +40,10 @@ export default async function CommsPage({
 }: {
   searchParams: Promise<{ q?: string; channel?: string; tech?: string; min_importance?: string; include_noise?: string; mine?: string; as?: string; page?: string }>;
 }) {
+  // The unified inbox shows every customer's calls/texts/emails company-wide.
+  // Gate to admin/manager; techs work their own comms from /me + /job/[id].
+  const me = await getCurrentTech().catch(() => null);
+  if (!me?.isAdmin && !me?.isManager) redirect("/me");
   const params = await searchParams;
   const q = (params.q ?? "").trim();
   const channel = (params.channel ?? "").trim();
@@ -61,7 +66,6 @@ export default async function CommsPage({
   // narrows the default (unsearched) feed.
   const techFilterSuspended = !!q && (!!effectiveTechName || !!tech);
 
-  const me = await getCurrentTech().catch(() => null);
   // Managers (Madisson) can resolve comms — mirror requireResolver() here.
   const canWrite = canResolveComms(me);
   const formerShortSet = await getFormerTechShortNames();

@@ -1,7 +1,9 @@
 // Customers list. Sources from customer_360. Search by name. Pagination via
 // ?page=N. Each row links to /customer/[id] for the existing 360 view.
 
+import { redirect } from "next/navigation";
 import { db } from "../../lib/supabase";
+import { getCurrentTech } from "../../lib/current-tech";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, fmtMoney, fmtDateShort, type Column } from "../../components/Table";
 import { StatCard } from "../../components/ui/StatCard";
@@ -28,6 +30,11 @@ export default async function CustomersListPage({
 }: {
   searchParams: Promise<{ q?: string; page?: string; outstanding?: string; include_internal?: string }>;
 }) {
+  // Customer list exposes lifetime revenue + outstanding AR + PII for every
+  // customer. Gate to admin/manager; techs reach their own jobs' customers
+  // via scoped /customer/[id].
+  const me = await getCurrentTech().catch(() => null);
+  if (!me?.isAdmin && !me?.isManager) redirect("/me");
   const params = await searchParams;
   const q = (params.q ?? "").trim();
   const page = Math.max(1, Number(params.page ?? "1"));

@@ -3,6 +3,7 @@
 // table where every row links to /estimate/[id] for inline edit.
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { StatCard } from "../../components/ui/StatCard";
@@ -14,6 +15,9 @@ export const metadata = { title: "Estimates · TPAR-DB" };
 const STATUSES = ["draft", "preview", "approved", "pushed", "archived"] as const;
 
 export default async function EstimatesPage() {
+  // Pipeline shows pricing + margins across all customers. Gate to admin/manager.
+  const me = await getCurrentTech().catch(() => null);
+  if (!me?.isAdmin && !me?.isManager) redirect("/me");
   const supa = db();
   const { data } = await supa
     .from("bid_estimates")
@@ -22,7 +26,6 @@ export default async function EstimatesPage() {
     .limit(200);
   const rows = (data ?? []) as EstimateRow[];
 
-  const me = await getCurrentTech().catch(() => null);
   const canCreate = !!(me?.isAdmin || me?.isManager);
 
   const byStatus = new Map<string, number>();

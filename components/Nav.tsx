@@ -80,6 +80,14 @@ export function Nav({
   const badgeFor = (href: string): number =>
     href === "/inbox" ? unreadInbox : href === "/whiteboard" ? unreadBoard : 0;
   const showMyDay = isTech || hasTechRow;
+  // Leadership-only surfaces (company-wide revenue/margins/all customers+comms).
+  // Techs are page-gated to /me on these; hide the links too so the nav honors
+  // "you only see your own work". Scoped object pages (/job/[id], /customer/[id])
+  // stay reachable. Admin + manager see everything.
+  const leadershipView = showAdmin || isManager;
+  const LEADERSHIP_LIST = new Set(["/customers", "/jobs", "/estimates", "/comms", "/dispatch", "/schedule", "/reports"]);
+  const navItems = leadershipView ? NAV_ITEMS : NAV_ITEMS.filter((i) => !LEADERSHIP_LIST.has(i.href));
+  const primaryItems = leadershipView ? PRIMARY_ITEMS : PRIMARY_ITEMS.filter((i) => !LEADERSHIP_LIST.has(i.href));
 
   // Build the section list once — shared by the logo dropdown + mobile drawer.
   const mobileSections = [
@@ -87,7 +95,7 @@ export function Nav({
       title: "Main",
       items: [
         ...(showMyDay ? [{ href: "/me", label: "My day", tone: "tech" as const }] : []),
-        ...NAV_ITEMS.map((i) => ({ ...i, tone: "default" as const })),
+        ...navItems.map((i) => ({ ...i, tone: "default" as const })),
       ],
     },
     {
@@ -103,10 +111,12 @@ export function Nav({
     ...(isManager
       ? [{ title: "Role", items: [{ href: "/me", label: "Manager · read-only", tone: "manager" as const }] }]
       : []),
-    {
-      title: "Other",
-      items: [{ href: "/search", label: "Search", tone: "default" as const }],
-    },
+    ...(leadershipView
+      ? [{
+          title: "Other",
+          items: [{ href: "/search", label: "Search", tone: "default" as const }],
+        }]
+      : []),
   ];
 
   return (
@@ -118,7 +128,7 @@ export function Nav({
         {/* Desktop banner — a few daily-driver links; everything else lives in
             the logo dropdown (left), so the banner stays clean. Active-page
             highlight is computed client-side in NavLinks (usePathname). */}
-        <NavLinks showMyDay={showMyDay} items={PRIMARY_ITEMS} />
+        <NavLinks showMyDay={showMyDay} items={primaryItems} />
 
         {/* Mobile spacer pushes hamburger + email to the right */}
         <div className="ml-auto md:hidden" />
