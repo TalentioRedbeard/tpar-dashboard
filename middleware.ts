@@ -69,6 +69,28 @@ async function isAllowedPhone(phone: string | null | undefined): Promise<boolean
   }
 }
 
+// Email logins from a non-tulsapar.com address (e.g. a tech whose only email is
+// personal) are allowed iff the address matches an ACTIVE tech_directory row —
+// same trust model as isAllowedPhone (the DB is the source of truth, so adding
+// or clearing a tech's email instantly grants/revokes access). Only runs AFTER
+// the domain + env allow-list already said no, so @tulsapar.com keeps its
+// single getUser() round-trip with no extra DB call.
+async function isAllowedEmail(email: string | null | undefined): Promise<boolean> {
+  const e = (email ?? "").trim().toLowerCase();
+  if (!e || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return false;
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/tech_directory?select=tech_id&is_active=eq.true&email=ilike.${encodeURIComponent(e)}&limit=1`,
+      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } },
+    );
+    if (!r.ok) return false;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 // Decide whether a request is worth logging as a page view. Skip:
 //  - API routes — these are app-internal calls, not user navigations
 //  - Next.js prefetches — the user hasn't actually navigated yet
@@ -154,7 +176,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  const allowed = user.email ? isAllowed(user.email) : await isAllowedPhone(user.phone);
+  const allowed = user.email
+    ? (isAllowed(user.email) || await isAllowedEmail(user.email))
+    : await isAllowedPhone(user.phone);
   if (!allowed) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
