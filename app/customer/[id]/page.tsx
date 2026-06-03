@@ -76,7 +76,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     }
   }
 
-  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership, hcpJobNotesRes, hcpEstimateNotesRes, provCustRes, provCardRes, provJobsRes, provCommsRes, openEstimatesRes, openInvoicesRes, ratesRes] = await Promise.all([
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership, hcpJobNotesRes, hcpEstimateNotesRes, provCustRes, provCardRes, provJobsRes, provCommsRes, openEstimatesRes, openInvoicesRes, ratesRes, recordingsRes] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -150,6 +150,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       .in("category", ["service", "discount", "after_hours", "membership"])
       .order("category")
       .order("amount_cents", { ascending: false }),
+    // SalesAsk scope/sales recordings for this customer — incl. customer-level
+    // ones with no hcp_job_id (which render on no job page anywhere).
+    supabase
+      .from("salesask_recordings")
+      .select("id, recording_name, recorded_at, hcp_job_id, scope_notes, pricing_notes, additional_notes, url_mp3, match_method")
+      .eq("hcp_customer_id", id)
+      .order("recorded_at", { ascending: false, nullsFirst: false })
+      .limit(30),
   ]);
 
   // Pricing-brief derived values
@@ -226,6 +234,13 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       tables: ["customer_notes"],
       last_ts: userNoteLatest?.created_at ?? null,
       count: (notesRes.data ?? []).length,
+    },
+    {
+      section: "SalesAsk recordings",
+      source_fn: "salesask-sync",
+      tables: ["salesask_recordings"],
+      last_ts: ((recordingsRes.data ?? [])[0] as { recorded_at?: string } | undefined)?.recorded_at ?? null,
+      count: (recordingsRes.data ?? []).length,
     },
   ];
   const notes = (notesRes.data ?? []) as CustomerNote[];
@@ -788,6 +803,58 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
               </ScrollPanel>
             );
           })()}
+        </Section>
+
+        <Section
+          title="Recordings"
+          description="SalesAsk scope/sales visits captured for this customer. Customer-level recordings (no job) surface here and nowhere else."
+        >
+          {recordingsRes.data && recordingsRes.data.length > 0 ? (
+            <ScrollPanel tier="standard">
+            <ul className="space-y-2">
+              {(recordingsRes.data as Array<Record<string, unknown>>).map((r) => {
+                const jobId = r.hcp_job_id as string | null;
+                const scope = String(r.scope_notes ?? "").trim();
+                const pricing = String(r.pricing_notes ?? "").trim();
+                const addl = String(r.additional_notes ?? "").trim();
+                return (
+                  <li key={r.id as string} className="rounded-2xl border border-neutral-200 bg-white p-4">
+                    <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                      <span className="font-medium text-neutral-800">{(r.recording_name as string | null) ?? "Recording"}</span>
+                      {r.recorded_at ? (
+                        <span className="font-mono">
+                          {new Date(r.recorded_at as string).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
+                        </span>
+                      ) : null}
+                      {jobId ? (
+                        <Link href={`/job/${jobId}`} className="text-neutral-500 hover:text-neutral-700 hover:underline">job →</Link>
+                      ) : (
+                        <Pill tone="slate">customer-level</Pill>
+                      )}
+                      {r.match_method === "manual_rebind" ? <Pill tone="green">verified</Pill> : null}
+                      {r.url_mp3 ? (
+                        <a href={r.url_mp3 as string} target="_blank" rel="noreferrer" className="ml-auto text-brand-700 hover:underline">🎧 listen</a>
+                      ) : null}
+                    </div>
+                    {scope ? (
+                      <p className="whitespace-pre-wrap text-sm text-neutral-800">{scope}</p>
+                    ) : (
+                      <p className="text-sm text-neutral-400">No scope notes.</p>
+                    )}
+                    {pricing ? (
+                      <p className="mt-2 whitespace-pre-wrap text-xs text-neutral-600"><span className="font-medium text-neutral-500">Pricing: </span>{pricing}</p>
+                    ) : null}
+                    {addl ? (
+                      <p className="mt-1 whitespace-pre-wrap text-xs text-neutral-600"><span className="font-medium text-neutral-500">Notes: </span>{addl}</p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+            </ScrollPanel>
+          ) : (
+            <EmptyState title="No recordings." description="SalesAsk scope/sales recordings for this customer land here." />
+          )}
         </Section>
 
         <ProvenanceCard items={provenanceItems} />
