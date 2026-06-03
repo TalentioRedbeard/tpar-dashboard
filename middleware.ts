@@ -40,6 +40,9 @@ const PUBLIC_PREFIXES = [
   // tulsapar.com, social posts, ads, etc. Backend is public-chat-route edge
   // function, which has its own rate limits + origin checks.
   "/chat",
+  // Public legal pages for the SMS (A2P 10DLC) messaging program — carrier
+  // reviewers + customers must reach these without signing in.
+  "/privacy", "/sms-terms",
 ];
 
 function isAllowed(email: string | null | undefined): boolean {
