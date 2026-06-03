@@ -7,6 +7,8 @@ import { captureTechLocation } from "@/lib/capture-tech-location";
 import { bounceHcpAppointments } from "@/lib/bounce-hcp-appointments";
 import { getOpenJobForTech, type OpenJob } from "@/lib/omw-guard-actions";
 import { OmwGuardModal } from "./OmwGuardModal";
+import { PostPresentationChecklist } from "./PostPresentationChecklist";
+import { EndOfJobChecklist } from "./EndOfJobChecklist";
 
 type Props = {
   hcpJobId: string;
@@ -28,6 +30,10 @@ type Props = {
   destAddress?: string | null;
   destLat?: number | null;
   destLng?: number | null;
+  // Whether each checklist is already submitted for this job — drives the
+  // post-trigger prompt: show the form, or a "✓ on file" chip.
+  ppSubmitted?: boolean;
+  eojSubmitted?: boolean;
 };
 
 type TriggerNum = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -63,7 +69,7 @@ const TRIGGER_ACTION: Record<TriggerNum, string> = {
 
 type MirrorEntry = { firedAt: string; status: HcpMirrorStatus };
 
-export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors, destAddress, destLat, destLng }: Props) {
+export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors, destAddress, destLat, destLng, ppSubmitted, eojSubmitted }: Props) {
   const [pending, startTransition] = useTransition();
   const [lastFired, setLastFired] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -247,6 +253,16 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
           );
         })}
       </div>
+      {firedTriggers.includes(5) || lastFired === 5 ? (
+        ppSubmitted
+          ? <div className="mt-1.5 text-[10px] font-medium text-emerald-700">✓ Post-presentation checklist on file</div>
+          : <PostPresentationChecklist hcpJobId={hcpJobId} />
+      ) : null}
+      {firedTriggers.includes(7) || lastFired === 7 ? (
+        eojSubmitted
+          ? <div className="mt-1.5 text-[10px] font-medium text-emerald-700">✓ End-of-job checklist on file</div>
+          : <EndOfJobChecklist hcpJobId={hcpJobId} />
+      ) : null}
       {error ? <div className="mt-1 text-xs text-red-700">{error}</div> : null}
       {guardJob ? (
         <OmwGuardModal

@@ -218,6 +218,19 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     }
   }
 
+  // Which jobs already have each checklist on file? Drives the post-trigger
+  // prompt in LifecycleButtons (show the form vs a "✓ on file" chip).
+  const ppSubmittedJobs = new Set<string>();
+  const eojSubmittedJobs = new Set<string>();
+  if (apptJobIds.length > 0) {
+    const [ppRes, eojRes] = await Promise.all([
+      supa.from("checklist_post_presentation").select("hcp_job_id").in("hcp_job_id", apptJobIds),
+      supa.from("checklist_end_of_job").select("hcp_job_id").in("hcp_job_id", apptJobIds),
+    ]);
+    for (const r of (ppRes.data ?? []) as Array<{ hcp_job_id: string }>) ppSubmittedJobs.add(r.hcp_job_id);
+    for (const r of (eojRes.data ?? []) as Array<{ hcp_job_id: string }>) eojSubmittedJobs.add(r.hcp_job_id);
+  }
+
   // Which of today's jobs have a briefing this tech hasn't reviewed yet?
   const unreviewedBriefingJobs = new Set(await getUnreviewedBriefingJobs(apptJobIds));
 
@@ -537,6 +550,8 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       destAddress={[a.street, a.city, a.zip].filter(Boolean).join(", ")}
                       destLat={a.cust_lat as number | null}
                       destLng={a.cust_lng as number | null}
+                      ppSubmitted={ppSubmittedJobs.has(jobId)}
+                      eojSubmitted={eojSubmittedJobs.has(jobId)}
                     />
                   )}
                   {!viewingAs && (apptId || jobId) ? (
