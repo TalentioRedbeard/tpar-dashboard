@@ -2,6 +2,7 @@
 import { db } from "@/lib/supabase";
 import Link from "next/link";
 import { NoteForm } from "../../../components/NoteForm";
+import { QuickText } from "../../../components/QuickText";
 import { addCustomerNote } from "../../../lib/notes-actions";
 import { AgreementForm } from "../../../components/AgreementForm";
 import { AgreementStatusButton } from "../../../components/AgreementStatusButton";
@@ -353,12 +354,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         {canWrite && (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-2">
             <span className="text-xs font-medium uppercase tracking-wide text-neutral-500 pl-1">Comms:</span>
-            <Link
-              href={`/comms/new?customer=${id}&type=customer`}
-              className="rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-800 hover:bg-brand-100"
-            >
-              💬 Text
-            </Link>
+            <QuickText
+              defaultPhone={((cust.phone_mobile10 as string | null) ?? (cust.phone10 as string | null)) || null}
+              hcpCustomerId={id}
+            />
             <Link
               href={`/comms/new?customer=${id}&type=customer`}
               className="rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100"
