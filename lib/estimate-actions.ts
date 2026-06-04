@@ -39,18 +39,33 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
   const message  = String(formData.get("message") ?? "").trim();
   if (!hcpJobId) return { ok: false, error: "hcp_job_id required" };
 
-  // Pull customer from job_360. address_id isn't on job_360 (HCP picks the
-  // default customer address); pass it through only if a future caller
-  // ever provides it on the form.
+  // Pull the job's customer + the raw HCP payload so the estimate inherits the
+  // job's assigned tech(s) AND service address. HCP's POST /estimates never
+  // auto-links an estimate to a job and drops the tech unless we pass
+  // assigned_employee_ids explicitly — without this the estimate lands in HCP
+  // with no technician (the bug this fixes, Danny 2026-06-04).
   const supa = db();
   const { data: job, error: jobErr } = await supa
-    .from("job_360")
-    .select("hcp_customer_id")
+    .from("hcp_jobs_raw")
+    .select("hcp_customer_id, raw")
     .eq("hcp_job_id", hcpJobId)
+    .is("deleted_at", null) // job_360 filtered deleted jobs; hcp_jobs_raw keeps them — re-apply the guard
     .maybeSingle();
-  if (jobErr || !job) return { ok: false, error: `job lookup: ${jobErr?.message ?? "not found"}` };
+  if (jobErr || !job) return { ok: false, error: `job lookup: ${jobErr?.message ?? "not found (or deleted in HCP)"}` };
   const hcpCustomerId = job.hcp_customer_id as string | null;
   if (!hcpCustomerId) return { ok: false, error: "job has no hcp_customer_id" };
+
+  // assigned_employees[].id is the HCP employee id (same id-space as
+  // tech_directory.hcp_employee_id). address.id pins the estimate to the job's
+  // service address instead of HCP's default for the customer.
+  const jobRaw = (job.raw ?? {}) as Record<string, unknown>;
+  const assignedEmployeeIds = Array.isArray(jobRaw.assigned_employees)
+    ? (jobRaw.assigned_employees as Array<Record<string, unknown>>)
+        .map((a) => (typeof a?.id === "string" ? (a.id as string) : null))
+        .filter((v): v is string => !!v)
+    : [];
+  const jobAddr = (jobRaw.address ?? {}) as Record<string, unknown>;
+  const jobAddressId = typeof jobAddr.id === "string" ? (jobAddr.id as string) : null;
 
   // Form encodes options + line items as repeating fields:
   //   options[0][name]
@@ -127,6 +142,10 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
     hcp_customer_id: hcpCustomerId,
     options,
   };
+  // Inherit the job's assigned tech(s) + service address so the estimate isn't
+  // created context-free. create-estimate-direct forwards both to HCP.
+  if (assignedEmployeeIds.length > 0) body.assigned_employee_ids = assignedEmployeeIds;
+  if (jobAddressId) body.address_id = jobAddressId;
   if (note) body.note = note.slice(0, 8000);
   if (message) body.message = message.slice(0, 8000);
 
@@ -156,6 +175,19 @@ export async function createEstimateForJob(formData: FormData): Promise<Estimate
       option_count: options.length,
       line_count: options.reduce((n, o) => n + o.line_items.length, 0),
     },
+  });
+
+  // Persist the job↔estimate link in TPAR — HCP keeps API-created estimates at
+  // the customer level, never linked to the job, so this is how the job page
+  // can surface "its" estimates and attribution holds. Best-effort: a harmless
+  // no-op until the job_estimate_links migration is applied.
+  await supa.from("job_estimate_links").insert({
+    hcp_job_id: hcpJobId,
+    hcp_estimate_id: parsed.estimate_id ?? null,
+    estimate_number: parsed.estimate_number ?? null,
+    assigned_employee_ids: assignedEmployeeIds,
+    created_by_email: writer.email,
+    source: "dashboard-estimate-create",
   });
 
   revalidatePath(`/job/${hcpJobId}`);

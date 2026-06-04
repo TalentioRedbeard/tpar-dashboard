@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition, useActionState } from "react";
+import { useState, useActionState } from "react";
 import { sendComms, type SendResult, type SendMode } from "./actions";
+import type { BusinessContact } from "../../../lib/business-contacts-actions";
 
 const INITIAL_STATE: SendResult = { ok: false, message: "" };
 
@@ -14,6 +15,7 @@ export function ComposeForm({
   customerLabel,
   jobLabel,
   senderName,
+  contacts,
 }: {
   defaultTo: string;
   defaultBody: string;
@@ -23,6 +25,7 @@ export function ComposeForm({
   customerLabel: string | null;
   jobLabel: string | null;
   senderName: string;
+  contacts: BusinessContact[];
 }) {
   const [mode, setMode] = useState<SendMode>("sms");
   const [to, setTo] = useState(defaultTo);
@@ -30,6 +33,27 @@ export function ComposeForm({
   const [recipientType, setRecipientType] = useState(defaultRecipientType);
   const [fireAt, setFireAt] = useState("");  // empty = ASAP
   const [state, formAction, pending] = useActionState(sendComms, INITIAL_STATE);
+
+  // ── Contact picker (techs / vendors / distributors) ──────────────────────
+  const [contactQuery, setContactQuery] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selected, setSelected] = useState<{ name: string; optedOut: boolean } | null>(null);
+
+  const filteredContacts = contactQuery.trim()
+    ? contacts.filter((c) => {
+        const q = contactQuery.trim().toLowerCase();
+        return c.name.toLowerCase().includes(q) || c.subtitle.toLowerCase().includes(q) || c.phoneE164.includes(q);
+      })
+    : contacts;
+
+  function pickContact(c: BusinessContact) {
+    setTo(c.phoneE164);
+    setRecipientType(c.recipientType);
+    setSelected({ name: c.name, optedOut: c.optedOut });
+    setPickerOpen(false);
+    setContactQuery("");
+  }
+
   // Reads as the signed-in operator, not hardcoded "Danny".
   const greeting = senderName ? `Hi, this is ${senderName} with Tulsa Plumbing.` : "Hi, this is Tulsa Plumbing.";
 
@@ -78,6 +102,61 @@ export function ComposeForm({
         </div>
       )}
 
+      {/* Contact picker — techs / vendors / distributors (Slice 1) */}
+      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+        <button
+          type="button"
+          onClick={() => setPickerOpen((o) => !o)}
+          className="flex w-full items-center justify-between text-xs font-medium uppercase tracking-wide text-neutral-600"
+        >
+          <span>📇 Pick a contact{contacts.length ? ` (${contacts.length})` : ""}</span>
+          <span className="text-neutral-400">{pickerOpen ? "▲" : "▼"}</span>
+        </button>
+        {pickerOpen && (
+          <div className="mt-2 space-y-2">
+            <input
+              type="text"
+              value={contactQuery}
+              onChange={(e) => setContactQuery(e.target.value)}
+              placeholder="Search techs, vendors, distributors…"
+              className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+            />
+            <div className="max-h-56 overflow-y-auto rounded-md border border-neutral-200 bg-white">
+              {filteredContacts.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-neutral-500">
+                  {contacts.length === 0 ? "No business contacts have a phone number yet." : "No matching contacts."}
+                </div>
+              ) : (
+                filteredContacts.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => pickContact(c)}
+                    className="flex w-full items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-brand-50"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium text-neutral-900">{c.name}</span>
+                      <span className="ml-2 text-xs text-neutral-500">{c.subtitle}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-neutral-400">
+                      {c.optedOut ? <span className="text-red-600">opted out</span> : c.phoneE164}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+        {selected && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+            <span className="rounded-full bg-brand-100 px-2 py-0.5 font-medium text-brand-800">{selected.name}</span>
+            {selected.optedOut && mode === "sms" ? (
+              <span className="text-red-600">⚠ opted out of texts — switch to a call or pick someone else</span>
+            ) : null}
+          </div>
+        )}
+      </div>
+
       {/* Recipient phone */}
       <label className="block">
         <span className="text-xs font-medium uppercase tracking-wide text-neutral-600">
@@ -89,7 +168,7 @@ export function ComposeForm({
           required
           autoComplete="off"
           value={to}
-          onChange={(e) => setTo(e.target.value)}
+          onChange={(e) => { setTo(e.target.value); if (selected) setSelected(null); }}
           placeholder="918-555-1234 or +19185551234"
           className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
         />
@@ -105,6 +184,7 @@ export function ComposeForm({
           className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
         >
           <option value="customer">Customer (current or potential)</option>
+          <option value="tech">Tech / staff</option>
           <option value="vendor">Vendor (Ferguson, Locke, Home Depot, etc.)</option>
           <option value="contractor">Contractor / sub</option>
           <option value="other">Other</option>
@@ -153,7 +233,7 @@ export function ComposeForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || (mode === "sms" && !!selected?.optedOut)}
         className={`w-full rounded-lg px-4 py-3 text-sm font-semibold text-white transition ${
           mode === "sms"
             ? "bg-brand-600 hover:bg-brand-700 disabled:bg-neutral-300"

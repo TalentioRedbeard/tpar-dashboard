@@ -63,6 +63,23 @@ export async function sendComms(_prev: SendResult, formData: FormData): Promise<
   if (!SUPABASE_URL) return { ok: false, message: "SUPABASE_URL not configured" };
 
   if (mode === "sms") {
+    // Honor per-person opt-out (techs). Business comms intentionally relaxes the
+    // app_flags master switch + quiet hours (Danny 2026-06-04), but a contact who
+    // opted out is never texted — checked by phone so it holds even when the
+    // number is hand-typed rather than picked from the directory.
+    // .limit(1) (not maybeSingle) so a shared phone on 2+ rows doesn't error out
+    // and silently fail open; treat any query error as block-to-be-safe.
+    const { data: optRows, error: optErr } = await supa
+      .from("tech_directory")
+      .select("tech_short_name")
+      .eq("phone", phone.e164)
+      .eq("sms_opt_out", true)
+      .limit(1);
+    if (optErr) return { ok: false, message: `opt-out check failed — not sending: ${optErr.message}` };
+    if (optRows && optRows.length > 0) {
+      return { ok: false, message: `${(optRows[0].tech_short_name as string | null) ?? "That contact"} has opted out of texts — use a call instead.` };
+    }
+
     // 1. Fire Twilio via existing send-sms edge fn
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
       method: "POST",

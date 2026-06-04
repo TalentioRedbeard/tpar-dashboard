@@ -13,6 +13,7 @@ import { redirect } from "next/navigation";
 import { PageShell } from "../../../components/PageShell";
 import { db } from "../../../lib/supabase";
 import { getCurrentTech } from "../../../lib/current-tech";
+import { loadBusinessContacts } from "../../../lib/business-contacts-actions";
 import { ComposeForm } from "./ComposeForm";
 
 export const metadata = { title: "Send · TPAR-DB" };
@@ -29,6 +30,10 @@ export default async function NewCommsPage({
 
   const sp = await searchParams;
   const supa = db();
+
+  // Business contact list (techs / vendors / distributors) for the recipient
+  // picker — so a writer can text any of them without hand-typing a number.
+  const contacts = await loadBusinessContacts();
 
   // If we have a customer id, look up the name + phone for display
   let customerLabel: string | null = null;
@@ -90,6 +95,7 @@ export default async function NewCommsPage({
         customerLabel={customerLabel}
         jobLabel={jobLabel}
         senderName={me.tech?.tech_short_name ?? ""}
+        contacts={contacts}
       />
     </PageShell>
   );

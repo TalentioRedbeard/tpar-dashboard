@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { getCurrentTech } from "../../lib/current-tech";
+import { ContactEditor, type ContactInitial } from "./ContactEditor";
 
 export const metadata = { title: "Contacts · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -52,9 +53,16 @@ function formatPhone(e164: string | null): string {
   return e164;
 }
 
-export default async function ContactsPage() {
+export default async function ContactsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ edit?: string }>;
+}) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/contacts");
+  // Curation (add/edit) is leadership-only; tap-to-call/text stays open to all.
+  const canEdit = !!me.isAdmin || !!me.isManager;
+  const editId = ((await searchParams).edit ?? "").trim();
 
   // Greeting for the "text via /comms" deep-link — reads as the signed-in
   // operator, not hardcoded "Danny" (re-point for Madisson + team).
@@ -72,6 +80,21 @@ export default async function ContactsPage() {
     .order("name");
 
   const contacts = (data ?? []) as Contact[];
+
+  // Pre-fill the editor when navigated to with ?edit=<id> (the per-card link).
+  const editInitial: ContactInitial | null =
+    canEdit && editId
+      ? (() => {
+          const c = contacts.find((x) => x.id === editId);
+          if (!c) return null;
+          return {
+            id: c.id, name: c.name, kind: c.kind, phone_e164: c.phone_e164,
+            alt_phone: c.alt_phone, email: c.email, website: c.website,
+            when_to_call: c.when_to_call, notes: c.notes,
+            category_tags: c.category_tags, status: c.status, is_preferred: c.is_preferred,
+          };
+        })()
+      : null;
 
   // Group by kind
   const byKind = new Map<string, Contact[]>();
@@ -98,6 +121,7 @@ export default async function ContactsPage() {
         stuck: <>Don&apos;t see who you&apos;re looking for? Ask /ask anyway — it&apos;ll log a knowledge gap and Danny will add the contact.</>,
       }}
     >
+      {canEdit ? <ContactEditor key={editInitial?.id ?? "new"} initial={editInitial} /> : null}
       <div className="space-y-6">
         {kindsPresent.map((kind) => {
           const items = byKind.get(kind) ?? [];
@@ -111,7 +135,7 @@ export default async function ContactsPage() {
               </h2>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {items.map((c) => (
-                  <ContactCard key={c.id} c={c} senderGreeting={senderGreeting} />
+                  <ContactCard key={c.id} c={c} senderGreeting={senderGreeting} canEdit={canEdit} />
                 ))}
               </div>
             </section>
@@ -127,7 +151,7 @@ export default async function ContactsPage() {
   );
 }
 
-function ContactCard({ c, senderGreeting }: { c: Contact; senderGreeting: string }) {
+function ContactCard({ c, senderGreeting, canEdit }: { c: Contact; senderGreeting: string; canEdit: boolean }) {
   const meta = KIND_LABELS[c.kind] ?? KIND_LABELS.other;
   const phoneRaw10 = c.phone_e164 ? c.phone_e164.replace(/^\+1/, "") : null;
   return (
@@ -139,6 +163,9 @@ function ContactCard({ c, senderGreeting }: { c: Contact; senderGreeting: string
           {c.is_competitor ? <span className="rounded-md bg-rose-200 px-1.5 py-0.5 text-[10px] font-medium text-rose-900">⚠ competitor</span> : null}
           {c.status === "research_candidate" ? <span className="rounded-md bg-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-700">research candidate</span> : null}
         </div>
+        {canEdit ? (
+          <Link href={`/contacts?edit=${c.id}`} className="shrink-0 text-[10px] text-neutral-500 hover:underline" prefetch={false}>✏️ edit</Link>
+        ) : null}
       </div>
       {c.phone_e164 ? (
         <div className="mt-1 flex flex-wrap items-baseline gap-2 text-xs">

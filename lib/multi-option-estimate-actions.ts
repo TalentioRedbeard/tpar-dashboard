@@ -59,6 +59,13 @@ export type EstOptionInput = { name: string; line_items: EstLineInput[] };
 export type CreateMultiOptionInput = {
   hcpCustomerId: string;
   addressId?: string;
+  // HCP employee ids of the assigned tech(s). Without this HCP creates the
+  // estimate with no technician. Inherited from the job when the builder is
+  // opened from a job; otherwise chosen in the builder's tech picker.
+  assignedEmployeeIds?: string[];
+  // Set when the estimate is built from a job, so we can persist the
+  // job↔estimate link (HCP itself can't link an API estimate to a job).
+  hcpJobId?: string;
   note?: string;
   message?: string;
   options: EstOptionInput[];
@@ -122,6 +129,9 @@ export async function createMultiOptionEstimate(input: CreateMultiOptionInput): 
 
   const body: Record<string, unknown> = { hcp_customer_id: hcpCustomerId, options };
   if (input.addressId) body.address_id = input.addressId;
+  // Pass the assigned tech(s) so HCP doesn't drop the technician on the estimate.
+  const assignedEmployeeIds = (input.assignedEmployeeIds ?? []).filter((s) => typeof s === "string" && s.trim());
+  if (assignedEmployeeIds.length > 0) body.assigned_employee_ids = assignedEmployeeIds;
   if (input.note && input.note.trim()) body.note = input.note.trim().slice(0, 8000);
   if (input.message && input.message.trim()) body.message = input.message.trim().slice(0, 8000);
 
@@ -149,8 +159,25 @@ export async function createMultiOptionEstimate(input: CreateMultiOptionInput): 
       estimate_number: parsed.estimate_number,
       option_count: options.length,
       line_count: options.reduce((n, o) => n + o.line_items.length, 0),
+      hcp_job_id: input.hcpJobId ?? null,
+      assigned_employee_ids: assignedEmployeeIds,
     },
   });
+
+  // If built from a job, persist the job↔estimate link (HCP can't link an
+  // API-created estimate to a job). Best-effort — a harmless no-op until the
+  // job_estimate_links migration is applied.
+  if (input.hcpJobId) {
+    await supa.from("job_estimate_links").insert({
+      hcp_job_id: input.hcpJobId,
+      hcp_estimate_id: parsed.estimate_id ?? null,
+      estimate_number: parsed.estimate_number ?? null,
+      assigned_employee_ids: assignedEmployeeIds,
+      created_by_email: writer.email,
+      source: "dashboard-multi-option-estimate",
+    });
+    revalidatePath(`/job/${input.hcpJobId}`);
+  }
 
   // The estimate attaches to the customer — refresh the customer page so its
   // "Open estimates" card picks it up (after the next HCP sync).
@@ -222,4 +249,34 @@ export async function searchEstimateCustomers(q: string): Promise<EstimateCustom
       addresses: addrs,
     };
   });
+}
+
+export type EstimateTech = {
+  hcp_employee_id: string;
+  tech_short_name: string;
+  hcp_full_name: string;
+  is_lead: boolean;
+};
+
+// Active techs assignable to an estimate (HCP employee id + display name).
+// Mirrors dispatch/new-estimate's loadActiveTechs so the 4Q builder can assign a
+// tech when no job context pre-fills one. Writers only.
+export async function loadEstimateTechs(): Promise<EstimateTech[]> {
+  const writer = await requireWriter();
+  if (!writer.ok) return [];
+  const { data } = await db()
+    .from("tech_directory")
+    .select("tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_test, dashboard_role, is_lead")
+    .eq("is_active", true)
+    .neq("is_test", true)
+    .in("dashboard_role", ["tech", "admin"])
+    .not("hcp_employee_id", "is", null)
+    .order("is_lead", { ascending: false })
+    .order("tech_short_name");
+  return (data ?? []).map((d) => ({
+    hcp_employee_id: d.hcp_employee_id as string,
+    tech_short_name: (d.tech_short_name as string | null) ?? "",
+    hcp_full_name: (d.hcp_full_name as string | null) ?? "",
+    is_lead: !!d.is_lead,
+  }));
 }

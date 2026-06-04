@@ -33,17 +33,36 @@ export default async function NewMultiOptionEstimatePage({
 
   const supa = db();
   let initialCustomer: { hcpCustomerId: string; name: string } | null = null;
+  let initialJob: {
+    hcpJobId: string;
+    addressId: string | null;
+    techEmployeeId: string | null;
+    techName: string | null;
+  } | null = null;
   let backHref = "/estimates";
 
   if (jobParam) {
-    const { data: job } = await supa
-      .from("job_360")
-      .select("hcp_customer_id, customer_name")
-      .eq("hcp_job_id", jobParam)
-      .maybeSingle();
+    const [{ data: job }, { data: jr }] = await Promise.all([
+      supa.from("job_360").select("hcp_customer_id, customer_name").eq("hcp_job_id", jobParam).maybeSingle(),
+      supa.from("hcp_jobs_raw").select("raw").eq("hcp_job_id", jobParam).maybeSingle(),
+    ]);
     if (job?.hcp_customer_id) {
       initialCustomer = { hcpCustomerId: job.hcp_customer_id as string, name: (job.customer_name as string | null) ?? "(customer)" };
       backHref = `/job/${jobParam}`;
+      // Inherit the job's assigned tech + service address so the estimate isn't
+      // created context-free (auto-fill known fields — Danny 2026-06-03 rule).
+      const raw = (jr?.raw ?? {}) as Record<string, unknown>;
+      const assigned = Array.isArray(raw.assigned_employees) ? (raw.assigned_employees as Array<Record<string, unknown>>) : [];
+      const primary = assigned[0] ?? null;
+      const addr = (raw.address ?? {}) as Record<string, unknown>;
+      initialJob = {
+        hcpJobId: jobParam,
+        addressId: typeof addr.id === "string" ? (addr.id as string) : null,
+        techEmployeeId: primary && typeof primary.id === "string" ? (primary.id as string) : null,
+        techName: primary
+          ? (`${(primary.first_name as string | undefined) ?? ""} ${(primary.last_name as string | undefined) ?? ""}`.trim() || null)
+          : null,
+      };
     }
   } else if (customerParam) {
     const { data: c } = await supa
@@ -69,7 +88,7 @@ export default async function NewMultiOptionEstimatePage({
       backLabel="Back"
     >
       {canWrite ? (
-        <MultiOptionEstimateBuilder initialCustomer={initialCustomer} backHref={backHref} />
+        <MultiOptionEstimateBuilder initialCustomer={initialCustomer} initialJob={initialJob} backHref={backHref} />
       ) : (
         <EmptyState
           title="Manager view — read-only."

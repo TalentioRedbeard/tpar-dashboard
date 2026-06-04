@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: "/jobs",      label: "Jobs" },
   { href: "/estimates", label: "Estimates" },
   { href: "/comms",     label: "Comms" },
+  { href: "/contacts",  label: "Contacts" },
   { href: "/dispatch",  label: "Dispatch" },
   { href: "/schedule",  label: "Schedule" },
   { href: "/shopping",  label: "Shopping" },

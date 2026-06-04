@@ -17,7 +17,9 @@ import {
   createMultiOptionEstimate,
   searchEstimateCustomers,
   getExcavatorModifier,
+  loadEstimateTechs,
   type EstimateCustomerHit,
+  type EstimateTech,
   type ModifierDef,
 } from "@/lib/multi-option-estimate-actions";
 import { generateLineDescription } from "@/lib/estimate-actions";
@@ -51,20 +53,48 @@ function linePrice(l: Line): number {
 
 export function MultiOptionEstimateBuilder({
   initialCustomer,
+  initialJob,
   backHref,
 }: {
   initialCustomer?: { hcpCustomerId: string; name: string } | null;
+  initialJob?: {
+    hcpJobId: string;
+    addressId: string | null;
+    techEmployeeId: string | null;
+    techName: string | null;
+  } | null;
   backHref?: string;
 }) {
   const router = useRouter();
 
   // ── Customer selection ──────────────────────────────────────────────────
   const [customer, setCustomer] = useState<{ hcpCustomerId: string; name: string } | null>(initialCustomer ?? null);
-  const [addressId, setAddressId] = useState<string>("");
+  const [addressId, setAddressId] = useState<string>(initialJob?.addressId ?? "");
   const [addresses, setAddresses] = useState<EstimateCustomerHit["addresses"]>([]);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<EstimateCustomerHit[] | null>(null);
   const [searching, startSearch] = useTransition();
+
+  // ── Assigned tech ────────────────────────────────────────────────────────
+  // HCP drops the technician unless we pass assigned_employee_ids. Inherited
+  // from the job when opened from one (⚡ auto-filled); otherwise picked here so
+  // a tech is assigned to every new estimate (Danny 2026-06-04).
+  const [techs, setTechs] = useState<EstimateTech[]>([]);
+  const [techId, setTechId] = useState<string>(initialJob?.techEmployeeId ?? "");
+  useEffect(() => { loadEstimateTechs().then(setTechs).catch(() => setTechs([])); }, []);
+
+  // The job's assigned tech may be filtered out of loadEstimateTechs (inactive,
+  // test, or a manager/office assignment). Surface it as an option anyway so the
+  // <select> shows + submits the inherited id instead of silently reading
+  // "unassigned" while techId still ships the inherited value.
+  const techOptions = useMemo<EstimateTech[]>(() => {
+    const wanted = initialJob?.techEmployeeId;
+    if (!wanted || techs.some((t) => t.hcp_employee_id === wanted)) return techs;
+    return [
+      { hcp_employee_id: wanted, tech_short_name: initialJob?.techName ?? "(assigned tech)", hcp_full_name: initialJob?.techName ?? "", is_lead: false },
+      ...techs,
+    ];
+  }, [techs, initialJob]);
 
   function runSearch() {
     const term = q.trim();
@@ -236,6 +266,8 @@ export function MultiOptionEstimateBuilder({
       const r = await createMultiOptionEstimate({
         hcpCustomerId: customer.hcpCustomerId,
         addressId: addressId || undefined,
+        assignedEmployeeIds: techId ? [techId] : undefined,
+        hcpJobId: initialJob?.hcpJobId,
         note: note.trim() || undefined,
         message: message.trim() || undefined,
         options: payloadOptions,
@@ -321,6 +353,27 @@ export function MultiOptionEstimateBuilder({
               {addresses.map((a) => <option key={a.address_id} value={a.address_id}>{[a.street, a.city].filter(Boolean).join(", ") || a.address_id}</option>)}
             </select>
           ) : null}
+        </div>
+        {/* Assigned tech — inherited from the job (⚡) or chosen here */}
+        <div>
+          <div className="text-xs uppercase tracking-wide text-neutral-500">
+            Assigned tech
+            {initialJob?.techEmployeeId && techId === initialJob.techEmployeeId ? (
+              <span className="ml-1.5 font-normal normal-case text-brand-600">⚡ from job</span>
+            ) : null}
+          </div>
+          <select
+            value={techId}
+            onChange={(e) => setTechId(e.target.value)}
+            className="mt-0.5 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
+          >
+            <option value="">— unassigned —</option>
+            {techOptions.map((t) => (
+              <option key={t.hcp_employee_id} value={t.hcp_employee_id}>
+                {(t.tech_short_name || t.hcp_full_name) || t.hcp_employee_id}{t.is_lead ? " (lead)" : ""}
+              </option>
+            ))}
+          </select>
         </div>
         {!initialCustomer ? (
           <button type="button" onClick={() => { setCustomer(null); setHits(null); setAddresses([]); setAddressId(""); }} className="text-xs text-neutral-500 hover:underline">change customer</button>
