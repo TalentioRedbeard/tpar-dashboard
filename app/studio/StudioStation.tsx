@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   searchCaptures,
@@ -42,15 +42,20 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
   const [results, setResults] = useState<Capture[]>(initial);
   const [selected, setSelected] = useState<Record<string, Capture>>({});
   const [playing, setPlaying] = useState<{ id: string; url: string } | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
   const [searching, startSearch] = useTransition();
   const [generating, startGenerate] = useTransition();
+  const reqIdRef = useRef(0);
+  const lastAudioReq = useRef<string | null>(null);
 
   const runSearch = useCallback((q: string, t: string) => {
+    const myId = ++reqIdRef.current;
     startSearch(async () => {
       const rows = await searchCaptures(q, t);
-      setResults(rows);
+      // Drop a stale response if a newer search was dispatched meanwhile.
+      if (reqIdRef.current === myId) setResults(rows);
     });
   }, []);
 
@@ -75,19 +80,31 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
   };
 
   const play = async (c: Capture) => {
-    if (playing?.id === c.capture_id) {
+    const k = keyOf(c);
+    if (playing?.id === k) {
       setPlaying(null);
       return;
     }
-    const url = await captureAudioUrl(c.capture_id);
-    if (url) setPlaying({ id: c.capture_id, url });
+    lastAudioReq.current = k;
+    setLoadingId(k);
+    const url = await captureAudioUrl(c.capture_id); // raw recording id for the signer
+    if (lastAudioReq.current !== k) return; // a newer Play superseded this one
+    setLoadingId(null);
+    if (url) setPlaying({ id: k, url });
   };
 
   const build = () => {
-    const keys = Object.values(selected).map((c) => ({ t: c.capture_type, id: c.capture_id }));
-    if (!keys.length) return;
+    const sel = Object.values(selected);
+    if (!sel.length) return;
     setGenError(null);
     setDraft(null);
+    // Pre-flight: don't let a selection span customers (the server rejects it too).
+    const custs = [...new Set(sel.map((c) => c.hcp_customer_id).filter(Boolean))];
+    if (custs.length > 1) {
+      setGenError("Selected captures span multiple customers — pick from a single customer or job.");
+      return;
+    }
+    const keys = sel.map((c) => ({ t: c.capture_type, id: c.capture_id }));
     startGenerate(async () => {
       const res = await generateFromCaptures(keys);
       if (res.ok) setDraft(res);
@@ -137,7 +154,7 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
       </form>
 
       {/* Results */}
-      <div className="mt-4 space-y-2">
+      <div className={`mt-4 space-y-2 transition-opacity ${searching ? "pointer-events-none opacity-40" : ""}`} aria-busy={searching}>
         {results.length === 0 ? (
           <p className="rounded-lg border border-dashed border-neutral-300 px-4 py-8 text-center text-sm text-neutral-500">
             {searching ? "Searching…" : "No captures match. Try a broader term or a different type."}
@@ -188,16 +205,17 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
                     {c.media_kind === "audio" ? (
                       <button
                         type="button"
+                        disabled={loadingId === k}
                         onClick={(e) => {
                           e.stopPropagation();
                           void play(c);
                         }}
-                        className="mt-2 inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+                        className="mt-2 inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
                       >
-                        {playing?.id === c.capture_id ? "⏹ Stop" : "▶ Play"}
+                        {loadingId === k ? "⏳ Loading…" : playing?.id === k ? "⏹ Stop" : "▶ Play"}
                       </button>
                     ) : null}
-                    {c.media_kind === "audio" && playing?.id === c.capture_id ? (
+                    {c.media_kind === "audio" && playing?.id === k ? (
                       <audio src={playing.url} controls autoPlay className="mt-2 h-9 w-full" onClick={(e) => e.stopPropagation()} />
                     ) : null}
                     {c.media_kind === "image" && c.media_url ? (
@@ -248,10 +266,10 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
                   {opt.lines.map((ln, j) => (
                     <li key={j} className="text-[12px] text-neutral-600">
                       <span className="font-medium text-neutral-800">{ln.name}</span>
-                      {ln.hours || ln.materials ? (
+                      {Number(ln.hours) > 0 || Number(ln.materials) > 0 ? (
                         <span className="text-neutral-400">
                           {" "}· {ln.crew || "1"}-crew {ln.hours || "0"}h
-                          {ln.materials ? ` · $${ln.materials} mat` : ""}
+                          {Number(ln.materials) > 0 ? ` · $${ln.materials} mat` : ""}
                         </span>
                       ) : null}
                     </li>

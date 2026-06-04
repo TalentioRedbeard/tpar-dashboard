@@ -220,7 +220,9 @@ export async function generateBasedOnEstimate(hcpCustomerId: string, sel: BasedO
     if (n) usedLabels.push(`${n} uploaded photo${n === 1 ? "" : "s"}`);
   }
 
-  const referenceText = parts.join("\n\n");
+  // Hard cap so an oversized selection (long call transcripts run 20k+ chars)
+  // can't blow the generator's context window with an opaque failure.
+  const referenceText = parts.join("\n\n").slice(0, 80000);
   if (!referenceText.trim() && imageUrls.length === 0) return { ok: false, error: "Pick at least one source (notes, voice, comms, 360, or photos) — or type freeform context." };
 
   let r: Response;
@@ -241,7 +243,12 @@ export async function generateBasedOnEstimate(hcpCustomerId: string, sel: BasedO
     return { ok: false, error: `generator unreachable: ${e instanceof Error ? e.message : String(e)}` };
   }
   const text = await r.text();
-  if (!r.ok) return { ok: false, error: `generator failed (${r.status}): ${text.slice(0, 200)}` };
+  if (!r.ok) {
+    if (r.status === 413 || /too long|context length|maximum.*tokens|prompt is too long/i.test(text)) {
+      return { ok: false, error: "Selection too large for one estimate — pick fewer or shorter captures." };
+    }
+    return { ok: false, error: `generator failed (${r.status}): ${text.slice(0, 200)}` };
+  }
   let parsed: { ok?: boolean; error?: string; output?: { options?: unknown[] } };
   try { parsed = JSON.parse(text); } catch { return { ok: false, error: "generator returned non-JSON" }; }
   if (!parsed.ok) return { ok: false, error: parsed.error ?? "generator returned ok=false" };

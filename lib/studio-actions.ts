@@ -5,7 +5,7 @@
 // selection. Spine = captures_search_v. (G — Danny 2026-06-04.)
 
 import { db } from "./supabase";
-import { getCurrentTech } from "./current-tech";
+import { getCurrentTech, requireWriter } from "./current-tech";
 import { getRecordingSignedUrl } from "./recordings";
 import { generateBasedOnEstimate, type BasedOnResult } from "./based-on-actions";
 
@@ -84,36 +84,55 @@ export async function captureAudioUrl(recordingId: string): Promise<string | nul
 export type GenerateFromCapturesResult = (BasedOnResult & { hcpCustomerId?: string }) | { ok: false; error: string };
 
 export async function generateFromCaptures(keys: Array<{ t: string; id: string }>): Promise<GenerateFromCapturesResult> {
-  if (!(await gate())) return { ok: false, error: "not authorized" };
+  // Generating an estimate is a WRITE — gate on writer authority (owner/tech),
+  // not the wider read gate, so managers get a clean upfront rejection instead
+  // of a confusing failure after all the work (matches generateBasedOnEstimate).
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
   if (!keys.length) return { ok: false, error: "select at least one capture" };
   const supa = db();
-  const ids = keys.map((k) => k.id);
-  const { data } = await supa.from("captures_search_v").select("*").in("capture_id", ids);
-  const rows = ((data ?? []) as Array<Record<string, any>>).filter((r) => keys.some((k) => k.t === r.capture_type && k.id === r.capture_id));
+  // Filter on the globally-unique capture_key ('type:id') so a bigint comm id
+  // can't over-fetch a same-numbered photo row (and vice-versa).
+  const compositeKeys = keys.map((k) => `${k.t}:${k.id}`);
+  const { data } = await supa.from("captures_search_v").select("*").in("capture_key", compositeKeys);
+  const rows = (data ?? []) as Array<Record<string, any>>;
   if (!rows.length) return { ok: false, error: "selected captures not found" };
 
-  // Resolve a customer (+ job) for the selection.
+  // Resolve the effective customer per row, then REJECT a selection that spans
+  // more than one customer — otherwise customer B's text/photos would be folded
+  // into an estimate scoped to customer A.
   const jobIds = [...new Set(rows.map((r) => r.hcp_job_id).filter(Boolean))] as string[];
   const custByJob = new Map<string, string>();
-  let jobId: string | null = jobIds[0] ?? null;
   if (jobIds.length) {
     const { data: js } = await supa.from("job_360").select("hcp_job_id, hcp_customer_id").in("hcp_job_id", jobIds);
     (js ?? []).forEach((j: any) => custByJob.set(j.hcp_job_id, j.hcp_customer_id));
   }
-  const cid = (rows.map((r) => r.hcp_customer_id).find(Boolean) as string | undefined)
-    ?? (jobId ? custByJob.get(jobId) ?? null : null);
+  const cidOf = (r: Record<string, any>): string | null =>
+    (r.hcp_customer_id as string | null) ?? (r.hcp_job_id ? custByJob.get(r.hcp_job_id) ?? null : null);
+  const distinctCids = [...new Set(rows.map(cidOf).filter(Boolean))] as string[];
+  if (distinctCids.length > 1) {
+    return { ok: false, error: "Selected captures span multiple customers — pick captures from a single customer or job." };
+  }
+  const cid = distinctCids[0] ?? null;
   if (!cid) return { ok: false, error: "These captures aren't tied to a customer — pick captures from a customer/job, or start from the estimate page." };
+  // Only auto-pull a job's 360 when the selection points at exactly one job.
+  const jobId = jobIds.length === 1 ? jobIds[0] : null;
 
-  // Assemble selected captures into one reference blob + photo URLs.
+  // Assemble into one reference blob + photo URLs, capping each part + the total
+  // so long call transcripts can't blow the generator's context window.
+  const PER_PART = 6000;
+  const TOTAL = 60000;
   const textParts: string[] = [];
   const imageUrls: string[] = [];
   for (const r of rows) {
     if (r.media_kind === "image" && r.media_url) imageUrls.push(r.media_url);
-    if (r.body_text && String(r.body_text).trim()) {
-      textParts.push(`[${r.capture_type}${r.subtype ? "/" + r.subtype : ""}${r.occurred_at ? " " + String(r.occurred_at).slice(0, 10) : ""}] ${String(r.body_text).trim()}`);
+    const body = r.body_text ? String(r.body_text).trim() : "";
+    if (body) {
+      textParts.push(`[${r.capture_type}${r.subtype ? "/" + r.subtype : ""}${r.occurred_at ? " " + String(r.occurred_at).slice(0, 10) : ""}] ${body.slice(0, PER_PART)}`);
     }
   }
-  const freeform = textParts.join("\n\n");
+  let freeform = textParts.join("\n\n");
+  if (freeform.length > TOTAL) freeform = freeform.slice(0, TOTAL) + "\n\n[…truncated — selection too large; narrow your picks]";
   if (!freeform && !imageUrls.length) return { ok: false, error: "nothing usable in the selection" };
 
   const res = await generateBasedOnEstimate(cid, {
