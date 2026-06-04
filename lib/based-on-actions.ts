@@ -56,11 +56,16 @@ export async function fetchBasedOnSources(hcpCustomerId: string, _hcpJobId?: str
     jobIds.length
       ? supa.from("job_notes").select("id, body, created_at").in("hcp_job_id", jobIds).order("created_at", { ascending: false }).limit(15)
       : Promise.resolve({ data: [] as Array<{ id: string; body: string; created_at: string }> }),
-    supa.from("tech_voice_notes")
-      .select("id, transcript, ts, tech_short_name, hcp_customer_id, hcp_job_id")
-      .or(jobIds.length ? `hcp_customer_id.eq.${cid},hcp_job_id.in.(${jobIds.join(",")})` : `hcp_customer_id.eq.${cid}`)
+    // Voice notes come from the `recordings` table (the global Record button),
+    // matched by customer- or job-targeted recordings. (Unifies the Record flow
+    // with Based-on — Danny 2026-06-04; was pointed at the empty tech_voice_notes.)
+    supa.from("recordings")
+      .select("id, transcript, created_at, created_by, target_kind, target_ref, transcript_status")
+      .or(jobIds.length
+        ? `and(target_kind.eq.customer,target_ref.eq.${cid}),and(target_kind.eq.job,target_ref.in.(${jobIds.join(",")})),and(target_kind.eq.estimate,target_ref.eq.${cid})`
+        : `and(target_kind.eq.customer,target_ref.eq.${cid})`)
       .not("transcript", "is", null)
-      .order("ts", { ascending: false }).limit(20),
+      .order("created_at", { ascending: false }).limit(20),
     supa.from("communication_events")
       .select("id, content_text, summary, occurred_at, channel, direction")
       .eq("hcp_customer_id", cid).order("occurred_at", { ascending: false }).limit(30),
@@ -75,8 +80,8 @@ export async function fetchBasedOnSources(hcpCustomerId: string, _hcpJobId?: str
     ...((jNotesRes.data ?? []) as Array<{ id: string; body: string; created_at: string }>).map((n) => ({ id: String(n.id), kind: "job" as const, date: day(n.created_at), snippet: snip(n.body) })),
   ];
 
-  const voiceNotes: BasedOnVoiceNote[] = ((vnRes.data ?? []) as Array<{ id: string; transcript: string; ts: string; tech_short_name: string | null }>)
-    .map((v) => ({ id: String(v.id), date: day(v.ts), tech: v.tech_short_name ?? "", snippet: snip(v.transcript) }));
+  const voiceNotes: BasedOnVoiceNote[] = ((vnRes.data ?? []) as Array<{ id: string; transcript: string; created_at: string; created_by: string | null; transcript_status: string | null }>)
+    .map((v) => ({ id: String(v.id), date: day(v.created_at), tech: v.created_by ?? "", snippet: (v.transcript_status === "needs_review" ? "⚠ unreliable — " : "") + snip(v.transcript) }));
 
   const comms: BasedOnComm[] = ((commsRes.data ?? []) as Array<{ id: number; content_text: string | null; summary: string | null; occurred_at: string; channel: string | null; direction: string | null }>)
     .map((c) => ({ id: Number(c.id), date: day(c.occurred_at), channel: c.channel ?? "", direction: c.direction ?? "", snippet: snip(c.content_text || c.summary) }))
@@ -155,10 +160,10 @@ export async function generateBasedOnEstimate(hcpCustomerId: string, sel: BasedO
   }
 
   if (sel.voiceNoteIds && sel.voiceNoteIds.length) {
-    const { data } = await supa.from("tech_voice_notes").select("transcript, ts, tech_short_name").in("id", sel.voiceNoteIds);
-    const rows = (data ?? []) as Array<{ transcript: string; ts: string; tech_short_name: string | null }>;
+    const { data } = await supa.from("recordings").select("transcript, created_at, created_by").in("id", sel.voiceNoteIds);
+    const rows = (data ?? []) as Array<{ transcript: string; created_at: string; created_by: string | null }>;
     if (rows.length) {
-      parts.push(`### Voice notes (transcripts)\n${rows.map((v) => `- (${day(v.ts)}, ${v.tech_short_name ?? "tech"}) ${v.transcript}`).join("\n\n")}`);
+      parts.push(`### Voice notes (transcripts)\n${rows.map((v) => `- (${day(v.created_at)}, ${v.created_by ?? "tech"}) ${v.transcript}`).join("\n\n")}`);
       usedLabels.push(`${rows.length} voice note${rows.length === 1 ? "" : "s"}`);
     }
   }

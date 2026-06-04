@@ -8,7 +8,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { saveRecording, transcribeRecording } from "../lib/recordings";
+import { saveRecording, transcribeRecording, resolveJobRef } from "../lib/recordings";
 
 type Target = "note_to_danny" | "job" | "customer" | "estimate" | "file" | "claude";
 
@@ -26,6 +26,17 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
   const [targetRef, setTargetRef] = useState("");
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const [jobChip, setJobChip] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Confirm a typed job id/invoice number resolves to a real job before saving —
+  // a raw invoice number silently orphaned the recording before (the C fix).
+  async function verifyJob() {
+    const ref = targetRef.trim();
+    if (target !== "job" || !ref) { setJobChip(null); return; }
+    if (ref.startsWith("job_")) { setJobChip({ ok: true, text: "job id" }); return; }
+    const r = await resolveJobRef(ref);
+    setJobChip(r.ok ? { ok: true, text: r.label } : { ok: false, text: r.error });
+  }
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const startTsRef = useRef(0);
@@ -86,7 +97,7 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
   }
 
   function reset() {
-    setState("idle"); setBlob(null); setLabel(""); setTranscript(""); setTargetRef(""); setMsg(null); setTarget("note_to_danny");
+    setState("idle"); setBlob(null); setLabel(""); setTranscript(""); setTargetRef(""); setMsg(null); setTarget("note_to_danny"); setJobChip(null);
   }
 
   function save() {
@@ -152,7 +163,18 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
             <option value="file">📁 Just save as file</option>
           </select>
           {needsRef ? (
-            <input value={targetRef} onChange={(e) => setTargetRef(e.target.value)} placeholder={`${target} id / number`} className="mb-2 w-full rounded-md border border-neutral-300 px-2 py-1 text-sm" />
+            <div className="mb-2">
+              <input value={targetRef}
+                onChange={(e) => { setTargetRef(e.target.value); setJobChip(null); }}
+                onBlur={() => { if (target === "job") void verifyJob(); }}
+                placeholder={target === "job" ? "job id (job_…) or invoice #" : `${target} id / number`}
+                className="w-full rounded-md border border-neutral-300 px-2 py-1 text-sm" />
+              {jobChip ? (
+                <div className={`mt-1 text-[11px] ${jobChip.ok ? "text-emerald-700" : "text-red-700"}`}>
+                  {jobChip.ok ? "✓ " : "⚠ "}{jobChip.text}
+                </div>
+              ) : null}
+            </div>
           ) : null}
           {target === "claude" ? (
             <div className="mb-2 text-[11px] text-neutral-500">Goes to the Claude dev queue — picked up in an active session.</div>

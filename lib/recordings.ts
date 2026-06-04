@@ -16,6 +16,49 @@ export type SaveRecordingResult = { ok: true; id: string } | { ok: false; error:
 const TARGETS = ["job", "customer", "estimate", "note_to_danny", "file", "claude"] as const;
 const BUCKET = "recordings";
 
+// Resolve a job target the user typed (an HCP invoice/job number, or a job_ id)
+// into a canonical hcp_job_id. Techs share invoice numbers, so a number can map
+// to 0/1/many jobs — we surface that instead of storing the raw number (the bug
+// that orphaned the Charles Cantrell recording, Danny 2026-06-04).
+export type ResolveJobResult =
+  | { ok: true; hcp_job_id: string; label: string }
+  | { ok: false; error: string; matches?: Array<{ hcp_job_id: string; label: string }> };
+
+async function resolveJobRefInternal(input: string): Promise<ResolveJobResult> {
+  const raw = String(input ?? "").trim();
+  if (!raw) return { ok: false, error: "enter a job number" };
+  const supa = db();
+  if (raw.startsWith("job_")) {
+    const { data } = await supa.from("job_360").select("customer_name, invoice_number").eq("hcp_job_id", raw).maybeSingle();
+    return { ok: true, hcp_job_id: raw, label: data ? `${data.customer_name ?? "(job)"} · #${data.invoice_number ?? raw.slice(-6)}` : raw };
+  }
+  // Treat as an HCP invoice number (with a possible segment, e.g. "27691303-3").
+  const cleaned = raw.replace(/[^0-9-]/g, "");
+  const trunk = cleaned.split("-")[0];
+  if (!trunk) return { ok: false, error: `"${raw}" isn't a job id or invoice number.` };
+  const { data } = await supa
+    .from("job_360")
+    .select("hcp_job_id, customer_name, invoice_number, job_date")
+    .or(`invoice_number.eq.${cleaned},invoice_number.eq.${trunk}`)
+    .order("job_date", { ascending: false, nullsFirst: false })
+    .limit(10);
+  const rows = (data ?? []) as Array<{ hcp_job_id: string; customer_name: string | null; invoice_number: string | null; job_date: string | null }>;
+  if (rows.length === 0) return { ok: false, error: `No job found for "${raw}". Use the job id (job_…) or record from the job page.` };
+  const matches = rows.map((r) => ({
+    hcp_job_id: r.hcp_job_id,
+    label: `${r.customer_name ?? "(job)"} · #${r.invoice_number ?? cleaned}${r.job_date ? ` · ${String(r.job_date).slice(0, 10)}` : ""}`,
+  }));
+  if (rows.length === 1) return { ok: true, hcp_job_id: rows[0].hcp_job_id, label: matches[0].label };
+  return { ok: false, error: `"${raw}" matches ${rows.length} jobs — open the right one and record from there.`, matches };
+}
+
+/** Resolve a typed job id/invoice number for the recorder's confirmation chip. */
+export async function resolveJobRef(input: string): Promise<ResolveJobResult> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  return resolveJobRefInternal(input);
+}
+
 export async function saveRecording(formData: FormData): Promise<SaveRecordingResult> {
   const me = await getCurrentTech();
   if (!me) return { ok: false, error: "not signed in" };
@@ -30,6 +73,15 @@ export async function saveRecording(formData: FormData): Promise<SaveRecordingRe
   const targetRef = String(formData.get("target_ref") ?? "").trim() || null;
   const durationMs = Number(formData.get("duration_ms") ?? 0) || null;
   const transcript = String(formData.get("transcript") ?? "").trim().slice(0, 8000) || null;
+
+  // Resolve a typed job number → canonical hcp_job_id, and BLOCK on an
+  // unresolvable/ambiguous job rather than silently storing a bad ref (the orphan fix).
+  let resolvedRef = targetRef;
+  if (targetKind === "job" && targetRef && !targetRef.startsWith("job_")) {
+    const res = await resolveJobRefInternal(targetRef);
+    if (!res.ok) return { ok: false, error: res.error };
+    resolvedRef = res.hcp_job_id;
+  }
 
   const mime = audio.type || "audio/webm";
   const ext = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : "webm";
@@ -47,7 +99,7 @@ export async function saveRecording(formData: FormData): Promise<SaveRecordingRe
     .insert({
       label,
       target_kind: targetKind,
-      target_ref: targetRef,
+      target_ref: resolvedRef,
       audio_path: path,
       audio_url: null, // private bucket — playback via signed URL only
       mime,
