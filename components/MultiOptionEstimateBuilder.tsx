@@ -20,6 +20,7 @@ import {
   type EstimateCustomerHit,
   type ModifierDef,
 } from "@/lib/multi-option-estimate-actions";
+import { generateLineDescription } from "@/lib/estimate-actions";
 
 function rateFor(crew: number): number {
   if (crew <= 1) return 185;
@@ -99,6 +100,42 @@ export function MultiOptionEstimateBuilder({
   const removeLine = (oi: number, li: number) => setOptions((p) => p.map((o, i) => i !== oi ? o : o.lines.length === 1 ? o : { ...o, lines: o.lines.filter((_, j) => j !== li) }));
   const setOptName = (oi: number, name: string) => setOptions((p) => p.map((o, i) => i !== oi ? o : { ...o, name }));
   const setOptExcavator = (oi: number, v: boolean) => setOptions((p) => p.map((o, i) => i !== oi ? o : { ...o, excavator: v }));
+
+  // ── Description generation (✨ Haiku, customer-facing scope in Danny's voice) ─
+  // Same generator the voice-note EstimateBuilder uses. Per-line buttons + a
+  // one-click "Polish all" so nothing ships as a bare line name again.
+  const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
+  const [genErr, setGenErr] = useState<Record<string, string | null>>({});
+  const [polishing, setPolishing] = useState(false);
+
+  async function genDesc(oi: number, li: number) {
+    const line = options[oi]?.lines[li];
+    if (!line) return;
+    const name = chosenName(line);
+    const scope = (line.description.trim() || name).trim();
+    const key = `${oi}-${li}`;
+    if (!scope) { setGenErr((p) => ({ ...p, [key]: "Pick an item or type a rough scope first." })); return; }
+    setGenBusy((p) => ({ ...p, [key]: true }));
+    setGenErr((p) => ({ ...p, [key]: null }));
+    const fd = new FormData();
+    fd.set("scope", scope);
+    if (name) fd.set("line_item_name", name);
+    const res = await generateLineDescription(fd);
+    setGenBusy((p) => ({ ...p, [key]: false }));
+    if (res.ok) updateLine(oi, li, { description: res.description });
+    else setGenErr((p) => ({ ...p, [key]: res.error }));
+  }
+
+  // Polish every line that has a chosen item, in parallel — one click to turn
+  // rough scope notes into customer-ready descriptions before pushing.
+  async function polishAll() {
+    const targets: Array<[number, number]> = [];
+    options.forEach((o, oi) => o.lines.forEach((l, li) => { if (chosenName(l)) targets.push([oi, li]); }));
+    if (targets.length === 0) return;
+    setPolishing(true);
+    await Promise.all(targets.map(([oi, li]) => genDesc(oi, li)));
+    setPolishing(false);
+  }
 
   // Excavator-fee helpers (per option). Days derived from the option's total
   // labor hours (÷8), half-day-ceiling per the modifier's min_increment.
@@ -328,6 +365,14 @@ export function MultiOptionEstimateBuilder({
                 <label className="mt-2 block"><span className="text-xs font-medium text-neutral-600">Description / scope (customer-facing; include exclusions)</span>
                   <textarea value={l.description} onChange={(e) => updateLine(oi, li, { description: e.target.value })} rows={2} className={inputCls}
                     placeholder="Scope + exclusions (e.g. concrete cut/patch included; sheetrock repair NOT included)…" /></label>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => genDesc(oi, li)} disabled={genBusy[`${oi}-${li}`] || !chosenName(l)}
+                    title="Rewrite this line's scope into a customer-facing description in Danny's voice (Claude Haiku)."
+                    className="rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50">
+                    {genBusy[`${oi}-${li}`] ? "Generating…" : "✨ Generate description"}
+                  </button>
+                  {genErr[`${oi}-${li}`] ? <span className="text-xs text-red-700">{genErr[`${oi}-${li}`]}</span> : null}
+                </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
                   <span className="text-neutral-700">
@@ -369,6 +414,13 @@ export function MultiOptionEstimateBuilder({
       {/* Submit */}
       <div className="flex flex-wrap items-center gap-3 border-t border-neutral-200 pt-4">
         <div className="text-sm text-neutral-600">Grand total (all options): <span className="text-base font-semibold text-neutral-900">{money(grandTotal)}</span></div>
+        {hasValid ? (
+          <button type="button" onClick={polishAll} disabled={polishing || pending}
+            title="Rewrite every line's scope into a customer-facing description in Danny's voice (Claude Haiku). Review before pushing."
+            className="rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50">
+            {polishing ? "Polishing…" : "✨ Polish all descriptions"}
+          </button>
+        ) : null}
         <button type="button" onClick={submit} disabled={pending || !hasValid} className="ml-auto rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300">
           {pending ? "Pushing to HCP…" : `Push ${options.length} option${options.length === 1 ? "" : "s"} as one HCP estimate →`}
         </button>

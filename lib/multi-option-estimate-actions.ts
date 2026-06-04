@@ -80,22 +80,38 @@ export async function createMultiOptionEstimate(input: CreateMultiOptionInput): 
 
   // Validate + normalize options. Allow $0 unit_price so a descriptive option
   // can be pushed and priced later (field workflow, matches createEstimateForJob).
-  const options: EstOptionInput[] = (input.options ?? [])
-    .map((o) => ({
-      name: (o.name || "Option").slice(0, 255),
-      line_items: (o.line_items ?? [])
-        .filter((li) => li.name && li.name.trim() && Number(li.quantity) > 0 && Number.isInteger(li.unit_price_cents) && li.unit_price_cents >= 0)
-        .map((li) => {
-          const out: EstLineInput = {
-            name: li.name.trim().slice(0, 255),
-            quantity: Number(li.quantity),
-            unit_price_cents: Number(li.unit_price_cents),
-          };
-          if (li.description && li.description.trim()) out.description = li.description.trim().slice(0, 1000);
-          if (Number.isInteger(li.unit_cost_cents)) out.unit_cost_cents = Number(li.unit_cost_cents);
-          return out;
-        }),
-    }))
+  const mapped = (input.options ?? []).map((o, idx) => ({
+    name: (o.name || `Option ${idx + 1}`).slice(0, 255),
+    inputLineCount: (o.line_items ?? []).length,
+    line_items: (o.line_items ?? [])
+      .filter((li) => li.name && li.name.trim() && Number(li.quantity) > 0 && Number.isInteger(li.unit_price_cents) && li.unit_price_cents >= 0)
+      .map((li) => {
+        const out: EstLineInput = {
+          name: li.name.trim().slice(0, 255),
+          quantity: Number(li.quantity),
+          unit_price_cents: Number(li.unit_price_cents),
+        };
+        if (li.description && li.description.trim()) out.description = li.description.trim().slice(0, 1000);
+        if (Number.isInteger(li.unit_cost_cents)) out.unit_cost_cents = Number(li.unit_cost_cents);
+        return out;
+      }),
+  }));
+
+  // Server-side guard against the 2026-06-02 "only 1 of 2 options reached HCP"
+  // bug: if the user built an option (≥1 line) but EVERY line failed validation
+  // (e.g. no Item/Q4 picked → empty name), never silently send fewer options —
+  // block with the option's name so nothing vanishes. Belt-and-suspenders to the
+  // client-side guard in MultiOptionEstimateBuilder.submit().
+  const dropped = mapped.filter((o) => o.inputLineCount > 0 && o.line_items.length === 0);
+  if (dropped.length > 0) {
+    return {
+      ok: false,
+      error: `Nothing sent — ${dropped.map((d) => `"${d.name}"`).join(", ")} ${dropped.length === 1 ? "has a line" : "have lines"} with no item/price picked. Pick the Item (Q4) or a Custom name on each option (price can be $0), or remove the empty line/option.`,
+    };
+  }
+
+  const options: EstOptionInput[] = mapped
+    .map((o) => ({ name: o.name, line_items: o.line_items }))
     .filter((o) => o.line_items.length > 0);
 
   if (options.length === 0) {
