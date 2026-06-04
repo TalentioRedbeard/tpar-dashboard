@@ -10,6 +10,7 @@ import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { getCurrentTech } from "../../lib/current-tech";
 import { ContactEditor, type ContactInitial } from "./ContactEditor";
+import { CallContactButton } from "../../components/CallContactButton";
 
 export const metadata = { title: "Contacts · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -180,6 +181,7 @@ function ContactCard({ c, senderGreeting, canEdit }: { c: Contact; senderGreetin
               💬 Text via /comms
             </Link>
           ) : null}
+          <CallContactButton phone={c.phone_e164} name={c.name} kind={c.kind} />
         </div>
       ) : null}
       {c.alt_phone ? (
