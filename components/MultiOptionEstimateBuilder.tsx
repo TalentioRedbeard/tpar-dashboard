@@ -21,6 +21,8 @@ import {
   type ModifierDef,
 } from "@/lib/multi-option-estimate-actions";
 import { generateLineDescription } from "@/lib/estimate-actions";
+import { BasedOnPanel } from "./BasedOnPanel";
+import type { BasedOnDraftOption } from "@/lib/based-on-actions";
 
 function rateFor(crew: number): number {
   if (crew <= 1) return 185;
@@ -135,6 +137,22 @@ export function MultiOptionEstimateBuilder({
     setPolishing(true);
     await Promise.all(targets.map(([oi, li]) => genDesc(oi, li)));
     setPolishing(false);
+  }
+
+  // Fill the builder from a "Based On…" generated draft. Each generated line
+  // becomes a Custom line item the operator reviews + adjusts; the builder
+  // recomputes price from hours/crew/materials. Replaces the current draft.
+  function applyBasedOn(draft: BasedOnDraftOption[], draftNote: string) {
+    if (!draft || draft.length === 0) return;
+    setOptions(draft.map((o) => ({
+      name: o.name || "Option",
+      excavator: true,
+      lines: (o.lines.length ? o.lines : [{ name: "", description: "", hours: "4", crew: "2", materials: "0" }]).map((l) => ({
+        q1: "", q2: "", q3: "", item: CUSTOM, customName: l.name,
+        hours: l.hours || "0", crew: l.crew || "2", materials: l.materials || "0", description: l.description || "",
+      })),
+    })));
+    if (draftNote && !note.trim()) setNote(draftNote);
   }
 
   // Excavator-fee helpers (per option). Days derived from the option's total
@@ -307,6 +325,12 @@ export function MultiOptionEstimateBuilder({
         {!initialCustomer ? (
           <button type="button" onClick={() => { setCustomer(null); setHits(null); setAddresses([]); setAddressId(""); }} className="text-xs text-neutral-500 hover:underline">change customer</button>
         ) : null}
+      </div>
+
+      {/* Based On… — seed the builder from notes / voice notes / comms / 360s */}
+      <div className="flex flex-wrap items-center gap-2">
+        <BasedOnPanel hcpCustomerId={customer.hcpCustomerId} onApply={applyBasedOn} disabled={pending} />
+        <span className="text-xs text-neutral-400">…or build manually below</span>
       </div>
 
       {opts === null ? <div className="text-sm text-neutral-500">Loading pricebook…</div> : null}
