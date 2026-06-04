@@ -56,6 +56,7 @@ const LEADERSHIP_ITEMS = [
 
 // Admin-only — Danny tools (alarms / laptop snap / admin index page).
 const ADMIN_ITEMS = [
+  { href: "/admin/integrations", label: "Integrations" },
   { href: "/alarms",          label: "Alarms" },
   { href: "/snap",            label: "Snap" },
   { href: "/admin",           label: "Admin home" },
