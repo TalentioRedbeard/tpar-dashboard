@@ -46,6 +46,7 @@ const TOOL_ITEMS = [
 
 // Visible to admin + manager + production_manager — leadership review surfaces.
 const LEADERSHIP_ITEMS = [
+  { href: "/studio",          label: "Studio" },
   { href: "/attach",          label: "Attach" },
   { href: "/admin/leads",     label: "Leads" },
   { href: "/admin/view-as",   label: "View as" },
