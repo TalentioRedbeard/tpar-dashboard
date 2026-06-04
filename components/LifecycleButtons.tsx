@@ -188,6 +188,14 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     // Universal location ping for the per-action audit + dispatch map
     // (fire-and-forget). Pairs the button press with the tech's GPS.
     captureTechLocation(TRIGGER_ACTION[triggerNumber], { hcpJobId });
+    // "On my way" → launch turn-by-turn directions immediately so the tech can
+    // drive while the HCP status mirrors in the background (Danny 2026-06-04:
+    // OMW should pull up directions). Opened synchronously inside the click
+    // gesture so mobile Safari doesn't block it; harmless no-op without an
+    // address/coords. Decoupled from the (sometimes cold-starting) HCP bot.
+    if (triggerNumber === 2 && directionsUrl && typeof window !== "undefined") {
+      window.open(directionsUrl, "_blank", "noopener,noreferrer");
+    }
     startTransition(async () => {
       // OMW guard: before On-My-Way, check for a prior job left open (started,
       // never Finished). If found, prompt Finish/Pause/Other and defer the fire.
@@ -219,8 +227,8 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
             href={directionsUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-md border border-teal-300 bg-teal-50 px-2.5 py-1.5 text-xs font-medium text-teal-800 transition hover:bg-teal-100"
-            title="Open turn-by-turn directions to the job site"
+            className="inline-flex items-center gap-1 rounded-md border border-teal-500 bg-teal-100 px-3 py-1.5 text-sm font-semibold text-teal-900 transition hover:bg-teal-200"
+            title="Open turn-by-turn directions to the job site (also opens automatically when you tap On my way)"
           >
             🧭 Directions
           </a>
