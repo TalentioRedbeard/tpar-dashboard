@@ -23,14 +23,10 @@ import {
   type ModifierDef,
 } from "@/lib/multi-option-estimate-actions";
 import { generateLineDescription } from "@/lib/estimate-actions";
+import { rateFor, linePriceDollars, linePriceCents, materialsCostCents } from "@/lib/estimate-pricing";
 import { BasedOnPanel } from "./BasedOnPanel";
 import type { BasedOnDraftOption } from "@/lib/based-on-actions";
 
-function rateFor(crew: number): number {
-  if (crew <= 1) return 185;
-  if (crew === 2) return 250;
-  return 250 + (crew - 2) * 85;
-}
 const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
 const CUSTOM = "__custom__";
 
@@ -44,12 +40,7 @@ const blankLine = (): Line => ({ q1: "", q2: "", q3: "", item: "", customName: "
 const blankOpt = (i: number): Opt => ({ name: `Option ${i + 1}`, lines: [blankLine()], excavator: true });
 
 function chosenName(l: Line): string { return l.item === CUSTOM ? l.customName.trim() : l.item; }
-function linePrice(l: Line): number {
-  const crew = Math.max(1, Math.min(7, parseInt(l.crew) || 1));
-  const hours = parseFloat(l.hours) || 0;
-  const mats = Math.max(0, parseFloat(l.materials) || 0);
-  return hours * rateFor(crew) + mats * 1.3;
-}
+const linePrice = (l: Line): number => linePriceDollars(l.hours, l.crew, l.materials);
 
 export function MultiOptionEstimateBuilder({
   initialCustomer,
@@ -243,8 +234,8 @@ export function MultiOptionEstimateBuilder({
           name: chosenName(l),
           description: l.description.trim() || undefined,
           quantity: 1,
-          unit_price_cents: Math.round(linePrice(l) * 100),
-          unit_cost_cents: Math.round(Math.max(0, parseFloat(l.materials) || 0) * 100),
+          unit_price_cents: linePriceCents(l.hours, l.crew, l.materials),
+          unit_cost_cents: materialsCostCents(l.materials),
         }));
       // Optional excavator equipment fee → its own transparent line item so the
       // customer sees the rental + delivery, and margin reporting treats it as cost.

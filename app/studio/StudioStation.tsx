@@ -6,8 +6,11 @@ import {
   searchCaptures,
   captureAudioUrl,
   generateFromCaptures,
+  pushStudioDraft,
+  attachCaptureToJob,
   type Capture,
   type GenerateFromCapturesResult,
+  type SearchFilters,
 } from "../../lib/studio-actions";
 
 type Draft = Extract<GenerateFromCapturesResult, { ok: true }>;
@@ -39,34 +42,62 @@ function fmtDate(s: string) {
 export function StudioStation({ initial }: { initial: Capture[] }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
+  const [customerFilter, setCustomerFilter] = useState<{ id: string; name: string } | null>(null);
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
   const [results, setResults] = useState<Capture[]>(initial);
   const [selected, setSelected] = useState<Record<string, Capture>>({});
   const [playing, setPlaying] = useState<{ id: string; url: string } | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
+  const [pushResult, setPushResult] = useState<{ ok: boolean; msg: string; url?: string | null; warning?: string } | null>(null);
+  const [attachFor, setAttachFor] = useState<string | null>(null);
+  const [attachInput, setAttachInput] = useState("");
+  const [attachMsg, setAttachMsg] = useState<{ key: string; ok: boolean; text: string; matches?: Array<{ hcp_job_id: string; label: string }> } | null>(null);
   const [searching, startSearch] = useTransition();
   const [generating, startGenerate] = useTransition();
+  const [pushing, startPush] = useTransition();
+  const [attaching, startAttach] = useTransition();
   const reqIdRef = useRef(0);
   const lastAudioReq = useRef<string | null>(null);
 
-  const runSearch = useCallback((q: string, t: string) => {
+  const runSearch = useCallback((q: string, t: string, f: SearchFilters) => {
     const myId = ++reqIdRef.current;
     startSearch(async () => {
-      const rows = await searchCaptures(q, t);
+      const rows = await searchCaptures(q, t, f);
       // Drop a stale response if a newer search was dispatched meanwhile.
       if (reqIdRef.current === myId) setResults(rows);
     });
   }, []);
 
+  // Build the active filter set, with optional overrides (state writes are async,
+  // so a changed control passes its new value explicitly).
+  const filtersWith = (over: Partial<{ customerId: string | null; since: string; until: string }> = {}): SearchFilters => ({
+    customerId: (over.customerId !== undefined ? over.customerId : customerFilter?.id) || undefined,
+    since: (over.since !== undefined ? over.since : since) || undefined,
+    until: (over.until !== undefined ? over.until : until) || undefined,
+  });
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    runSearch(query, type);
+    runSearch(query, type, filtersWith());
   };
 
   const pickType = (t: string) => {
     setType(t);
-    runSearch(query, t);
+    runSearch(query, t, filtersWith());
+  };
+
+  const pickCustomer = (cap: Capture) => {
+    if (!cap.hcp_customer_id) return;
+    const c = { id: cap.hcp_customer_id, name: cap.customer_name ?? "customer" };
+    setCustomerFilter(c);
+    runSearch(query, type, filtersWith({ customerId: c.id }));
+  };
+  const clearCustomer = () => {
+    setCustomerFilter(null);
+    runSearch(query, type, filtersWith({ customerId: null }));
   };
 
   const toggle = (c: Capture) => {
@@ -106,10 +137,45 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
     }
     const keys = sel.map((c) => ({ t: c.capture_type, id: c.capture_id }));
     startGenerate(async () => {
+      setPushResult(null);
       const res = await generateFromCaptures(keys);
       if (res.ok) setDraft(res);
       else setGenError(res.error);
     });
+  };
+
+  const pushToHcp = () => {
+    if (!draft) return;
+    setPushResult(null);
+    startPush(async () => {
+      const res = await pushStudioDraft(draft.options, draft.hcpCustomerId, draft.hcpJobId);
+      if (res.ok) setPushResult({ ok: true, msg: `✓ Estimate ${res.estimate_number} created in HCP`, url: res.hcp_url, warning: res.warning });
+      else setPushResult({ ok: false, msg: res.error });
+    });
+  };
+
+  const applyAttach = (k: string, res: Awaited<ReturnType<typeof attachCaptureToJob>>) => {
+    if (res.ok) {
+      setAttachMsg({ key: k, ok: true, text: `✓ ${res.label}` });
+      const custName = res.label.split(" · ")[0];
+      setResults((rows) => rows.map((r) => (keyOf(r) === k ? { ...r, hcp_job_id: res.hcp_job_id, customer_name: custName } : r)));
+      setAttachFor(null);
+      setAttachInput("");
+    } else {
+      setAttachMsg({ key: k, ok: false, text: res.error, matches: res.matches });
+    }
+  };
+
+  const doAttach = (c: Capture) => {
+    const k = keyOf(c);
+    startAttach(async () => applyAttach(k, await attachCaptureToJob(c.capture_id, attachInput)));
+  };
+
+  // Attach by a resolved canonical job id (resolveJobRef short-circuits on the
+  // job_ prefix, so picking a candidate never re-triggers the ambiguity).
+  const attachToJobId = (c: Capture, jobId: string) => {
+    const k = keyOf(c);
+    startAttach(async () => applyAttach(k, await attachCaptureToJob(c.capture_id, jobId)));
   };
 
   const selCount = Object.keys(selected).length;
@@ -150,6 +216,32 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
               {t.label}
             </button>
           ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+          <label className="flex items-center gap-1">
+            <span>From</span>
+            <input
+              type="date"
+              value={since}
+              onChange={(e) => { setSince(e.target.value); runSearch(query, type, filtersWith({ since: e.target.value })); }}
+              className="rounded border border-neutral-300 px-2 py-1"
+            />
+          </label>
+          <label className="flex items-center gap-1">
+            <span>to</span>
+            <input
+              type="date"
+              value={until}
+              onChange={(e) => { setUntil(e.target.value); runSearch(query, type, filtersWith({ until: e.target.value })); }}
+              className="rounded border border-neutral-300 px-2 py-1"
+            />
+          </label>
+          {customerFilter ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-navy-100 px-2.5 py-1 text-navy-800">
+              👤 {customerFilter.name}
+              <button type="button" onClick={clearCustomer} className="ml-0.5 font-bold leading-none hover:text-navy-950" aria-label="Clear customer filter">×</button>
+            </span>
+          ) : null}
         </div>
       </form>
 
@@ -194,7 +286,20 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
                       ) : null}
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-neutral-500">
-                      {c.customer_name ? <span className="font-medium text-neutral-700">{c.customer_name}</span> : null}
+                      {c.customer_name ? (
+                        c.hcp_customer_id ? (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); pickCustomer(c); }}
+                            className="font-medium text-neutral-700 hover:text-navy-700 hover:underline"
+                            title="Filter to this customer"
+                          >
+                            {c.customer_name}
+                          </button>
+                        ) : (
+                          <span className="font-medium text-neutral-700">{c.customer_name}</span>
+                        )
+                      ) : null}
                       {c.tech ? <span>· {c.tech}</span> : null}
                       <span>· {fmtDate(c.occurred_at)}</span>
                       {c.body_len > 0 ? <span>· {c.body_len.toLocaleString()} chars</span> : null}
@@ -227,6 +332,63 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : null}
+
+                    {/* Re-point an orphaned/mis-targeted recording at a job (the lost-recording fix) */}
+                    {c.capture_type === "recording" ? (
+                      <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                        {attachFor === k ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <input
+                              value={attachInput}
+                              onChange={(e) => setAttachInput(e.target.value)}
+                              placeholder="Job # or invoice"
+                              className="w-40 rounded border border-neutral-300 px-2 py-1 text-xs outline-none focus:border-navy-500"
+                            />
+                            <button
+                              type="button"
+                              disabled={attaching || !attachInput.trim()}
+                              onClick={() => doAttach(c)}
+                              className="rounded bg-navy-900 px-2 py-1 text-xs text-white hover:bg-navy-800 disabled:opacity-50"
+                            >
+                              {attaching ? "…" : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setAttachFor(null); setAttachMsg(null); }}
+                              className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setAttachFor(k); setAttachInput(""); setAttachMsg(null); }}
+                            className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+                          >
+                            📎 {c.hcp_job_id ? "Re-attach to job" : "Attach to job"}
+                          </button>
+                        )}
+                        {attachMsg && attachMsg.key === k ? (
+                          <p className={`mt-1 text-[11px] ${attachMsg.ok ? "text-emerald-700" : "text-rose-600"}`}>{attachMsg.text}</p>
+                        ) : null}
+                        {attachMsg && attachMsg.key === k && attachMsg.matches?.length ? (
+                          <div className="mt-1 flex flex-col gap-1">
+                            {attachMsg.matches.map((m) => (
+                              <button
+                                key={m.hcp_job_id}
+                                type="button"
+                                disabled={attaching}
+                                onClick={() => attachToJobId(c, m.hcp_job_id)}
+                                className="rounded border border-neutral-300 px-2 py-1 text-left text-[11px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                              >
+                                {m.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -241,17 +403,38 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
       ) : null}
       {draft ? (
         <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-emerald-900">Draft from {selCount} capture{selCount === 1 ? "" : "s"}</h3>
-            {draftCustomerId ? (
-              <Link
-                href={`/estimate/new?customer=${draftCustomerId}`}
-                className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800"
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={pushToHcp}
+                disabled={pushing}
+                className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
               >
-                Refine &amp; push in builder →
-              </Link>
-            ) : null}
+                {pushing ? "Pushing…" : "🚀 Push to HCP"}
+              </button>
+              {draftCustomerId ? (
+                <Link
+                  href={`/estimate/new?customer=${draftCustomerId}`}
+                  className="rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+                >
+                  Refine in builder →
+                </Link>
+              ) : null}
+            </div>
           </div>
+          {pushResult ? (
+            <div className={`mt-2 rounded-lg px-3 py-2 text-xs ${pushResult.ok ? "bg-emerald-100 text-emerald-800" : "bg-rose-50 text-rose-700"}`}>
+              {pushResult.msg}
+              {pushResult.ok && pushResult.url ? (
+                <a href={pushResult.url} target="_blank" rel="noreferrer" className="ml-2 font-medium underline">Open in HCP ↗</a>
+              ) : null}
+              {pushResult.ok && pushResult.warning ? (
+                <div className="mt-1 text-amber-700">⚠ {pushResult.warning}</div>
+              ) : null}
+            </div>
+          ) : null}
           {draft.sourceSummary ? (
             <p className="mt-1 text-[12px] text-emerald-800/80">{draft.sourceSummary}</p>
           ) : null}
