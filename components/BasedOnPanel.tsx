@@ -10,6 +10,7 @@ import { useState, useTransition } from "react";
 import {
   fetchBasedOnSources,
   generateBasedOnEstimate,
+  uploadBasedOnPhoto,
   type BasedOnSources,
   type BasedOnDraftOption,
 } from "@/lib/based-on-actions";
@@ -44,6 +45,8 @@ export function BasedOnPanel({
   const [jobId, setJobId] = useState("");
   const [incJob360, setIncJob360] = useState(false);
   const [photoIds, setPhotoIds] = useState<Set<number>>(new Set());
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const [generating, setGenerating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -61,7 +64,21 @@ export function BasedOnPanel({
     setter(next);
   };
 
-  const anySelected = freeform.trim().length > 0 || noteIds.size > 0 || voiceIds.size > 0 || commIds.size > 0 || inc360 || (incJob360 && !!jobId) || photoIds.size > 0;
+  async function handleUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    const urls: string[] = [];
+    for (const f of Array.from(files).slice(0, 8)) {
+      const fd = new FormData();
+      fd.set("photo", f, f.name);
+      const r = await uploadBasedOnPhoto(fd);
+      if (r.ok) urls.push(r.url);
+    }
+    setUploadedPhotos((cur) => [...cur, ...urls].slice(0, 8));
+    setUploading(false);
+  }
+
+  const anySelected = freeform.trim().length > 0 || noteIds.size > 0 || voiceIds.size > 0 || commIds.size > 0 || inc360 || (incJob360 && !!jobId) || photoIds.size > 0 || uploadedPhotos.length > 0;
 
   function generate() {
     if (generating || !anySelected) return;
@@ -76,6 +93,7 @@ export function BasedOnPanel({
       jobId: jobId || undefined,
       includeJob360: incJob360,
       photoIds: [...photoIds],
+      uploadedImageUrls: uploadedPhotos,
     }).then((res) => {
       setGenerating(false);
       if (res.ok) { onApply(res.options, res.note); setOpen(false); }
@@ -205,6 +223,26 @@ export function BasedOnPanel({
             </div>
           </div>
         ) : null}
+
+        {/* Upload photos (F) — new photos for this estimate, read by Claude vision */}
+        <div>
+          <div className="mb-1 text-xs font-medium text-neutral-600">📤 Add photos{uploading ? " (uploading…)" : ""} — Claude reads what you upload</div>
+          <input type="file" accept="image/*" multiple disabled={uploading}
+            onChange={(e) => { void handleUpload(e.target.files); e.currentTarget.value = ""; }}
+            className="block w-full text-xs text-neutral-600 file:mr-2 file:rounded-md file:border file:border-neutral-300 file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium" />
+          {uploadedPhotos.length > 0 ? (
+            <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+              {uploadedPhotos.map((u, i) => (
+                <div key={u} className="relative aspect-square overflow-hidden rounded-md border-2 border-brand-500 ring-2 ring-brand-300">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={u} alt="uploaded" className="h-full w-full object-cover" loading="lazy" />
+                  <button type="button" onClick={() => setUploadedPhotos((cur) => cur.filter((_, j) => j !== i))}
+                    title="remove" className="absolute right-0.5 top-0.5 rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">×</button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-brand-200 pt-3">

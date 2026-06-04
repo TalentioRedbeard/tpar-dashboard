@@ -102,6 +102,24 @@ export async function fetchBasedOnSources(hcpCustomerId: string, _hcpJobId?: str
   return { notes, voiceNotes, comms, jobs, photos, hasCustomer360: !!c360Res.data };
 }
 
+/** Upload a photo for a "Based On…" draft → public job-photos bucket → returns a
+ *  URL the generator can hand to Claude vision. (F — Danny 2026-06-04.) */
+export async function uploadBasedOnPhoto(formData: FormData): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
+  const file = formData.get("photo");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "no photo" };
+  if (file.size > 15 * 1024 * 1024) return { ok: false, error: "photo too large (15MB max)" };
+  const mime = file.type || "image/jpeg";
+  const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : mime.includes("heic") ? "heic" : "jpg";
+  const supa = db();
+  const path = `based-on/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supa.storage.from("job-photos").upload(path, Buffer.from(await file.arrayBuffer()), { contentType: mime, upsert: false });
+  if (error) return { ok: false, error: `upload: ${error.message}` };
+  const { data } = supa.storage.from("job-photos").getPublicUrl(path);
+  return data?.publicUrl ? { ok: true, url: data.publicUrl } : { ok: false, error: "could not get public URL" };
+}
+
 // ── Generate ────────────────────────────────────────────────────────────────
 export type BasedOnSelection = {
   freeform?: string;
@@ -112,6 +130,7 @@ export type BasedOnSelection = {
   jobId?: string;
   includeJob360?: boolean;
   photoIds?: number[];
+  uploadedImageUrls?: string[];
 };
 
 // Builder-shaped draft (maps onto MultiOptionEstimateBuilder's Opt/Line state).
@@ -194,6 +213,11 @@ export async function generateBasedOnEstimate(hcpCustomerId: string, sel: BasedO
     const { data } = await supa.from("job_photos").select("public_url").in("id", sel.photoIds);
     imageUrls = ((data ?? []) as Array<{ public_url: string | null }>).map((p) => p.public_url ?? "").filter(Boolean).slice(0, 8);
     if (imageUrls.length) usedLabels.push(`${imageUrls.length} photo${imageUrls.length === 1 ? "" : "s"}`);
+  }
+  if (sel.uploadedImageUrls && sel.uploadedImageUrls.length) {
+    const n = sel.uploadedImageUrls.filter(Boolean).length;
+    imageUrls = [...imageUrls, ...sel.uploadedImageUrls.filter(Boolean)].slice(0, 8);
+    if (n) usedLabels.push(`${n} uploaded photo${n === 1 ? "" : "s"}`);
   }
 
   const referenceText = parts.join("\n\n");
