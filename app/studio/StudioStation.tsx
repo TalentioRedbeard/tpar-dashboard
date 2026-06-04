@@ -12,6 +12,7 @@ import {
   type GenerateFromCapturesResult,
   type SearchFilters,
 } from "../../lib/studio-actions";
+import { uploadBasedOnPhoto } from "../../lib/based-on-actions";
 
 type Draft = Extract<GenerateFromCapturesResult, { ok: true }>;
 
@@ -54,7 +55,9 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
   const [pushResult, setPushResult] = useState<{ ok: boolean; msg: string; url?: string | null; warning?: string } | null>(null);
   const [attachFor, setAttachFor] = useState<string | null>(null);
   const [attachInput, setAttachInput] = useState("");
-  const [attachMsg, setAttachMsg] = useState<{ key: string; ok: boolean; text: string; matches?: Array<{ hcp_job_id: string; label: string }> } | null>(null);
+  const [attachMsg, setAttachMsg] = useState<{ key: string; ok: boolean; text: string; hcpJobId?: string; matches?: Array<{ hcp_job_id: string; label: string }> } | null>(null);
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [searching, startSearch] = useTransition();
   const [generating, startGenerate] = useTransition();
   const [pushing, startPush] = useTransition();
@@ -138,10 +141,24 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
     const keys = sel.map((c) => ({ t: c.capture_type, id: c.capture_id }));
     startGenerate(async () => {
       setPushResult(null);
-      const res = await generateFromCaptures(keys);
+      const res = await generateFromCaptures(keys, uploadedPhotos);
       if (res.ok) setDraft(res);
       else setGenError(res.error);
     });
+  };
+
+  const handleUploadPhotos = async (files: File[]) => {
+    if (!files.length) return;
+    setUploadingPhoto(true);
+    const urls: string[] = [];
+    for (const f of files) {
+      const fd = new FormData();
+      fd.append("photo", f);
+      const res = await uploadBasedOnPhoto(fd);
+      if (res.ok) urls.push(res.url);
+    }
+    setUploadedPhotos((p) => [...p, ...urls].slice(0, 8));
+    setUploadingPhoto(false);
   };
 
   const pushToHcp = () => {
@@ -156,7 +173,7 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
 
   const applyAttach = (k: string, res: Awaited<ReturnType<typeof attachCaptureToJob>>) => {
     if (res.ok) {
-      setAttachMsg({ key: k, ok: true, text: `✓ ${res.label}` });
+      setAttachMsg({ key: k, ok: true, text: `✓ ${res.label}`, hcpJobId: res.hcp_job_id });
       const custName = res.label.split(" · ")[0];
       setResults((rows) => rows.map((r) => (keyOf(r) === k ? { ...r, hcp_job_id: res.hcp_job_id, customer_name: custName } : r)));
       setAttachFor(null);
@@ -303,6 +320,15 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
                       {c.tech ? <span>· {c.tech}</span> : null}
                       <span>· {fmtDate(c.occurred_at)}</span>
                       {c.body_len > 0 ? <span>· {c.body_len.toLocaleString()} chars</span> : null}
+                      {c.hcp_job_id ? (
+                        <Link
+                          href={`/job/${c.hcp_job_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-navy-600 hover:underline"
+                        >
+                          · open job ↗
+                        </Link>
+                      ) : null}
                     </div>
                     {c.snippet ? <p className="mt-1 line-clamp-2 text-[13px] text-neutral-600">{c.snippet}</p> : null}
 
@@ -370,7 +396,12 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
                           </button>
                         )}
                         {attachMsg && attachMsg.key === k ? (
-                          <p className={`mt-1 text-[11px] ${attachMsg.ok ? "text-emerald-700" : "text-rose-600"}`}>{attachMsg.text}</p>
+                          <p className={`mt-1 text-[11px] ${attachMsg.ok ? "text-emerald-700" : "text-rose-600"}`}>
+                            {attachMsg.text}
+                            {attachMsg.ok && attachMsg.hcpJobId ? (
+                              <Link href={`/job/${attachMsg.hcpJobId}`} className="ml-1 font-medium underline">Open job →</Link>
+                            ) : null}
+                          </p>
                         ) : null}
                         {attachMsg && attachMsg.key === k && attachMsg.matches?.length ? (
                           <div className="mt-1 flex flex-col gap-1">
@@ -467,30 +498,59 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
       {/* Sticky selection bar */}
       {selCount > 0 ? (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-200 bg-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3">
-            <span className="text-sm font-medium text-neutral-700">
-              {selCount} selected
-            </span>
-            <span className="hidden text-xs text-neutral-400 sm:inline">
-              {selList.slice(0, 3).map((c) => c.title).join(" · ")}
-              {selCount > 3 ? ` +${selCount - 3}` : ""}
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSelected({})}
-                className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={build}
-                disabled={generating}
-                className="rounded-md bg-navy-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-navy-800 disabled:opacity-50"
-              >
-                {generating ? "Building…" : "Build estimate from selected →"}
-              </button>
+          <div className="mx-auto max-w-[1600px] px-4 py-3">
+            {uploadedPhotos.length ? (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-neutral-500">Photos for the draft:</span>
+                {uploadedPhotos.map((url, i) => (
+                  <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="h-12 w-12 rounded object-cover ring-1 ring-neutral-200" />
+                    <button
+                      type="button"
+                      onClick={() => setUploadedPhotos((p) => p.filter((_, j) => j !== i))}
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold leading-none text-white"
+                      aria-label="Remove photo"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-neutral-700">{selCount} selected</span>
+              <span className="hidden text-xs text-neutral-400 sm:inline">
+                {selList.slice(0, 3).map((c) => c.title).join(" · ")}
+                {selCount > 3 ? ` +${selCount - 3}` : ""}
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <label className="cursor-pointer rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50">
+                  {uploadingPhoto ? "Uploading…" : "📤 Add photos"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => { const fs = e.target.files ? Array.from(e.target.files) : []; e.currentTarget.value = ""; void handleUploadPhotos(fs); }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSelected({})}
+                  className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={build}
+                  disabled={generating}
+                  className="rounded-md bg-navy-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-navy-800 disabled:opacity-50"
+                >
+                  {generating ? "Building…" : "Build estimate from selected →"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

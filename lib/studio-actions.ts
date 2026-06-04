@@ -151,7 +151,10 @@ export type GenerateFromCapturesResult =
   | (Extract<BasedOnResult, { ok: true }> & { hcpCustomerId: string; hcpJobId?: string })
   | { ok: false; error: string };
 
-export async function generateFromCaptures(keys: Array<{ t: string; id: string }>): Promise<GenerateFromCapturesResult> {
+export async function generateFromCaptures(
+  keys: Array<{ t: string; id: string }>,
+  uploadedImageUrls?: string[],
+): Promise<GenerateFromCapturesResult> {
   // Generating an estimate is a WRITE — gate on writer authority (owner/tech),
   // not the wider read gate, so managers get a clean upfront rejection instead
   // of a confusing failure after all the work (matches generateBasedOnEstimate).
@@ -199,6 +202,9 @@ export async function generateFromCaptures(keys: Array<{ t: string; id: string }
       textParts.push(`[${r.capture_type}${r.subtype ? "/" + r.subtype : ""}${r.occurred_at ? " " + String(r.occurred_at).slice(0, 10) : ""}] ${body.slice(0, PER_PART)}`);
     }
   }
+  // Photos uploaded from the operator's computer in Studio (same path the
+  // Based-on panel uses) ride along with the selected captures' photos.
+  if (uploadedImageUrls?.length) imageUrls.push(...uploadedImageUrls.filter((u) => typeof u === "string" && !!u));
   let freeform = textParts.join("\n\n");
   if (freeform.length > TOTAL) freeform = freeform.slice(0, TOTAL) + "\n\n[…truncated — selection too large; narrow your picks]";
   if (!freeform && !imageUrls.length) return { ok: false, error: "nothing usable in the selection" };
