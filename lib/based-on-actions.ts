@@ -20,12 +20,14 @@ export type BasedOnNote = { id: string; kind: "customer" | "job"; date: string; 
 export type BasedOnVoiceNote = { id: string; date: string; tech: string; snippet: string };
 export type BasedOnComm = { id: number; date: string; channel: string; direction: string; snippet: string };
 export type BasedOnJob = { hcp_job_id: string; label: string };
+export type BasedOnPhoto = { id: number; url: string; label: string };
 
 export type BasedOnSources = {
   notes: BasedOnNote[];
   voiceNotes: BasedOnVoiceNote[];
   comms: BasedOnComm[];
   jobs: BasedOnJob[];
+  photos: BasedOnPhoto[];
   hasCustomer360: boolean;
 };
 
@@ -34,7 +36,7 @@ const day = (s: unknown) => (s ? String(s).slice(0, 10) : "");
 
 /** List the context available to seed a "Based On…" draft for this customer. */
 export async function fetchBasedOnSources(hcpCustomerId: string, _hcpJobId?: string): Promise<BasedOnSources> {
-  const empty: BasedOnSources = { notes: [], voiceNotes: [], comms: [], jobs: [], hasCustomer360: false };
+  const empty: BasedOnSources = { notes: [], voiceNotes: [], comms: [], jobs: [], photos: [], hasCustomer360: false };
   const writer = await requireWriter();
   if (!writer.ok) return empty;
   const cid = String(hcpCustomerId ?? "").trim();
@@ -49,7 +51,7 @@ export async function fetchBasedOnSources(hcpCustomerId: string, _hcpJobId?: str
     .limit(25);
   const jobIds = (jobsRaw ?? []).map((j) => j.hcp_job_id as string).filter(Boolean);
 
-  const [cNotesRes, jNotesRes, vnRes, commsRes, c360Res] = await Promise.all([
+  const [cNotesRes, jNotesRes, vnRes, commsRes, c360Res, photosRes] = await Promise.all([
     supa.from("customer_notes").select("id, body, created_at").eq("hcp_customer_id", cid).order("created_at", { ascending: false }).limit(15),
     jobIds.length
       ? supa.from("job_notes").select("id, body, created_at").in("hcp_job_id", jobIds).order("created_at", { ascending: false }).limit(15)
@@ -63,6 +65,9 @@ export async function fetchBasedOnSources(hcpCustomerId: string, _hcpJobId?: str
       .select("id, content_text, summary, occurred_at, channel, direction")
       .eq("hcp_customer_id", cid).order("occurred_at", { ascending: false }).limit(30),
     supa.from("customer_360").select("hcp_customer_id").eq("hcp_customer_id", cid).maybeSingle(),
+    jobIds.length
+      ? supa.from("job_photos").select("id, public_url, photo_type, uploaded_at").in("hcp_job_id", jobIds).not("public_url", "is", null).order("uploaded_at", { ascending: false }).limit(24)
+      : Promise.resolve({ data: [] as Array<{ id: number; public_url: string | null; photo_type: string | null; uploaded_at: string }> }),
   ]);
 
   const notes: BasedOnNote[] = [
@@ -85,7 +90,11 @@ export async function fetchBasedOnSources(hcpCustomerId: string, _hcpJobId?: str
       return { hcp_job_id: j.hcp_job_id, label: bits.join(" · ") || j.hcp_job_id };
     });
 
-  return { notes, voiceNotes, comms, jobs, hasCustomer360: !!c360Res.data };
+  const photos: BasedOnPhoto[] = ((photosRes.data ?? []) as Array<{ id: number; public_url: string | null; photo_type: string | null; uploaded_at: string }>)
+    .filter((p) => p.public_url)
+    .map((p) => ({ id: Number(p.id), url: p.public_url as string, label: `${day(p.uploaded_at)} · ${p.photo_type ?? "photo"}` }));
+
+  return { notes, voiceNotes, comms, jobs, photos, hasCustomer360: !!c360Res.data };
 }
 
 // ── Generate ────────────────────────────────────────────────────────────────
@@ -97,6 +106,7 @@ export type BasedOnSelection = {
   includeCustomer360?: boolean;
   jobId?: string;
   includeJob360?: boolean;
+  photoIds?: number[];
 };
 
 // Builder-shaped draft (maps onto MultiOptionEstimateBuilder's Opt/Line state).
@@ -172,8 +182,17 @@ export async function generateBasedOnEstimate(hcpCustomerId: string, sel: BasedO
     if (data) { parts.push(`### Job 360\n${compact360(data as Record<string, unknown>)}`); usedLabels.push("job 360"); }
   }
 
+  // Photos → vision. Resolve selected photo ids to their public bucket URLs
+  // (which Anthropic can fetch); capped to 8 in the edge fn.
+  let imageUrls: string[] = [];
+  if (sel.photoIds && sel.photoIds.length) {
+    const { data } = await supa.from("job_photos").select("public_url").in("id", sel.photoIds);
+    imageUrls = ((data ?? []) as Array<{ public_url: string | null }>).map((p) => p.public_url ?? "").filter(Boolean).slice(0, 8);
+    if (imageUrls.length) usedLabels.push(`${imageUrls.length} photo${imageUrls.length === 1 ? "" : "s"}`);
+  }
+
   const referenceText = parts.join("\n\n");
-  if (!referenceText.trim()) return { ok: false, error: "Pick at least one source (or type freeform context) to base the estimate on." };
+  if (!referenceText.trim() && imageUrls.length === 0) return { ok: false, error: "Pick at least one source (notes, voice, comms, 360, or photos) — or type freeform context." };
 
   let r: Response;
   try {
@@ -185,6 +204,7 @@ export async function generateBasedOnEstimate(hcpCustomerId: string, sel: BasedO
         reference_text: referenceText,
         hcp_customer_id: cid,
         ...(sel.jobId ? { hcp_job_id: sel.jobId } : {}),
+        ...(imageUrls.length ? { image_urls: imageUrls } : {}),
         target_scope: "full_option_set",
       }),
     });

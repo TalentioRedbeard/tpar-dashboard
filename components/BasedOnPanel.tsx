@@ -43,6 +43,7 @@ export function BasedOnPanel({
   const [inc360, setInc360] = useState(false);
   const [jobId, setJobId] = useState("");
   const [incJob360, setIncJob360] = useState(false);
+  const [photoIds, setPhotoIds] = useState<Set<number>>(new Set());
 
   const [generating, setGenerating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -60,7 +61,7 @@ export function BasedOnPanel({
     setter(next);
   };
 
-  const anySelected = freeform.trim().length > 0 || noteIds.size > 0 || voiceIds.size > 0 || commIds.size > 0 || inc360 || (incJob360 && !!jobId);
+  const anySelected = freeform.trim().length > 0 || noteIds.size > 0 || voiceIds.size > 0 || commIds.size > 0 || inc360 || (incJob360 && !!jobId) || photoIds.size > 0;
 
   function generate() {
     if (generating || !anySelected) return;
@@ -74,6 +75,7 @@ export function BasedOnPanel({
       includeCustomer360: inc360,
       jobId: jobId || undefined,
       includeJob360: incJob360,
+      photoIds: [...photoIds],
     }).then((res) => {
       setGenerating(false);
       if (res.ok) { onApply(res.options, res.note); setOpen(false); }
@@ -180,6 +182,26 @@ export function BasedOnPanel({
                   include its 360
                 </label>
               ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Photos → Claude reads them (vision) */}
+        {sources && sources.photos.length > 0 ? (
+          <div>
+            <div className="mb-1 text-xs font-medium text-neutral-600">📷 Photos ({sources.photos.length}) — Claude looks at the ones you pick</div>
+            <div className="grid max-h-44 grid-cols-3 gap-1.5 overflow-y-auto sm:grid-cols-5">
+              {sources.photos.map((p) => {
+                const on = photoIds.has(p.id);
+                return (
+                  <button key={p.id} type="button" onClick={() => toggle(photoIds, p.id, setPhotoIds)} title={p.label}
+                    className={`relative aspect-square overflow-hidden rounded-md border-2 ${on ? "border-brand-500 ring-2 ring-brand-300" : "border-neutral-200 hover:border-neutral-300"}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt={p.label} className="h-full w-full object-cover" loading="lazy" />
+                    {on ? <span className="absolute right-0.5 top-0.5 rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white">✓</span> : null}
+                  </button>
+                );
+              })}
             </div>
           </div>
         ) : null}
