@@ -14,6 +14,8 @@ import { NeedActions } from "./NeedActions";
 import { ResearchButton } from "./ResearchButton";
 import { listDistributors } from "./distributor-actions";
 import { DistributorDirectory, type NeedLine } from "@/components/DistributorDirectory";
+import { loadVendorSpend } from "./vendor-spend-actions";
+import { VendorSpendPanel } from "./VendorSpendPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -101,10 +103,11 @@ export default async function ShoppingPage({
   const params = await searchParams;
   const prefillJob = params?.prefill_job ?? "";
 
-  const [open, recentDone, distributors] = await Promise.all([
+  const [open, recentDone, distributors, vendorSpend] = await Promise.all([
     getOpenNeeds({ limit: 100 }),
     getRecentlyCompletedNeeds(10),
     listDistributors(),
+    loadVendorSpend(),
   ]);
 
   // Load any existing research results for the open needs (parallel)
@@ -140,6 +143,18 @@ export default async function ShoppingPage({
         </span>
       }
     >
+      {vendorSpend && vendorSpend.vendors.length > 0 ? (
+        <>
+          <Section
+            title="Where your money goes"
+            description="Reconciled spend per real supplier (split vendor names folded together; overhead separated). All receipts to date."
+          >
+            <VendorSpendPanel data={vendorSpend} />
+          </Section>
+          <div className="my-6" />
+        </>
+      ) : null}
+
       <Section
         title="Suppliers"
         description="Distributor contacts + one-tap order / quote emails. Admins can add or edit."
