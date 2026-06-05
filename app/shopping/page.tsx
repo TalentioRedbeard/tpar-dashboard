@@ -16,6 +16,8 @@ import { listDistributors } from "./distributor-actions";
 import { DistributorDirectory, type NeedLine } from "@/components/DistributorDirectory";
 import { loadVendorSpend } from "./vendor-spend-actions";
 import { VendorSpendPanel } from "./VendorSpendPanel";
+import { loadReviewQueue } from "./review-queue-actions";
+import { ReviewQueue } from "./ReviewQueue";
 
 export const dynamic = "force-dynamic";
 
@@ -103,11 +105,12 @@ export default async function ShoppingPage({
   const params = await searchParams;
   const prefillJob = params?.prefill_job ?? "";
 
-  const [open, recentDone, distributors, vendorSpend] = await Promise.all([
+  const [open, recentDone, distributors, vendorSpend, reviewQueue] = await Promise.all([
     getOpenNeeds({ limit: 100 }),
     getRecentlyCompletedNeeds(10),
     listDistributors(),
     loadVendorSpend(),
+    loadReviewQueue(),
   ]);
 
   // Load any existing research results for the open needs (parallel)
@@ -150,6 +153,18 @@ export default async function ShoppingPage({
             description="Reconciled spend per real supplier (split vendor names folded together; overhead separated). All receipts to date."
           >
             <VendorSpendPanel data={vendorSpend} />
+          </Section>
+          <div className="my-6" />
+        </>
+      ) : null}
+
+      {reviewQueue && reviewQueue.total > 0 ? (
+        <>
+          <Section
+            title="Translation review"
+            description="Vendor SKUs the matcher couldn't confirm on its own. One tap teaches the system permanently — it never asks again."
+          >
+            <ReviewQueue initial={reviewQueue} />
           </Section>
           <div className="my-6" />
         </>
