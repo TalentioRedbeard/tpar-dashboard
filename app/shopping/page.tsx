@@ -18,6 +18,7 @@ import { loadVendorSpend } from "./vendor-spend-actions";
 import { VendorSpendPanel } from "./VendorSpendPanel";
 import { loadReviewQueue } from "./review-queue-actions";
 import { ReviewQueue } from "./ReviewQueue";
+import { loadDistributorLocations } from "./location-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -105,12 +106,13 @@ export default async function ShoppingPage({
   const params = await searchParams;
   const prefillJob = params?.prefill_job ?? "";
 
-  const [open, recentDone, distributors, vendorSpend, reviewQueue] = await Promise.all([
+  const [open, recentDone, distributors, vendorSpend, reviewQueue, locationsByDist] = await Promise.all([
     getOpenNeeds({ limit: 100 }),
     getRecentlyCompletedNeeds(10),
     listDistributors(),
     loadVendorSpend(),
     loadReviewQueue(),
+    loadDistributorLocations(),
   ]);
 
   // Load any existing research results for the open needs (parallel)
@@ -179,6 +181,7 @@ export default async function ShoppingPage({
           openNeeds={orderableNeeds}
           canEdit={me.isAdmin}
           signedInName={me.tech?.hcp_full_name ?? me.tech?.tech_short_name ?? ""}
+          locationsByDist={locationsByDist}
         />
       </Section>
 

@@ -1,0 +1,38 @@
+"use server";
+
+// Supplier branch locations for the /shopping directory. Operational supplier
+// contact info — any signed-in user (techs call suppliers from the field).
+
+import { db } from "@/lib/supabase";
+import { getCurrentTech } from "@/lib/current-tech";
+
+export type SupplierLocation = {
+  id: number;
+  distributor_id: string | null;
+  supplier_name: string;
+  label: string;
+  address: string | null;
+  phone: string | null;
+  website: string | null;
+  hours: string | null;
+  notes: string | null;
+};
+
+// Grouped by distributor_id (or `name:<supplier>` when not linked to a distributor row).
+export async function loadDistributorLocations(): Promise<Record<string, SupplierLocation[]>> {
+  const me = await getCurrentTech();
+  if (!me) return {};
+  const supa = db();
+  const { data } = await supa
+    .from("distributor_locations")
+    .select("id, distributor_id, supplier_name, label, address, phone, website, hours, notes")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("label", { ascending: true });
+  const map: Record<string, SupplierLocation[]> = {};
+  for (const r of (data ?? []) as SupplierLocation[]) {
+    const k = r.distributor_id ?? `name:${r.supplier_name}`;
+    (map[k] ??= []).push(r);
+  }
+  return map;
+}

@@ -13,8 +13,59 @@ import {
   type Distributor,
   type DistributorInput,
 } from "@/app/shopping/distributor-actions";
+import type { SupplierLocation } from "@/app/shopping/location-actions";
 
 export type NeedLine = { qty: string | number | null; item: string };
+
+const telHref = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
+
+function CopyBtn({ text, label = "copy" }: { text: string; label?: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1200); } catch { /* ignore */ } }}
+      className="rounded border border-neutral-300 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 transition hover:bg-neutral-50"
+      title="Copy number to dial from your phone"
+    >
+      {done ? "✓ copied" : label}
+    </button>
+  );
+}
+
+function LocationTiles({ locations }: { locations: SupplierLocation[] }) {
+  if (!locations.length) return null;
+  return (
+    <div className="mt-2 space-y-1.5 border-t border-neutral-100 pt-2">
+      {locations.map((l) => (
+        <div key={l.id} className="rounded-lg bg-neutral-50 px-2.5 py-1.5 text-sm">
+          <div className="font-medium text-neutral-800">{l.label}</div>
+          {l.address ? (
+            <a
+              href={`https://maps.google.com/?q=${encodeURIComponent(l.address)}`}
+              target="_blank" rel="noopener noreferrer"
+              className="block text-[12px] text-neutral-500 hover:text-brand-700 hover:underline"
+            >
+              {l.address}
+            </a>
+          ) : null}
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px]">
+            {l.phone ? (
+              <span className="flex items-center gap-1">
+                <a href={telHref(l.phone)} className="font-medium text-brand-700 hover:underline">📞 {l.phone}</a>
+                <CopyBtn text={l.phone.replace(/[^0-9+]/g, "")} />
+              </span>
+            ) : null}
+            {l.website ? (
+              <a href={l.website.startsWith("http") ? l.website : `https://${l.website}`} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">website ↗</a>
+            ) : null}
+            {l.hours ? <span className="text-neutral-400">{l.hours}</span> : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const CATEGORY_LABEL: Record<string, string> = {
   plumbing_supply: "Plumbing supply",
@@ -54,11 +105,13 @@ export function DistributorDirectory({
   openNeeds,
   canEdit,
   signedInName,
+  locationsByDist = {},
 }: {
   distributors: Distributor[];
   openNeeds: NeedLine[];
   canEdit: boolean;
   signedInName: string;
+  locationsByDist?: Record<string, SupplierLocation[]>;
 }) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -98,6 +151,7 @@ export function DistributorDirectory({
               who={signedInName}
               canEdit={canEdit}
               onEdit={() => { setEditingId(d.id); setAdding(false); }}
+              locations={locationsByDist[d.id] ?? locationsByDist[`name:${d.name}`] ?? []}
             />
           )
         )}
@@ -107,9 +161,9 @@ export function DistributorDirectory({
 }
 
 function DistributorCard({
-  d, openNeeds, who, canEdit, onEdit,
+  d, openNeeds, who, canEdit, onEdit, locations,
 }: {
-  d: Distributor; openNeeds: NeedLine[]; who: string; canEdit: boolean; onEdit: () => void;
+  d: Distributor; openNeeds: NeedLine[]; who: string; canEdit: boolean; onEdit: () => void; locations: SupplierLocation[];
 }) {
   const tone = CATEGORY_TONE[d.category ?? "other"] ?? CATEGORY_TONE.other;
   return (
@@ -142,6 +196,8 @@ function DistributorCard({
         ) : null}
         {d.notes ? <div className="mt-1 whitespace-pre-line text-xs text-neutral-500">{d.notes}</div> : null}
       </div>
+
+      <LocationTiles locations={locations} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {d.canEmailOrder && d.orderEmail ? (
