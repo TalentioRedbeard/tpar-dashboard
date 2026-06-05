@@ -13,7 +13,7 @@ import {
   type Distributor,
   type DistributorInput,
 } from "@/app/shopping/distributor-actions";
-import type { SupplierLocation } from "@/app/shopping/location-actions";
+import { upsertLocation, deleteLocation, type SupplierLocation } from "@/app/shopping/location-actions";
 
 export type NeedLine = { qty: string | number | null; item: string };
 
@@ -33,36 +33,106 @@ function CopyBtn({ text, label = "copy" }: { text: string; label?: string }) {
   );
 }
 
-function LocationTiles({ locations }: { locations: SupplierLocation[] }) {
-  if (!locations.length) return null;
+function LocationTiles({
+  locations, canEdit, distributorId, supplierName,
+}: {
+  locations: SupplierLocation[]; canEdit: boolean; distributorId: string; supplierName: string;
+}) {
+  const [editing, setEditing] = useState<number | "new" | null>(null);
+  if (!locations.length && !canEdit) return null;
   return (
     <div className="mt-2 space-y-1.5 border-t border-neutral-100 pt-2">
-      {locations.map((l) => (
-        <div key={l.id} className="rounded-lg bg-neutral-50 px-2.5 py-1.5 text-sm">
-          <div className="font-medium text-neutral-800">{l.label}</div>
-          {l.address ? (
-            <a
-              href={`https://maps.google.com/?q=${encodeURIComponent(l.address)}`}
-              target="_blank" rel="noopener noreferrer"
-              className="block text-[12px] text-neutral-500 hover:text-brand-700 hover:underline"
-            >
-              {l.address}
-            </a>
-          ) : null}
-          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px]">
-            {l.phone ? (
-              <span className="flex items-center gap-1">
-                <a href={telHref(l.phone)} className="font-medium text-brand-700 hover:underline">📞 {l.phone}</a>
-                <CopyBtn text={l.phone.replace(/[^0-9+]/g, "")} />
-              </span>
-            ) : null}
-            {l.website ? (
-              <a href={l.website.startsWith("http") ? l.website : `https://${l.website}`} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">website ↗</a>
-            ) : null}
-            {l.hours ? <span className="text-neutral-400">{l.hours}</span> : null}
-          </div>
-        </div>
-      ))}
+      {locations.map((l) =>
+        editing === l.id ? (
+          <LocationForm key={l.id} existing={l} distributorId={distributorId} supplierName={supplierName} onClose={() => setEditing(null)} />
+        ) : (
+          <LocationTile key={l.id} l={l} canEdit={canEdit} onEdit={() => setEditing(l.id)} />
+        )
+      )}
+      {canEdit ? (
+        editing === "new" ? (
+          <LocationForm distributorId={distributorId} supplierName={supplierName} onClose={() => setEditing(null)} />
+        ) : (
+          <button type="button" onClick={() => setEditing("new")} className="text-[11px] font-medium text-brand-700 hover:underline">
+            + Add branch
+          </button>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+function LocationTile({ l, canEdit, onEdit }: { l: SupplierLocation; canEdit: boolean; onEdit: () => void }) {
+  return (
+    <div className="rounded-lg bg-neutral-50 px-2.5 py-1.5 text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="font-medium text-neutral-800">{l.label}</div>
+        {canEdit ? (
+          <button type="button" onClick={onEdit} className="shrink-0 text-[10px] text-neutral-400 hover:text-neutral-700">edit</button>
+        ) : null}
+      </div>
+      {l.address ? (
+        <a href={`https://maps.google.com/?q=${encodeURIComponent(l.address)}`} target="_blank" rel="noopener noreferrer" className="block text-[12px] text-neutral-500 hover:text-brand-700 hover:underline">{l.address}</a>
+      ) : null}
+      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px]">
+        {l.phone ? (
+          <span className="flex items-center gap-1">
+            <a href={telHref(l.phone)} className="font-medium text-brand-700 hover:underline">📞 {l.phone}</a>
+            <CopyBtn text={l.phone.replace(/[^0-9+]/g, "")} />
+          </span>
+        ) : null}
+        {l.website ? (
+          <a href={l.website.startsWith("http") ? l.website : `https://${l.website}`} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">website ↗</a>
+        ) : null}
+        {l.hours ? <span className="text-neutral-400">{l.hours}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function LocationForm({
+  existing, distributorId, supplierName, onClose,
+}: {
+  existing?: SupplierLocation; distributorId: string; supplierName: string; onClose: () => void;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const [f, setF] = useState({
+    label: existing?.label ?? "", address: existing?.address ?? "",
+    phone: existing?.phone ?? "", website: existing?.website ?? "", hours: existing?.hours ?? "",
+  });
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const inp = "w-full rounded border border-neutral-300 px-2 py-1 text-xs focus:border-brand-600 focus:outline-none";
+  function save() {
+    setErr(null);
+    start(async () => {
+      const res = await upsertLocation({ id: existing?.id, distributorId, supplierName, ...f });
+      if (res.ok) { onClose(); router.refresh(); } else setErr(res.error ?? "Couldn't save.");
+    });
+  }
+  function remove() {
+    if (!existing) return;
+    start(async () => {
+      const res = await deleteLocation(existing.id);
+      if (res.ok) { onClose(); router.refresh(); } else setErr(res.error ?? "Couldn't remove.");
+    });
+  }
+  return (
+    <div className="rounded-lg border border-brand-200 bg-white p-2.5">
+      <div className="grid grid-cols-2 gap-1.5">
+        <input className={`${inp} col-span-2`} placeholder="Branch label (e.g. Tulsa — S Lewis)" value={f.label} onChange={set("label")} />
+        <input className={`${inp} col-span-2`} placeholder="Address" value={f.address} onChange={set("address")} />
+        <input className={inp} placeholder="Phone" value={f.phone} onChange={set("phone")} />
+        <input className={inp} placeholder="Website" value={f.website} onChange={set("website")} />
+        <input className={`${inp} col-span-2`} placeholder="Hours (optional)" value={f.hours} onChange={set("hours")} />
+      </div>
+      {err ? <div className="mt-1 text-[11px] text-red-600">{err}</div> : null}
+      <div className="mt-1.5 flex items-center gap-2">
+        <button type="button" onClick={save} disabled={pending} className="rounded bg-brand-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-800 disabled:opacity-50">{pending ? "…" : "Save"}</button>
+        <button type="button" onClick={onClose} disabled={pending} className="rounded border border-neutral-300 px-2.5 py-1 text-xs text-neutral-600 hover:bg-neutral-50">Cancel</button>
+        {existing ? <button type="button" onClick={remove} disabled={pending} className="ml-auto text-[11px] text-red-500 hover:text-red-700 disabled:opacity-50">Remove</button> : null}
+      </div>
     </div>
   );
 }
@@ -197,7 +267,7 @@ function DistributorCard({
         {d.notes ? <div className="mt-1 whitespace-pre-line text-xs text-neutral-500">{d.notes}</div> : null}
       </div>
 
-      <LocationTiles locations={locations} />
+      <LocationTiles locations={locations} canEdit={canEdit} distributorId={d.id} supplierName={d.name} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {d.canEmailOrder && d.orderEmail ? (
