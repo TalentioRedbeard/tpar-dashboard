@@ -57,6 +57,7 @@ const LEADERSHIP_ITEMS = [
 
 // Admin-only — Danny tools (alarms / laptop snap / admin index page).
 const ADMIN_ITEMS = [
+  { href: "/admin/expectations", label: "Expectations" },
   { href: "/admin/integrations", label: "Integrations" },
   { href: "/alarms",          label: "Alarms" },
   { href: "/snap",            label: "Snap" },
@@ -135,6 +136,20 @@ export function Nav({
 
         {/* Mobile spacer pushes hamburger + email to the right */}
         <div className="ml-auto md:hidden" />
+
+        {/* How-to guide — opens the field guide in a new tab. Always visible
+            (icon-only on mobile) since field techs are mobile-first. */}
+        <a
+          href="/how-to"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-navy-900/20 bg-white/90 px-2.5 py-1.5 text-sm text-navy-900 transition hover:bg-white"
+          title="How to use this app (opens in a new tab)"
+          aria-label="How to use this app"
+        >
+          <span aria-hidden>❔</span>
+          <span className="hidden sm:inline">How to use</span>
+        </a>
 
         {/* Search button */}
         <Link

@@ -10,7 +10,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { db } from "../../lib/supabase";
-import { getCurrentTech } from "../../lib/current-tech";
+import { getCurrentTech, type DashboardRole } from "../../lib/current-tech";
 import { PageShell } from "../../components/PageShell";
 import { AppGuide } from "../../components/AppGuide";
 import { ClockButton } from "../../components/ClockButton";
@@ -20,6 +20,8 @@ import { LifecycleButtons } from "../../components/LifecycleButtons";
 import { DismissJobButton } from "../../components/DismissJobButton";
 import { GpsLifecyclePrompt } from "../../components/GpsLifecyclePrompt";
 import { ScrollPanel } from "../../components/ui/ScrollPanel";
+import { WhiteboardPanel } from "../../components/WhiteboardPanel";
+import { ExpectationsPanel } from "../../components/ExpectationsPanel";
 import { getCurrentState as getClockState } from "../time/actions";
 import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
 import { getPendingSuggestions } from "../time/suggestions";
@@ -56,12 +58,16 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   let techName: string | null = null;
   let techFullName: string | null = null;
   let viewingAs: string | null = null;
+  // Role used to scope daily expectations. For a real tech it's their own role;
+  // for admin view-as it's the VIEWED tech's role (so role-scoped expectations
+  // render faithfully), resolved alongside their name below.
+  let expectationsRole: DashboardRole = me.dashboardRole;
 
   if (asOverride && me.isAdmin) {
     const supaCheck = db();
     const { data } = await supaCheck
       .from("tech_directory")
-      .select("tech_short_name, hcp_full_name")
+      .select("tech_short_name, hcp_full_name, dashboard_role")
       .ilike("tech_short_name", asOverride)
       .eq("is_active", true)
       .maybeSingle();
@@ -69,6 +75,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       techName = data.tech_short_name as string;
       techFullName = (data.hcp_full_name as string | null) ?? null;
       viewingAs = techName;
+      expectationsRole = ((data.dashboard_role as string | null) ?? null) as DashboardRole;
     } else {
       techName = me.tech?.tech_short_name ?? null;
       techFullName = me.tech?.hcp_full_name ?? null;
@@ -362,6 +369,14 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           />
         </section>
       ) : null}
+
+      {/* Daily expectations — owner-authored "what your day looks like" basics,
+          scoped to this employee (global / role / person). */}
+      <ExpectationsPanel techShortName={techName} role={expectationsRole} />
+
+      {/* Company whiteboard — daily team postings, on everybody's dashboard.
+          Company-wide, so it renders regardless of view-as / clock state. */}
+      <WhiteboardPanel />
 
       {/* Quick-action tiles for capture surfaces. Linked surfaces have the
           same gestures available standalone (without an active appointment) —
