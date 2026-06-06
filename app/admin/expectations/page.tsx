@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { PageShell } from "../../../components/PageShell";
 import { ExpectationsAdmin } from "../../../components/ExpectationsAdmin";
 import { getCurrentTech } from "../../../lib/current-tech";
+import { isOwner } from "../../../lib/admin";
 import { listAllExpectations } from "../../../lib/expectations";
 import { db } from "../../../lib/supabase";
 
@@ -15,7 +16,9 @@ export const dynamic = "force-dynamic";
 export default async function ExpectationsAdminPage() {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/admin/expectations");
-  if (!me.isAdmin) redirect("/me");
+  // Owner-only — matches the requireOwner() gate on the mutations, so a future
+  // non-owner admin never sees dead write controls (Owner gate ≠ admin).
+  if (!isOwner(me.email)) redirect("/me");
 
   const [items, techRes] = await Promise.all([
     listAllExpectations(),
