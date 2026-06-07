@@ -16,6 +16,8 @@ import { listDistributors } from "./distributor-actions";
 import { DistributorDirectory, type NeedLine } from "@/components/DistributorDirectory";
 import { loadVendorSpend } from "./vendor-spend-actions";
 import { VendorSpendPanel } from "./VendorSpendPanel";
+import { loadPriceIntel } from "./price-intel-actions";
+import { PriceIntelPanel } from "@/components/PriceIntelPanel";
 import { loadReviewQueue } from "./review-queue-actions";
 import { ReviewQueue } from "./ReviewQueue";
 import { loadDistributorLocations } from "./location-actions";
@@ -106,13 +108,14 @@ export default async function ShoppingPage({
   const params = await searchParams;
   const prefillJob = params?.prefill_job ?? "";
 
-  const [open, recentDone, distributors, vendorSpend, reviewQueue, locationsByDist] = await Promise.all([
+  const [open, recentDone, distributors, vendorSpend, reviewQueue, locationsByDist, priceIntel] = await Promise.all([
     getOpenNeeds({ limit: 100 }),
     getRecentlyCompletedNeeds(10),
     listDistributors(),
     loadVendorSpend(),
     loadReviewQueue(),
     loadDistributorLocations(),
+    loadPriceIntel(),
   ]);
 
   // Load any existing research results for the open needs (parallel)
@@ -155,6 +158,18 @@ export default async function ShoppingPage({
             description="Reconciled spend per real supplier (split vendor names folded together; overhead separated). All receipts to date."
           >
             <VendorSpendPanel data={vendorSpend} />
+          </Section>
+          <div className="my-6" />
+        </>
+      ) : null}
+
+      {priceIntel && (priceIntel.comparisons.length > 0 || priceIntel.priceBook.length > 0) ? (
+        <>
+          <Section
+            title="Price book + vendor comparison"
+            description="What you've paid per part at each supplier, from real receipts. Cross-vendor matches are shown for you to verify — confirm the parts match before trusting a price gap (the matcher is still learning)."
+          >
+            <PriceIntelPanel data={priceIntel} />
           </Section>
           <div className="my-6" />
         </>
