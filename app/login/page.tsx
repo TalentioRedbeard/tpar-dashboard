@@ -8,7 +8,7 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { BrandMark } from "../../components/ui/Brand";
 import { lookupTechByPhone } from "./phone-actions";
@@ -37,6 +37,17 @@ function LoginInner() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Which button is mid-request (so only that one spins), plus a resend cooldown
+  // so the magic-link button physically can't be re-fired inside Supabase's
+  // per-address window — repeat taps were tripping the email rate limiter.
+  const [pending, setPending] = useState<"google" | "email" | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
   // Phone-OTP flow (parallel state so it never disturbs the email/Google paths).
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -51,27 +62,35 @@ function LoginInner() {
   const supa = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   async function signInGoogle() {
+    if (pending) return;
+    setPending("google");
     setStatus("sending");
     const { error } = await supa.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(fromParam)}` },
     });
-    if (error) { setErrorMsg(error.message); setStatus("error"); }
+    // On success the browser navigates away to Google; keep `pending` set so the
+    // button stays disabled through the redirect. Only clear it on error.
+    if (error) { setErrorMsg(error.message); setStatus("error"); setPending(null); }
   }
 
   async function signInEmail(e: React.FormEvent) {
     e.preventDefault();
+    if (pending || cooldown > 0) return;
+    setPending("email");
     setStatus("sending");
     setErrorMsg(null);
     const { error } = await supa.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(fromParam)}` },
     });
+    setPending(null);
     if (error) {
       setErrorMsg(error.message);
       setStatus("error");
     } else {
       setStatus("sent");
+      setCooldown(60); // matches Supabase's per-address resend window
     }
   }
 
@@ -178,10 +197,10 @@ function LoginInner() {
 
           <button
             onClick={signInGoogle}
-            disabled={status === "sending"}
+            disabled={pending !== null}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2.5 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50 disabled:opacity-50"
           >
-            <GoogleGlyph />
+            {pending === "google" ? <Spinner /> : <GoogleGlyph />}
             Continue with Google
           </button>
 
@@ -205,10 +224,21 @@ function LoginInner() {
             </label>
             <button
               type="submit"
-              disabled={status === "sending" || !email}
-              className="w-full rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-800 disabled:opacity-50"
+              disabled={pending !== null || cooldown > 0 || !email}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-800 disabled:opacity-50"
             >
-              {status === "sending" ? "Sending…" : "Send magic link"}
+              {pending === "email" ? (
+                <>
+                  <Spinner />
+                  Sending…
+                </>
+              ) : cooldown > 0 ? (
+                `Resend in ${cooldown}s`
+              ) : status === "sent" ? (
+                "Resend magic link"
+              ) : (
+                "Send magic link"
+              )}
             </button>
           </form>
 
@@ -307,6 +337,15 @@ function LoginInner() {
         </div>
       </section>
     </main>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
+    </svg>
   );
 }
 
