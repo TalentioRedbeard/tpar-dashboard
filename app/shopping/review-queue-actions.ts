@@ -93,3 +93,18 @@ export async function createItemFromCandidate(skuId: number): Promise<{ ok: bool
   revalidatePath("/shopping");
   return { ok: true };
 }
+
+// Fix a catalog item's display name (canonical_name) — used by the review card's
+// inline editor when the matcher's proposed name is right but cryptic. We leave
+// normalized_name untouched so dedup/matching is unaffected; this is display-only.
+export async function renameItem(itemId: number, newName: string): Promise<{ ok: boolean; error?: string; name?: string }> {
+  if (!(await gate())) return { ok: false, error: "not authorized" };
+  const name = String(newName ?? "").trim();
+  if (!name) return { ok: false, error: "name required" };
+  if (name.length > 200) return { ok: false, error: "name too long" };
+  const supa = db();
+  const { error } = await supa.from("inv_items").update({ canonical_name: name }).eq("id", itemId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/shopping");
+  return { ok: true, name };
+}

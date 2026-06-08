@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { confirmCandidate, rejectCandidate, createItemFromCandidate, type ReviewCandidate } from "./review-queue-actions";
+import { confirmCandidate, rejectCandidate, createItemFromCandidate, renameItem, type ReviewCandidate } from "./review-queue-actions";
 
 type Initial = { items: ReviewCandidate[]; proposable: number; noMatch: number; total: number };
 
 export function ReviewQueue({ initial }: { initial: Initial }) {
   const [items, setItems] = useState(initial.items);
   const [busy, setBusy] = useState<number | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
   const [, start] = useTransition();
 
   const act = (id: number, fn: (id: number) => Promise<{ ok: boolean; error?: string }>) => {
@@ -15,6 +17,18 @@ export function ReviewQueue({ initial }: { initial: Initial }) {
     start(async () => {
       const r = await fn(id);
       if (r.ok) setItems((xs) => xs.filter((x) => x.id !== id));
+      setBusy(null);
+    });
+  };
+
+  const saveName = (c: ReviewCandidate) => {
+    const name = draft.trim();
+    if (!c.proposed_item_id || !name) { setEditId(null); return; }
+    setBusy(c.id);
+    start(async () => {
+      const r = await renameItem(c.proposed_item_id!, name);
+      if (r.ok) setItems((xs) => xs.map((x) => (x.id === c.id ? { ...x, proposed_item_name: r.name ?? name } : x)));
+      setEditId(null);
       setBusy(null);
     });
   };
@@ -40,9 +54,24 @@ export function ReviewQueue({ initial }: { initial: Initial }) {
               <div className="mt-1 text-sm font-medium text-neutral-900">{c.vendor_description}</div>
               {c.proposed_item_name ? (
                 <div className="mt-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[13px] text-emerald-900">
-                  looks like <span className="font-semibold">{c.proposed_item_name}</span>
-                  {c.proposed_item_category ? <span className="text-emerald-700/70"> · {c.proposed_item_category}</span> : null}
-                  {c.match_confidence != null ? <span className="ml-1 text-emerald-700/60">({Math.round(c.match_confidence * 100)}%)</span> : null}
+                  {editId === c.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") saveName(c); if (e.key === "Escape") setEditId(null); }}
+                        className="flex-1 rounded border border-emerald-300 bg-white px-1.5 py-0.5 text-[13px] text-emerald-950" />
+                      <button type="button" onClick={() => saveName(c)} disabled={busy === c.id}
+                        className="rounded bg-emerald-700 px-2 py-0.5 text-xs font-medium text-white disabled:opacity-50">Save</button>
+                      <button type="button" onClick={() => setEditId(null)} className="px-1 text-xs text-emerald-700/70 hover:text-emerald-900">Cancel</button>
+                    </div>
+                  ) : (
+                    <>
+                      looks like <span className="font-semibold">{c.proposed_item_name}</span>
+                      {c.proposed_item_category ? <span className="text-emerald-700/70"> · {c.proposed_item_category}</span> : null}
+                      {c.match_confidence != null ? <span className="ml-1 text-emerald-700/60">({Math.round(c.match_confidence * 100)}%)</span> : null}
+                      <button type="button" onClick={() => { setEditId(c.id); setDraft(c.proposed_item_name ?? ""); }}
+                        title="Fix this part's name" className="ml-1.5 text-emerald-700/60 hover:text-emerald-900">✎ edit</button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="mt-1.5 text-[13px] text-neutral-500">No catalog match — looks like a new part.</div>
