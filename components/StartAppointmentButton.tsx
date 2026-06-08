@@ -74,7 +74,7 @@ export function StartAppointmentButton({
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
           <path d="M3 2l6 4-6 4V2z" fill="currentColor" />
         </svg>
-        {pending ? "..." : "Start"}
+        {pending ? "..." : "Clock in here"}
       </button>
       {error && <span className="text-xs text-red-700">{error}</span>}
     </div>

@@ -44,7 +44,7 @@ const BUTTONS: Array<{
   variant: "primary" | "secondary" | "danger";
 }> = [
   { trigger: 2, label: "On my way", variant: "secondary" },
-  { trigger: 3, label: "Start", variant: "secondary" },
+  { trigger: 3, label: "Start job", variant: "secondary" },
   { trigger: 4, label: "Build estimate", variant: "secondary" },
   { trigger: 5, label: "Present", variant: "secondary" },
   { trigger: 6, label: "Finish work", variant: "secondary" },
@@ -117,7 +117,10 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
         // Give up after 5 min — bot run is ~2:30 typical; if no log row by 5
         // min, something's wrong. Caller can refresh page to re-check.
         if (ageMs > 5 * 60 * 1000) {
-          updates[t] = { firedAt: entry.firedAt, status: { state: "failed", message: "Timed out waiting for HCP sync log (>5 min)" } };
+          // A slow/cold bot is NOT a failed press — the TPAR trigger already
+          // succeeded (the button shows ✓). Degrade to a calm amber 'syncing',
+          // never a red failure; verify_hcp_mirrors() reconciles against HCP later.
+          updates[t] = { firedAt: entry.firedAt, status: { state: "unconfirmed", message: "Your press was saved. HCP is still catching up — it'll sync on its own." } };
           continue;
         }
         try {
@@ -309,8 +312,8 @@ function MirrorPill({ entry, hcpJobId, onRetry, retryDisabled }: {
     // Bot clicked Finish but HCP didn't expose a confirmation signal. Honest
     // amber — not a green ✓. verify_hcp_mirrors() reconciles against HCP.
     return (
-      <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" title={status.message ?? "Finish sent — HCP hasn't confirmed yet. Auto-reconciles against HCP work status."}>
-        HCP ?
+      <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" title={status.message ?? "Sent — HCP hasn't confirmed yet. It auto-reconciles against HCP work status; your press is already saved."}>
+        🕒 HCP
       </span>
     );
   }

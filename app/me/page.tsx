@@ -149,6 +149,9 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       .from("tech_kpi_current_v1")
       .select("*")
       .eq("tech_name", techFullName ?? techName)
+      // limit(1) FIRST: the view can return 2 rows for a tech (e.g. Landon) and a
+      // bare .maybeSingle() then errors → the KPI panel silently nulls out.
+      .limit(1)
       .maybeSingle(),
     techListRes,
     // Lifecycle events fired today, grouped by appointment.
