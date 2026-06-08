@@ -72,15 +72,17 @@ export function ClockButton({ initial, techShortName }: Props) {
     });
   }
 
-  async function handleClick() {
+  function handleClick() {
     setError(null);
-    const location = await captureLocation();
     const client_reported_at = new Date().toISOString();
-    // Universal tech_locations log (fire-and-forget). The second GPS read
-    // inside captureTechLocation uses the cached position from the call
-    // above (maximumAge 30s), so it's effectively free.
-    captureTechLocation(isClockedIn ? "clock_out" : "clock_in");
+    // Do the GPS read INSIDE the transition so the button gives instant feedback
+    // (shows "…", disabled) the moment it's tapped — not dead-looking for up to 4s
+    // while it waits on getCurrentPosition. Prevents the "nothing happened, tap
+    // again" double clock-in.
     startTransition(async () => {
+      const location = await captureLocation();
+      // Universal tech_locations log (fire-and-forget); reuses the cached fix above.
+      captureTechLocation(isClockedIn ? "clock_out" : "clock_in");
       const result =
         state.state === "clocked-in"
           ? await clockOut({ location, client_reported_at })

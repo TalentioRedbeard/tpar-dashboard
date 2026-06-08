@@ -75,7 +75,13 @@ export function EndOfJobChecklist({ hcpJobId }: { hcpJobId: string }) {
     <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/60 p-3">
       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-blue-900">
         End-of-job checklist
-        <span className="rounded bg-blue-200/70 px-1 py-0.5 text-[9px] font-medium text-blue-800">auto-filled</span>
+        {/* Only claim "auto-filled" when something actually was — materials come
+            from invoice line items, which don't exist until after invoicing, so
+            on most just-finished jobs nothing prefills. Showing the badge anyway
+            made the auto-fill look fake. */}
+        {(materialsAuto || heardAuto || !!memberHint)
+          ? <span className="rounded bg-blue-200/70 px-1 py-0.5 text-[9px] font-medium text-blue-800">auto-filled</span>
+          : null}
       </div>
       <div className="space-y-2.5 text-xs text-neutral-700">
         <Row label="Work approval obtained?"><YesNo value={approval} onChange={setApproval} /></Row>
