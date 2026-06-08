@@ -10,10 +10,12 @@ import { useState, useTransition } from "react";
 import {
   fetchBasedOnSources,
   generateBasedOnEstimate,
-  uploadBasedOnPhoto,
+  createBasedOnPhotoUpload,
+  finalizeBasedOnPhoto,
   type BasedOnSources,
   type BasedOnDraftOption,
 } from "@/lib/based-on-actions";
+import { browserClient } from "@/lib/supabase-browser";
 
 function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -68,11 +70,16 @@ export function BasedOnPanel({
     if (!files || files.length === 0) return;
     setUploading(true);
     const urls: string[] = [];
+    const supa = browserClient();
     for (const f of Array.from(files).slice(0, 8)) {
-      const fd = new FormData();
-      fd.set("photo", f, f.name);
-      const r = await uploadBasedOnPhoto(fd);
-      if (r.ok) urls.push(r.url);
+      const slot = await createBasedOnPhotoUpload({ mime: f.type });
+      if (!slot.ok) continue;
+      const { error: upErr } = await supa.storage
+        .from("job-photos")
+        .uploadToSignedUrl(slot.path, slot.token, f, { contentType: f.type || "image/jpeg" });
+      if (upErr) continue;
+      const fin = await finalizeBasedOnPhoto({ path: slot.path });
+      if (fin.ok) urls.push(fin.url);
     }
     setUploadedPhotos((cur) => [...cur, ...urls].slice(0, 8));
     setUploading(false);

@@ -120,6 +120,32 @@ export async function uploadBasedOnPhoto(formData: FormData): Promise<{ ok: true
   return data?.publicUrl ? { ok: true, url: data.publicUrl } : { ok: false, error: "could not get public URL" };
 }
 
+// Upload-first variant (2026-06-08): the browser PUTs the photo straight to the
+// job-photos bucket via a signed upload URL (no Vercel ~4.5MB body cap), then
+// finalizeBasedOnPhoto returns the public URL the generator hands to Claude vision.
+export type CreateBasedOnPhotoUploadResult = { ok: true; path: string; token: string } | { ok: false; error: string };
+
+export async function createBasedOnPhotoUpload(input: { mime?: string }): Promise<CreateBasedOnPhotoUploadResult> {
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
+  const mime = input.mime || "image/jpeg";
+  const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : mime.includes("heic") ? "heic" : "jpg";
+  const supa = db();
+  const path = `based-on/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { data: signed, error } = await supa.storage.from("job-photos").createSignedUploadUrl(path);
+  if (error || !signed?.token) return { ok: false, error: `upload: ${error?.message ?? "no token"}` };
+  return { ok: true, path: signed.path ?? path, token: signed.token };
+}
+
+export async function finalizeBasedOnPhoto(input: { path: string }): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
+  const path = String(input.path ?? "").trim();
+  if (!path) return { ok: false, error: "missing path" };
+  const { data } = db().storage.from("job-photos").getPublicUrl(path);
+  return data?.publicUrl ? { ok: true, url: data.publicUrl } : { ok: false, error: "could not get public URL" };
+}
+
 // ── Generate ────────────────────────────────────────────────────────────────
 export type BasedOnSelection = {
   freeform?: string;

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { uploadReceipt } from "./actions";
+import { createReceiptUpload, finalizeReceipt } from "./actions";
+import { browserClient } from "@/lib/supabase-browser";
 import { AppGuide } from "../../components/AppGuide";
 
 export function ReceiptForm({ techShortName, canWrite }: { techShortName: string; canWrite: boolean }) {
@@ -117,12 +118,7 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
           e.preventDefault();
           setError(null);
           if (!photo) { setError("Snap a photo of the receipt."); return; }
-          const fd = new FormData();
-          fd.set("photo", photo);
-          fd.set("invoice_number", invoiceNumber);
-          fd.set("amount", amount);
-          fd.set("vendor", vendor);
-          fd.set("notes", notes);
+          const file = photo;
           // Snapshot the form values + local preview BEFORE the request so the
           // success card can show them back to the tech (instant visual proof).
           const snapshot = {
@@ -133,15 +129,21 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
             localPreview: photoPreview,
           };
           startTransition(async () => {
-            const res = await uploadReceipt(fd);
-            if (res.ok) {
-              setSuccess({
-                receipt_id: res.receipt_id,
-                photo_url: res.photo_url,
-                ...snapshot,
-              });
-            } else {
-              setError(res.error);
+            try {
+              // Upload-first: PUT the photo straight to Storage (no Vercel body cap),
+              // then record the receipts_master row.
+              const slot = await createReceiptUpload({ filename: file.name });
+              if (!slot.ok) { setError(slot.error); return; }
+              const supa = browserClient();
+              const { error: upErr } = await supa.storage
+                .from("job-photos")
+                .uploadToSignedUrl(slot.path, slot.token, file, { contentType: file.type || "application/octet-stream" });
+              if (upErr) { setError(`Upload failed: ${upErr.message}. Your receipt wasn't saved — try again.`); return; }
+              const res = await finalizeReceipt({ path: slot.path, invoice_number: invoiceNumber, amount, vendor, notes });
+              if (res.ok) setSuccess({ receipt_id: res.receipt_id, photo_url: res.photo_url, ...snapshot });
+              else setError(res.error);
+            } catch (err) {
+              setError(`Upload failed: ${err instanceof Error ? err.message : String(err)}. Your receipt wasn't saved — try again.`);
             }
           });
         }}

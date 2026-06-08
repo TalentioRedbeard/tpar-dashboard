@@ -12,7 +12,8 @@ import {
   type GenerateFromCapturesResult,
   type SearchFilters,
 } from "../../lib/studio-actions";
-import { uploadBasedOnPhoto } from "../../lib/based-on-actions";
+import { createBasedOnPhotoUpload, finalizeBasedOnPhoto } from "../../lib/based-on-actions";
+import { browserClient } from "@/lib/supabase-browser";
 
 type Draft = Extract<GenerateFromCapturesResult, { ok: true }>;
 
@@ -151,11 +152,16 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
     if (!files.length) return;
     setUploadingPhoto(true);
     const urls: string[] = [];
+    const supa = browserClient();
     for (const f of files) {
-      const fd = new FormData();
-      fd.append("photo", f);
-      const res = await uploadBasedOnPhoto(fd);
-      if (res.ok) urls.push(res.url);
+      const slot = await createBasedOnPhotoUpload({ mime: f.type });
+      if (!slot.ok) continue;
+      const { error: upErr } = await supa.storage
+        .from("job-photos")
+        .uploadToSignedUrl(slot.path, slot.token, f, { contentType: f.type || "image/jpeg" });
+      if (upErr) continue;
+      const fin = await finalizeBasedOnPhoto({ path: slot.path });
+      if (fin.ok) urls.push(fin.url);
     }
     setUploadedPhotos((p) => [...p, ...urls].slice(0, 8));
     setUploadingPhoto(false);
