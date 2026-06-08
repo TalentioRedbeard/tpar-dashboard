@@ -14,6 +14,17 @@ import { revalidatePath } from "next/cache";
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+function extFromMime(mime: string): string {
+  if (mime.includes("webm")) return "webm";
+  if (mime.includes("mp4"))  return "m4a";
+  if (mime.includes("mpeg")) return "mp3";
+  if (mime.includes("wav"))  return "wav";
+  if (mime.includes("ogg"))  return "ogg";
+  if (mime.includes("aac"))  return "aac";
+  if (mime.includes("m4a"))  return "m4a";
+  return "audio";
+}
+
 export type UploadVoiceNoteResult =
   | { ok: true; voice_note_id: string; transcript: string; duration_seconds: number | null }
   | { ok: false; error: string };
@@ -77,6 +88,104 @@ export async function uploadVoiceNote(formData: FormData): Promise<UploadVoiceNo
           response_body: bodyText.slice(0, 800),
           author_email: me.email, hcp_job_id: hcpJobId,
           audio_size: audio.size, audio_type: audio.type,
+        },
+      });
+    } catch { /* ignore */ }
+    return { ok: false, error: msg };
+  }
+
+  revalidatePath("/voice-notes");
+  if (hcpJobId) revalidatePath(`/job/${hcpJobId}`);
+  return {
+    ok: true,
+    voice_note_id: json.voice_note_id as string,
+    transcript: (json.transcript as string) ?? "",
+    duration_seconds: (json.duration_seconds as number | null) ?? null,
+  };
+}
+
+// ── Upload-first path (2026-06-08) ───────────────────────────────────────────
+// The browser PUTs the audio DIRECTLY to the voice-notes bucket via a signed
+// upload URL, bypassing Vercel's ~4.5MB server-action body cap that dropped long
+// notes (see reference_vercel_body_cap). createVoiceNoteUpload mints the slot;
+// finalizeVoiceNote then calls the voice-note-upload edge fn in JSON mode (the
+// binary never crosses a server action — only the small path/metadata does).
+
+export type CreateVoiceNoteUploadResult =
+  | { ok: true; path: string; token: string }
+  | { ok: false; error: string };
+
+export async function createVoiceNoteUpload(input: { mime?: string }): Promise<CreateVoiceNoteUploadResult> {
+  const me = await getCurrentTech();
+  if (!me?.canWrite) return { ok: false, error: "Not signed in or no write access." };
+  const mime = (input.mime || "audio/webm").split(";")[0];
+  const ext = extFromMime(mime);
+  const dateSlug = new Date().toISOString().slice(0, 10);
+  const path = `${dateSlug}/${crypto.randomUUID()}.${ext}`;
+  const { data: signed, error } = await db().storage.from("voice-notes").createSignedUploadUrl(path);
+  if (error || !signed?.token) return { ok: false, error: `Could not start upload: ${error?.message ?? "no token"}` };
+  return { ok: true, path: signed.path ?? path, token: signed.token };
+}
+
+export async function finalizeVoiceNote(input: {
+  audio_path: string;
+  audio_filename?: string;
+  audio_mime?: string;
+  hcp_job_id?: string | null;
+  hcp_customer_id?: string | null;
+  intent_tag?: string | null;
+  needs_discussion?: boolean;
+}): Promise<UploadVoiceNoteResult> {
+  const me = await getCurrentTech();
+  if (!me?.canWrite) return { ok: false, error: "Not signed in or no write access." };
+  const audioPath = String(input.audio_path ?? "").trim();
+  if (!audioPath) return { ok: false, error: "Missing audio path." };
+
+  const hcpJobId = input.hcp_job_id?.trim() || null;
+  const payload: Record<string, unknown> = {
+    audio_path: audioPath,
+    audio_filename: input.audio_filename || "voice-note.webm",
+    audio_mime: input.audio_mime || "audio/webm",
+    source: "dashboard",
+    user_email: me.email,
+  };
+  if (me.tech?.tech_short_name) payload.tech_short_name = me.tech.tech_short_name;
+  if (me.tech?.hcp_full_name)   payload.tech_full_name = me.tech.hcp_full_name;
+  if (hcpJobId)                 payload.hcp_job_id = hcpJobId;
+  if (input.hcp_customer_id?.trim()) payload.hcp_customer_id = input.hcp_customer_id.trim();
+  if (input.intent_tag?.trim())  payload.intent_tag = input.intent_tag.trim();
+  if (input.needs_discussion)    payload.needs_discussion = "1";
+
+  const fwdUrl = `${SUPABASE_URL}/functions/v1/voice-note-upload`;
+  let res: Response;
+  try {
+    res = await fetch(fwdUrl, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    const msg = `network: ${e instanceof Error ? e.message : String(e)}`;
+    try {
+      await db().from("maintenance_logs").insert({
+        source: "dashboard-voice-note-upload", level: "error", message: msg,
+        context: { fwd_url: fwdUrl, mode: "json", author_email: me.email, hcp_job_id: hcpJobId, audio_path: audioPath },
+      });
+    } catch { /* ignore */ }
+    return { ok: false, error: msg };
+  }
+  const bodyText = await res.text();
+  let json: any = {};
+  try { json = JSON.parse(bodyText); } catch { /* keep body for log */ }
+  if (!res.ok || !json?.ok) {
+    const msg = String(json?.error ?? `upload returned ${res.status}`);
+    try {
+      await db().from("maintenance_logs").insert({
+        source: "dashboard-voice-note-upload", level: "error", message: msg,
+        context: {
+          fwd_url: fwdUrl, mode: "json", http_status: res.status,
+          response_body: bodyText.slice(0, 800),
+          author_email: me.email, hcp_job_id: hcpJobId, audio_path: audioPath,
         },
       });
     } catch { /* ignore */ }

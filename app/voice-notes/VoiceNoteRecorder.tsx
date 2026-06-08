@@ -10,7 +10,8 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { uploadVoiceNote } from "./actions";
+import { createVoiceNoteUpload, finalizeVoiceNote } from "./actions";
+import { browserClient } from "@/lib/supabase-browser";
 import {
   saveRecording,
   clearRecording,
@@ -162,35 +163,46 @@ export function VoiceNoteRecorder({ hcpJobId, hcpCustomerId, defaultIntentTag, i
       ? blobToSend
       : new File([blobToSend], `voice-note-${Date.now()}.webm`, { type: (blobToSend as Blob).type || "audio/webm" });
 
-    const fd = new FormData();
-    fd.set("audio", file, file.name);
-    if (hcpJobId)      fd.set("hcp_job_id", hcpJobId);
-    if (hcpCustomerId) fd.set("hcp_customer_id", hcpCustomerId);
-    if (intentTag)     fd.set("intent_tag", intentTag);
-    if (needsDiscussion) fd.set("needs_discussion", "1");
-
     startTransition(async () => {
-      let res: Awaited<ReturnType<typeof uploadVoiceNote>>;
       try {
-        res = await uploadVoiceNote(fd);
+        // Upload-first: PUT the audio straight to the voice-notes bucket from the
+        // browser (no Vercel ~4.5MB body cap), then hand the edge fn the path to
+        // transcribe + index. The binary never crosses a server action.
+        const slot = await createVoiceNoteUpload({ mime: file.type });
+        if (!slot.ok) { setError(slot.error); return; }
+        const supa = browserClient();
+        const { error: upErr } = await supa.storage
+          .from("voice-notes")
+          .uploadToSignedUrl(slot.path, slot.token, file, { contentType: file.type || "audio/webm" });
+        if (upErr) {
+          // Keep the IndexedDB blob so the recording isn't lost; user can retry.
+          setError(`Upload failed: ${upErr.message}. The recording is saved — try again.`);
+          return;
+        }
+        const res = await finalizeVoiceNote({
+          audio_path: slot.path,
+          audio_filename: file.name,
+          audio_mime: file.type || "audio/webm",
+          hcp_job_id: hcpJobId,
+          hcp_customer_id: hcpCustomerId,
+          intent_tag: intentTag,
+          needs_discussion: needsDiscussion,
+        });
+        if (!res.ok) {
+          // Keep the IndexedDB row — user can retry without losing audio.
+          setError(res.error);
+          return;
+        }
+        // Upload succeeded — drop the persisted blob.
+        if (pendingIdRef.current) {
+          clearRecording(pendingIdRef.current).catch(() => { /* ignore */ });
+          pendingIdRef.current = null;
+        }
+        router.push(`/voice-notes/${res.voice_note_id}`);
       } catch (e) {
-        // A throw here is usually the framework rejecting the request (e.g. the
-        // audio exceeds the Server Action body limit) — show it inline and keep
-        // the IndexedDB blob so the recording isn't lost, instead of crashing.
+        // A throw here keeps the IndexedDB blob so the recording isn't lost.
         setError(`Upload failed: ${e instanceof Error ? e.message : String(e)}. The recording is saved — try again.`);
-        return;
       }
-      if (!res.ok) {
-        // Keep the IndexedDB row — user can retry without losing audio.
-        setError(res.error);
-        return;
-      }
-      // Upload succeeded — drop the persisted blob.
-      if (pendingIdRef.current) {
-        clearRecording(pendingIdRef.current).catch(() => { /* ignore */ });
-        pendingIdRef.current = null;
-      }
-      router.push(`/voice-notes/${res.voice_note_id}`);
     });
   }
 

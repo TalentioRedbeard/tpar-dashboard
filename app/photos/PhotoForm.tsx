@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { uploadJobMedia, type RecentJobOption } from "./actions";
+import { createJobMediaUpload, finalizeJobMedia, type RecentJobOption } from "./actions";
+import { browserClient } from "@/lib/supabase-browser";
 
 export function PhotoForm({
   canWrite,
@@ -74,21 +75,24 @@ export function PhotoForm({
         setError(null);
         if (!photo) { setError("Snap or pick a photo first."); return; }
         if (!hcpJobId) { setError("Pick a job for this photo."); return; }
-        const fd = new FormData();
-        fd.set("photo", photo);
-        fd.set("hcp_job_id", hcpJobId);
-        fd.set("primary_subject", primarySubject);
-        fd.set("notes", notes);
+        const file = photo;
         startTransition(async () => {
-          let res: Awaited<ReturnType<typeof uploadJobMedia>>;
           try {
-            res = await uploadJobMedia(fd);
+            // Upload-first: mint a signed slot, PUT the binary straight to Storage
+            // from the browser (no Vercel body cap), then record the metadata row.
+            const slot = await createJobMediaUpload({ hcp_job_id: hcpJobId, filename: file.name });
+            if (!slot.ok) { setError(slot.error); return; }
+            const supa = browserClient();
+            const { error: upErr } = await supa.storage
+              .from("job-photos")
+              .uploadToSignedUrl(slot.path, slot.token, file, { contentType: file.type || "application/octet-stream" });
+            if (upErr) { setError(`Upload failed: ${upErr.message}. Your photo wasn't saved — try again.`); return; }
+            const res = await finalizeJobMedia({ path: slot.path, hcp_job_id: hcpJobId, primary_subject: primarySubject, notes });
+            if (res.ok) setSuccess({ photo_id: res.photo_id, photo_url: res.photo_url, job_id: hcpJobId });
+            else setError(res.error);
           } catch (e) {
-            setError(`Upload failed: ${e instanceof Error ? e.message : String(e)}. Your photo wasn't saved — try again (a large video may be too big to send).`);
-            return;
+            setError(`Upload failed: ${e instanceof Error ? e.message : String(e)}. Your photo wasn't saved — try again (a large video may have dropped mid-upload).`);
           }
-          if (res.ok) setSuccess({ photo_id: res.photo_id, photo_url: res.photo_url, job_id: hcpJobId });
-          else setError(res.error);
         });
       }}
     >
