@@ -15,6 +15,11 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
+// Past this many hours an open shift is almost certainly a forgotten clock-out,
+// not a real workday (a long day is <=~14h). Warn instead of showing a runaway
+// number. TPAR clock is not payroll-of-record (HCP is), so the fix is voiding.
+const STALE_OPEN_HOURS = 16;
+
 type EntryRow = {
   id: string;
   tech_id: string | null;
@@ -66,6 +71,14 @@ function formatDuration(ms: number): string {
 }
 function formatDurationFromSec(s: number): string {
   return formatDuration(s * 1000);
+}
+// Coarse "Nd Nh" duration for stale-open warnings (days matter once it's stuck).
+function formatStaleDuration(s: number): string {
+  const seconds = Math.max(0, Math.floor(s));
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  if (d > 0) return `${d}d ${h}h`;
+  return `${h}h`;
 }
 
 type PerTechBucket = {
@@ -224,22 +237,47 @@ export default async function TimePage() {
             On the clock now
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {live.map((l) => (
+            {live.map((l) => {
+              // Open way too long → forgot to clock out. Warn instead of a runaway number.
+              const isStale = l.duration_seconds >= STALE_OPEN_HOURS * 3600;
+              return (
               <div
                 key={l.tech_id}
-                className="relative overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm"
+                className={
+                  "relative overflow-hidden rounded-2xl border p-4 shadow-sm " +
+                  (isStale
+                    ? "border-amber-300 bg-gradient-to-br from-amber-50 to-white"
+                    : "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white")
+                }
               >
-                <div aria-hidden className="pointer-events-none absolute -right-4 -top-4 h-16 w-16 rounded-full bg-emerald-200/40 blur-2xl" />
+                <div
+                  aria-hidden
+                  className={
+                    "pointer-events-none absolute -right-4 -top-4 h-16 w-16 rounded-full blur-2xl " +
+                    (isStale ? "bg-amber-200/40" : "bg-emerald-200/40")
+                  }
+                />
                 <div className="relative flex items-baseline gap-2">
-                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                  <span className="text-base font-semibold text-emerald-900">
+                  <span
+                    className={
+                      "inline-block h-2 w-2 animate-pulse rounded-full " +
+                      (isStale ? "bg-amber-500" : "bg-emerald-500")
+                    }
+                  />
+                  <span className={"text-base font-semibold " + (isStale ? "text-amber-900" : "text-emerald-900")}>
                     <TechName name={l.tech_short_name} formerSet={formerSet} />
                   </span>
                 </div>
-                <div className="relative mt-2 text-2xl font-semibold tabular-nums tracking-tight text-emerald-700">
-                  {formatDurationFromSec(l.duration_seconds)}
-                </div>
-                <div className="relative mt-1 text-xs text-emerald-700/80">
+                {isStale ? (
+                  <div className="relative mt-2 text-base font-semibold leading-snug tracking-tight text-amber-700">
+                    Open {formatStaleDuration(l.duration_seconds)} — forgot to clock out?
+                  </div>
+                ) : (
+                  <div className="relative mt-2 text-2xl font-semibold tabular-nums tracking-tight text-emerald-700">
+                    {formatDurationFromSec(l.duration_seconds)}
+                  </div>
+                )}
+                <div className={"relative mt-1 text-xs " + (isStale ? "text-amber-700/80" : "text-emerald-700/80")}>
                   since {formatTime(l.clocked_in_at)}
                   {l.hcp_job_id && (
                     <>
@@ -251,7 +289,8 @@ export default async function TimePage() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       ) : null}

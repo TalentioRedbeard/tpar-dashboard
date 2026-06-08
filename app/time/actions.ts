@@ -42,6 +42,12 @@ async function fireHcpClockMirror(payload: {
   }
 }
 
+// An open shift older than this is treated as STALE — the tech forgot to clock
+// out (a legit long day is <=~14h). On the next clock-in we auto-void the stale
+// 'in' row instead of dead-ending them. Keep this as a single source of truth.
+const STALE_OPEN_HOURS = 16;
+const STALE_OPEN_SECONDS = STALE_OPEN_HOURS * 3600; // 57600
+
 type Location = { lat: number; lng: number; accuracy_m?: number };
 
 export type CurrentClockState =
@@ -158,21 +164,41 @@ export async function clockIn(input: {
   const me = await resolveTechIdentity();
   if (!me.ok) return { ok: false, error: me.error };
 
+  const supabase = db();
+
   const current = await getCurrentState();
   if (current.state === "clocked-in") {
-    const since = new Date(current.clocked_in_at).toLocaleTimeString("en-US", {
-      timeZone: "America/Chicago",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-    return {
-      ok: false,
-      error: `Already clocked in since ${since}. Clock out first.`,
-    };
+    // Stale open shift = they forgot to clock out (ran past 16h). The TPAR clock
+    // is NOT payroll-of-record (HCP native clock is), so the safe correction is
+    // to void the runaway 'in' row — never fabricate a clock-out time/hours —
+    // and let this new clock-in proceed. A recent open (<16h) is a real same-day
+    // shift, so keep hard-rejecting to prevent an accidental double-clock-in.
+    if (current.duration_seconds >= STALE_OPEN_SECONDS) {
+      await supabase
+        .from("tech_time_entries")
+        .update({
+          voided_at: new Date().toISOString(),
+          voided_by: "system-autoclose",
+          void_reason:
+            "auto-closed: stale open shift (>16h) superseded by new clock-in; TPAR clock not payroll-of-record",
+        })
+        .eq("id", current.entry_id);
+      // Fall through to the fresh clock-in below. No HCP mirror — the mirror only
+      // fires on a real clock-OUT insert, and a voided row has no hours to write.
+    } else {
+      const since = new Date(current.clocked_in_at).toLocaleTimeString("en-US", {
+        timeZone: "America/Chicago",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      return {
+        ok: false,
+        error: `Already clocked in since ${since}. Clock out first.`,
+      };
+    }
   }
 
-  const supabase = db();
   const { data, error } = await supabase
     .from("tech_time_entries")
     .insert({

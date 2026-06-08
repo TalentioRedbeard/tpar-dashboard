@@ -12,6 +12,11 @@ type Props = {
   techShortName: string | null;
 };
 
+// Past this many hours an open shift is almost certainly a forgotten clock-out,
+// not a real workday (a long day is <=~14h). Show a "stuck, clock out" warning
+// instead of a runaway timer. TPAR clock is not payroll-of-record (HCP is).
+const STALE_OPEN_HOURS = 16;
+
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -19,6 +24,14 @@ function formatDuration(seconds: number): string {
   if (h > 0) return `${h}h`;
   if (m > 0) return `${m}m`;
   return `${seconds}s`;
+}
+
+// Coarse "Nd Nh" duration for stale-open warnings (days matter once it's stuck).
+function formatStaleDuration(seconds: number): string {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  if (d > 0) return `${d}d ${h}h`;
+  return `${h}h`;
 }
 
 function formatTime(iso: string): string {
@@ -108,9 +121,14 @@ export function ClockButton({ initial, techShortName }: Props) {
   const liveDuration = isClockedIn
     ? Math.max(0, Math.floor((now - new Date(state.clocked_in_at).getTime()) / 1000))
     : 0;
+  // Open way too long → forgot to clock out. Warn instead of showing a runaway timer.
+  const isStale = isClockedIn && liveDuration >= STALE_OPEN_HOURS * 3600;
 
-  // Tone: green = ready to clock in; red = currently clocked in (action stops the timer)
-  const containerCls = isClockedIn
+  // Tone: green = ready to clock in; red = currently clocked in (action stops the timer).
+  // Amber = stale open shift (stuck — needs a clock-out).
+  const containerCls = isStale
+    ? "border-amber-300 bg-gradient-to-br from-amber-50 to-white"
+    : isClockedIn
     ? "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white"
     : "border-brand-200 bg-gradient-to-br from-brand-50 to-white";
 
@@ -131,14 +149,27 @@ export function ClockButton({ initial, techShortName }: Props) {
       <div className="relative flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-5">
         <div className="flex flex-1 flex-col">
           <div className="flex items-baseline gap-2">
-            {isClockedIn && <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />}
+            {isClockedIn && (
+              <span
+                className={
+                  "inline-block h-2 w-2 animate-pulse rounded-full " +
+                  (isStale ? "bg-amber-500" : "bg-emerald-500")
+                }
+              />
+            )}
             <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
               {techShortName ? `${techShortName} · ` : ""}
               {isClockedIn ? "On the clock" : "Off the clock"}
             </span>
           </div>
           <div className="mt-1 flex items-baseline gap-2">
-            {isClockedIn ? (
+            {isStale ? (
+              <>
+                <span className="text-2xl font-semibold leading-none tracking-tight text-amber-700">
+                  Open {formatStaleDuration(liveDuration)} — forgot to clock out?
+                </span>
+              </>
+            ) : isClockedIn ? (
               <>
                 <span className="text-3xl font-semibold leading-none tabular-nums tracking-tight text-emerald-700">
                   {formatDuration(liveDuration)}
