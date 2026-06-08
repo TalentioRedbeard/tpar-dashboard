@@ -1,16 +1,30 @@
 "use client";
 
-// Global quick-capture recorder (Danny 2026-05-31). Fixed top-right button that
-// immediately starts recording on click. On stop it auto-transcribes (Whisper)
-// and shows an editable transcript, then: label + target (Danny / job / customer
-// / estimate / file, and — OWNER ONLY — 💬 send to Claude for the dev loop).
-// Auto-detects job/customer from the URL.
+// Global quick-capture recorder (Danny 2026-05-31; upload-first rewrite 2026-06-08).
+// Fixed top-right "Record" button. On stop it UPLOADS THE AUDIO FIRST — directly
+// from the browser to the private 'recordings' bucket via a signed upload URL,
+// bypassing Vercel's ~4.5MB server-action body cap that used to silently lose long
+// recordings. The audio is durable the instant "Audio saved ✓" shows; filing it
+// (transcript + target: Danny / job / customer / estimate / file, or — OWNER ONLY
+// — 💬 Claude) is a separate, non-destructive step. Transcription is decoupled and
+// never gates the save. Auto-detects job/customer from the URL.
 
 import { useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { saveRecording, transcribeRecording, resolveJobRef } from "../lib/recordings";
+import {
+  createRecordingUpload,
+  markRecordingStored,
+  requestTranscription,
+  finalizeRecording,
+  discardRecording,
+  resolveJobRef,
+} from "../lib/recordings";
+import { browserClient } from "../lib/supabase-browser";
 
 type Target = "note_to_danny" | "job" | "customer" | "estimate" | "file" | "claude";
+type UploadState = "idle" | "uploading" | "stored" | "error";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
   const pathname = usePathname();
@@ -27,6 +41,14 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [jobChip, setJobChip] = useState<{ ok: boolean; text: string } | null>(null);
+  const [recId, setRecId] = useState<string | null>(null);
+  const [uploadState, setUploadState] = useState<UploadState>("idle");
+
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const startTsRef = useRef(0);
+  const tickRef = useRef<number | null>(null);
+  const storedPendingRef = useRef<string | null>(null); // id whose bytes are uploaded but not yet marked stored
+  const savingRef = useRef(false); // in-flight finalize guard (covers the ~900ms reset window)
 
   // Confirm a typed job id/invoice number resolves to a real job before saving —
   // a raw invoice number silently orphaned the recording before (the C fix).
@@ -38,31 +60,75 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
     setJobChip(r.ok ? { ok: true, text: r.label } : { ok: false, text: r.error });
   }
 
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const startTsRef = useRef(0);
-  const tickRef = useRef<number | null>(null);
-
   function detectFromUrl(): { target: Target; ref: string } | null {
     const m = pathname?.match(/^\/(job|customer)\/([^/?#]+)/);
     if (m) return { target: m[1] as Target, ref: decodeURIComponent(m[2]) };
     return null;
   }
 
-  async function transcribe(b: Blob) {
+  // Persist the audio FIRST: mint a signed upload slot, upload the blob straight
+  // to Storage (no Vercel hop / no size cap), then mark it stored + transcribe.
+  async function beginUpload(b: Blob, dMs: number) {
+    setUploadState("uploading");
+    setMsg(null);
+    storedPendingRef.current = null;
+    const slot = await createRecordingUpload({ mime: b.type || "audio/webm", durationMs: dMs });
+    if (!slot.ok) { setUploadState("error"); setMsg(slot.error); return; }
+    setRecId(slot.id);
+    const ok = await uploadBlob(slot.path, slot.token, b, 0);
+    if (!ok) { setUploadState("error"); return; }
+    storedPendingRef.current = slot.id; // bytes are durable in the bucket now
+    const stored = await markRecordingStored(slot.id);
+    if (!stored.ok) { setUploadState("error"); setMsg(stored.error); return; }
+    storedPendingRef.current = null;
+    setUploadState("stored");
+    void transcribeNow(slot.id);
+  }
+
+  // Direct browser → Storage upload with bounded retry/backoff.
+  async function uploadBlob(path: string, token: string, b: Blob, attempt: number): Promise<boolean> {
+    try {
+      const supa = browserClient();
+      const { error } = await supa.storage.from("recordings").uploadToSignedUrl(path, token, b, {
+        contentType: b.type || "audio/webm",
+      });
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      if (attempt < 3) { await sleep(500 * 2 ** attempt); return uploadBlob(path, token, b, attempt + 1); }
+      setMsg(`audio upload failed: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+  }
+
+  async function transcribeNow(id: string) {
     setTranscribing(true);
     try {
-      const file = new File([b], `rec-${Date.now()}.webm`, { type: b.type || "audio/webm" });
-      const fd = new FormData();
-      fd.set("audio", file, file.name);
-      const r = await transcribeRecording(fd);
-      // Don't clobber anything the user already typed while we were transcribing.
+      const r = await requestTranscription(id);
       if (r.ok && r.transcript) setTranscript((cur) => cur || r.transcript);
+      else if (!r.ok && r.tooLong) setMsg("Too long to auto-transcribe — audio saved; add a note if you like.");
     } catch { /* leave transcript empty; user can type */ }
     setTranscribing(false);
   }
 
+  async function retryUpload() {
+    // If the bytes already uploaded and only the status-flip failed, just re-confirm —
+    // re-uploading would mint a new object and orphan the durable one.
+    const pendingId = storedPendingRef.current;
+    if (pendingId) {
+      setUploadState("uploading"); setMsg(null);
+      const stored = await markRecordingStored(pendingId);
+      if (!stored.ok) { setUploadState("error"); setMsg(stored.error); return; }
+      storedPendingRef.current = null;
+      setUploadState("stored");
+      void transcribeNow(pendingId);
+      return;
+    }
+    if (blob) void beginUpload(blob, durationMs);
+  }
+
   async function startRec() {
-    setMsg(null); setBlob(null); setTranscript("");
+    setMsg(null); setBlob(null); setTranscript(""); setRecId(null); setUploadState("idle");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
@@ -72,14 +138,15 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
       r.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
       r.onstop = () => {
         const b = new Blob(chunks, { type: r.mimeType || "audio/webm" });
+        const dMs = Date.now() - startTsRef.current;
         setBlob(b);
-        setDurationMs(Date.now() - startTsRef.current);
+        setDurationMs(dMs);
         stream.getTracks().forEach((t) => t.stop());
         if (tickRef.current) { window.clearInterval(tickRef.current); tickRef.current = null; }
         const d = detectFromUrl();
         if (d) { setTarget(d.target); setTargetRef(d.ref); }
         setState("review");
-        void transcribe(b);
+        void beginUpload(b, dMs); // persist immediately — before the user picks a target
       };
       r.start();
       recorderRef.current = r;
@@ -97,28 +164,39 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
   }
 
   function reset() {
-    setState("idle"); setBlob(null); setLabel(""); setTranscript(""); setTargetRef(""); setMsg(null); setTarget("note_to_danny"); setJobChip(null);
+    setState("idle"); setBlob(null); setLabel(""); setTranscript(""); setTargetRef(""); setMsg(null);
+    setTarget("note_to_danny"); setJobChip(null); setRecId(null); setUploadState("idle");
+    storedPendingRef.current = null; savingRef.current = false;
+  }
+
+  // Discard an unfiled capture. Only delete once the audio has settled — deleting
+  // mid-upload could race the in-flight PUT and orphan the object. While uploading
+  // we just reset the UI and leave the row to the object-aware sweep (which recovers
+  // it if the bytes land, or deletes the empty row if they don't).
+  function discard() {
+    const id = recId;
+    if (id && (uploadState === "stored" || uploadState === "error")) void discardRecording(id);
+    reset();
   }
 
   function save() {
-    if (!blob) return;
-    const file = new File([blob], `rec-${Date.now()}.webm`, { type: blob.type || "audio/webm" });
-    const fd = new FormData();
-    fd.set("audio", file, file.name);
-    fd.set("label", label);
-    fd.set("transcript", transcript);
-    fd.set("target_kind", target);
-    fd.set("target_ref", targetRef);
-    fd.set("duration_ms", String(durationMs));
+    if (!recId || uploadState !== "stored") return; // audio must be durable first
+    if (savingRef.current) return; // guard the ~900ms reset window against a double-tap
+    savingRef.current = true;
     setMsg(null);
     start(async () => {
-      const r = await saveRecording(fd);
-      if (r.ok) { setMsg(target === "claude" ? "Sent to Claude ✓" : "Saved ✓"); setTimeout(() => { reset(); router.refresh(); }, 900); }
-      else setMsg(r.error);
+      try {
+        const r = await finalizeRecording({ id: recId, label, transcript, targetKind: target, targetRef });
+        if (r.ok) { setMsg(target === "claude" ? "Sent to Claude ✓" : "Saved ✓"); setTimeout(() => { reset(); router.refresh(); }, 900); }
+        else { setMsg(r.error); savingRef.current = false; } // re-enable so the user can retry
+      } catch (e) {
+        setMsg(e instanceof Error ? e.message : String(e)); savingRef.current = false;
+      }
     });
   }
 
   const needsRef = target === "job" || target === "customer" || target === "estimate";
+  const saveDisabled = pending || uploadState !== "stored";
 
   return (
     <div className="fixed right-4 top-4 z-[60] print:hidden">
@@ -145,6 +223,21 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
             <span className="text-sm font-semibold text-neutral-900">🎤 Save recording</span>
             <span className="text-xs text-neutral-400">{(durationMs / 1000).toFixed(1)}s</span>
           </div>
+
+          {/* Durability indicator — the audio is safe the moment this says saved. */}
+          <div className="mb-2 text-xs font-medium">
+            {uploadState === "uploading" ? (
+              <span className="text-amber-700">💾 Saving audio…</span>
+            ) : uploadState === "stored" ? (
+              <span className="text-emerald-700">✓ Audio saved</span>
+            ) : uploadState === "error" ? (
+              <span className="flex items-center gap-2 text-red-700">
+                ⚠ Audio not saved
+                <button type="button" onClick={() => void retryUpload()} className="rounded border border-red-300 px-1.5 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-50">Retry</button>
+              </span>
+            ) : null}
+          </div>
+
           {blob ? <audio controls src={URL.createObjectURL(blob)} className="mb-2 w-full" /> : null}
           <textarea
             value={transcript}
@@ -180,8 +273,10 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
             <div className="mb-2 text-[11px] text-neutral-500">Goes to the Claude dev queue — picked up in an active session.</div>
           ) : null}
           <div className="flex items-center gap-2">
-            <button type="button" onClick={save} disabled={pending || (transcribing && (target === "claude" || target === "note_to_danny"))} className="flex-1 rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">{pending ? "Saving…" : (transcribing && (target === "claude" || target === "note_to_danny")) ? "Transcribing…" : target === "claude" ? "Send to Claude" : "Save"}</button>
-            <button type="button" onClick={reset} disabled={pending} className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">Discard</button>
+            <button type="button" onClick={save} disabled={saveDisabled} className="flex-1 rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">
+              {pending ? "Saving…" : uploadState === "uploading" ? "Saving audio…" : uploadState === "error" ? "Audio not saved" : target === "claude" ? "Send to Claude" : "Save"}
+            </button>
+            <button type="button" onClick={discard} disabled={pending} className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">Discard</button>
           </div>
           {msg ? <div className="mt-1 text-xs text-neutral-600">{msg}</div> : null}
         </div>

@@ -1,10 +1,20 @@
 "use server";
 
-// Save a quick-capture recording (Danny 2026-05-31): upload the audio to the
-// PRIVATE 'recordings' bucket + insert a recordings row. Playback is via
-// short-lived signed URLs (getRecordingSignedUrl) — never a public link. If
-// targeted to Danny, drop a team_note (referencing the recording, no raw URL)
-// + a Slack ping. Any signed-in user can record.
+// Quick-capture recordings — UPLOAD-FIRST durability (Danny 2026-06-08, replacing
+// the 2026-05-31 server-action save that lost long recordings to Vercel's ~4.5MB
+// request-body cap). Flow:
+//   1. createRecordingUpload  → mint a signed Storage upload URL + insert the
+//      recordings row (status='uploading'); returns { id, path, token }.
+//   2. browser uploads the blob DIRECTLY to the private 'recordings' bucket via
+//      storage.uploadToSignedUrl (bypasses Vercel entirely — no size cap).
+//   3. markRecordingStored    → status='stored' (the audio is now durable).
+//   4. requestTranscription   → Whisper on the stored bytes, written back with an
+//      atomic no-clobber guard; never gates the save.
+//   5. finalizeRecording      → attach label/transcript/target (+ note-to-Danny /
+//      Claude side-effects); runs the job-ref guard (the Cantrell orphan fix).
+//   6. discardRecording       → delete the object + row if not yet finalized.
+// Audio is durable from step 3 on, even if the user never finalizes — the row is
+// recoverable/attachable in Studio. Playback is via short-lived signed URLs.
 
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
@@ -15,11 +25,18 @@ export type SaveRecordingResult = { ok: true; id: string } | { ok: false; error:
 
 const TARGETS = ["job", "customer", "estimate", "note_to_danny", "file", "claude"] as const;
 const BUCKET = "recordings";
+const MAX_TRANSCRIBE_BYTES = 25 * 1024 * 1024; // Whisper hard cap
 
+type Me = NonNullable<Awaited<ReturnType<typeof getCurrentTech>>>;
+// Stable identity used for created_by + ownership checks within a session.
+function whoIdentity(me: Me): string {
+  return me.tech?.tech_short_name ?? me.email;
+}
+
+// ── Job-ref guard (the Charles Cantrell orphan fix) ─────────────────────────
 // Resolve a job target the user typed (an HCP invoice/job number, or a job_ id)
 // into a canonical hcp_job_id. Techs share invoice numbers, so a number can map
-// to 0/1/many jobs — we surface that instead of storing the raw number (the bug
-// that orphaned the Charles Cantrell recording, Danny 2026-06-04).
+// to 0/1/many jobs — we surface that instead of storing the raw number.
 export type ResolveJobResult =
   | { ok: true; hcp_job_id: string; label: string }
   | { ok: false; error: string; matches?: Array<{ hcp_job_id: string; label: string }> };
@@ -59,71 +76,189 @@ export async function resolveJobRef(input: string): Promise<ResolveJobResult> {
   return resolveJobRefInternal(input);
 }
 
-export async function saveRecording(formData: FormData): Promise<SaveRecordingResult> {
+// ── 1. Create the upload slot (row-first + signed upload URL) ────────────────
+export async function createRecordingUpload(
+  input: { mime?: string; durationMs?: number },
+): Promise<{ ok: true; id: string; path: string; token: string } | { ok: false; error: string }> {
   const me = await getCurrentTech();
   if (!me) return { ok: false, error: "not signed in" };
 
-  const audio = formData.get("audio");
-  if (!(audio instanceof File) || audio.size === 0) return { ok: false, error: "no audio captured" };
-  if (audio.size > 25 * 1024 * 1024) return { ok: false, error: "recording too large (25MB max)" };
-
-  const label = String(formData.get("label") ?? "").trim().slice(0, 200) || null;
-  const tkRaw = String(formData.get("target_kind") ?? "file").trim();
-  const targetKind = (TARGETS as readonly string[]).includes(tkRaw) ? tkRaw : "file";
-  const targetRef = String(formData.get("target_ref") ?? "").trim() || null;
-  const durationMs = Number(formData.get("duration_ms") ?? 0) || null;
-  const transcript = String(formData.get("transcript") ?? "").trim().slice(0, 8000) || null;
-
-  // Resolve a typed job number → canonical hcp_job_id, and BLOCK on an
-  // unresolvable/ambiguous job rather than silently storing a bad ref (the orphan fix).
-  let resolvedRef = targetRef;
-  if (targetKind === "job" && targetRef && !targetRef.startsWith("job_")) {
-    const res = await resolveJobRefInternal(targetRef);
-    if (!res.ok) return { ok: false, error: res.error };
-    resolvedRef = res.hcp_job_id;
-  }
-
-  const mime = audio.type || "audio/webm";
-  const ext = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : "webm";
-  const who = (me.tech?.tech_short_name ?? me.email.split("@")[0]).replace(/[^a-z0-9]/gi, "_").toLowerCase();
+  const mime = (input.mime || "audio/webm").split(";")[0];
+  const ext = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : mime.includes("mpeg") ? "mp3" : "webm";
+  const who = whoIdentity(me).replace(/[^a-z0-9]/gi, "_").toLowerCase();
   const rand = Math.random().toString(36).slice(2, 8);
   const path = `${who}/${Date.now()}-${rand}.${ext}`;
 
   const supa = db();
-  const buf = Buffer.from(await audio.arrayBuffer());
-  const { error: upErr } = await supa.storage.from(BUCKET).upload(path, buf, { contentType: mime, upsert: false });
-  if (upErr) return { ok: false, error: `upload failed: ${upErr.message}` };
+  const { data: signed, error: sErr } = await supa.storage.from(BUCKET).createSignedUploadUrl(path);
+  if (sErr || !signed?.token) return { ok: false, error: `could not start upload: ${sErr?.message ?? "no token"}` };
 
   const { data: row, error: insErr } = await supa
     .from("recordings")
     .insert({
-      label,
-      target_kind: targetKind,
-      target_ref: resolvedRef,
       audio_path: path,
       audio_url: null, // private bucket — playback via signed URL only
       mime,
-      duration_ms: durationMs,
-      transcript,
-      created_by: me.tech?.tech_short_name ?? me.email,
+      duration_ms: Number(input.durationMs ?? 0) || null,
+      status: "uploading",
+      target_kind: null, // unfiled until finalizeRecording
+      created_by: whoIdentity(me),
     })
     .select("id")
     .single();
-  if (insErr || !row) return { ok: false, error: insErr?.message ?? "save failed" };
+  if (insErr || !row) return { ok: false, error: insErr?.message ?? "could not create recording" };
 
-  // Targeted to Danny → team_note referencing the recording (id, not a URL) +
-  // Slack ping (no raw link). Inlined so techs can use it too.
+  return { ok: true, id: String(row.id), path: signed.path ?? path, token: signed.token };
+}
+
+// ── 3. Confirm the bytes landed in the bucket → the audio is durable ─────────
+export async function markRecordingStored(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  const supa = db();
+  const { error } = await supa
+    .from("recordings")
+    .update({ status: "stored" })
+    .eq("id", id)
+    .eq("created_by", whoIdentity(me));
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+// ── 4. Transcription (decoupled; never gates the save; atomic no-clobber) ────
+// Reads the ALREADY-STORED bytes (so nothing rides a capped server-action body)
+// and runs them through the existing transcribe-audio Mode 1 (text only). Writes
+// the result back only if no transcript exists yet, so a user/finalize edit wins.
+export async function requestTranscription(
+  id: string,
+): Promise<{ ok: true; transcript: string; suspect: boolean } | { ok: false; error: string; tooLong?: boolean }> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  const supa = db();
+
+  const { data: rec } = await supa.from("recordings").select("audio_path, mime, transcript, created_by").eq("id", id).maybeSingle();
+  if (!rec?.audio_path) return { ok: false, error: "recording not found" };
+  if (rec.created_by !== whoIdentity(me) && !me.isAdmin && !me.isManager) return { ok: false, error: "not your recording" };
+  if (rec.transcript && String(rec.transcript).trim()) {
+    return { ok: true, transcript: String(rec.transcript), suspect: false };
+  }
+
+  const { data: blob, error: dlErr } = await supa.storage.from(BUCKET).download(rec.audio_path as string);
+  if (dlErr || !blob) return { ok: false, error: `download: ${dlErr?.message ?? "no file"}` };
+
+  if (blob.size > MAX_TRANSCRIBE_BYTES) {
+    await supa.from("recordings").update({ transcript_status: "too_large" }).eq("id", id).is("transcript", null);
+    return { ok: false, tooLong: true, error: "recording too long to auto-transcribe — the audio is saved; type a note" };
+  }
+
+  const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  try {
+    const mime = (rec.mime as string) || "audio/webm";
+    const ext = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : "webm";
+    const file = new File([blob], `rec-${id}.${ext}`, { type: mime });
+    const fd = new FormData();
+    fd.append("audio", file, file.name);
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${KEY}` },
+      body: fd,
+    });
+    const out = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok || !out.ok) {
+      await supa.from("recordings").update({ transcript_status: "failed" }).eq("id", id).is("transcript", null);
+      return { ok: false, error: String(out?.error ?? `transcribe ${res.status}`) };
+    }
+    const transcript = String(out.transcript ?? "").trim();
+    const suspect = Boolean(out.suspect);
+    // Atomic: only persist if no transcript yet, so a user/finalize edit is never clobbered.
+    await supa
+      .from("recordings")
+      .update({ transcript: transcript || null, transcript_status: suspect ? "needs_review" : "transcribed" })
+      .eq("id", id)
+      .or("transcript.is.null,transcript.eq.");
+    return { ok: true, transcript, suspect };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ── 5. Finalize: attach metadata + run targets' side-effects ─────────────────
+export async function finalizeRecording(input: {
+  id: string;
+  label?: string;
+  transcript?: string;
+  targetKind: string;
+  targetRef?: string;
+}): Promise<SaveRecordingResult> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  const id = String(input.id ?? "").trim();
+  if (!id) return { ok: false, error: "missing recording id" };
+  const supa = db();
+
+  const { data: rec } = await supa.from("recordings").select("id, created_by, status, duration_ms").eq("id", id).maybeSingle();
+  if (!rec) return { ok: false, error: "recording not found" };
+  if (rec.created_by !== whoIdentity(me)) return { ok: false, error: "not your recording" };
+  if (rec.status !== "stored") return { ok: false, error: "audio is still uploading — give it a moment" };
+
+  const label = String(input.label ?? "").trim().slice(0, 200) || null;
+  const tkRaw = String(input.targetKind ?? "file").trim();
+  const targetKind = (TARGETS as readonly string[]).includes(tkRaw) ? tkRaw : "file";
+  const transcriptText = String(input.transcript ?? "").trim().slice(0, 8000); // "" if none yet
+  const transcript = transcriptText || null;
+
+  // Validate target-specific preconditions BEFORE mutating the row.
+  if (targetKind === "claude") {
+    if (!isOwner(me.realEmail)) return { ok: false, error: "Send to Claude is owner-only." };
+    if (!(transcriptText || label)) return { ok: false, error: "Nothing to send — add a transcript or label." };
+  }
+
+  // Resolve a typed job number → canonical hcp_job_id, blocking on ambiguity (the orphan fix).
+  let resolvedRef = String(input.targetRef ?? "").trim() || null;
+  if (targetKind === "job" && resolvedRef && !resolvedRef.startsWith("job_")) {
+    const res = await resolveJobRefInternal(resolvedRef);
+    if (!res.ok) return { ok: false, error: res.error };
+    resolvedRef = res.hcp_job_id;
+  }
+
+  // Only write transcript when the user actually has text — otherwise a Save that
+  // lands before the auto-transcript returns would null out a long clip's transcript
+  // (requestTranscription's write-back only guards an empty row, not an overwrite).
+  const patch: Record<string, unknown> = {
+    label,
+    target_kind: targetKind,
+    target_ref: resolvedRef,
+    finalized_at: new Date().toISOString(),
+  };
+  if (transcriptText) patch.transcript = transcriptText;
+
+  // Idempotency: only the FIRST finalize (finalized_at still null) writes + fires
+  // side-effects. A double-tap inside the ~900ms reset window updates zero rows
+  // and returns ok without duplicating the note / Slack / Claude inserts.
+  const { data: updated, error: updErr } = await supa
+    .from("recordings")
+    .update(patch)
+    .eq("id", id)
+    .eq("created_by", whoIdentity(me))
+    .is("finalized_at", null)
+    .select("id");
+  if (updErr) return { ok: false, error: updErr.message };
+  if (!updated || updated.length === 0) return { ok: true, id }; // already finalized — skip side-effects
+
+  // Targeted to Danny → team_note (id, not a URL) + Slack ping. Best-effort.
   if (targetKind === "note_to_danny") {
     try {
+      const durMs = Number(rec.duration_ms ?? 0);
       await supa.from("team_notes").insert({
         author_email: me.email,
         author_short_name: me.tech?.tech_short_name ?? null,
         target_kind: "teammate",
         target_email: ownerEmail(),
         target_short_name: "Danny",
-        body: `🎤 Voice note${label ? `: ${label}` : ""}${durationMs ? ` (${Math.round(durationMs / 1000)}s)` : ""}${transcript ? `\n\n${transcript}` : ""}`,
+        body: `🎤 Voice note${label ? `: ${label}` : ""}${durMs ? ` (${Math.round(durMs / 1000)}s)` : ""}${transcript ? `\n\n${transcript}` : ""}`,
         attach_kind: null,
-        attach_ref: String(row.id),
+        attach_ref: id,
         tags: ["note-to-danny", "voice"],
         urgent: false,
       });
@@ -136,51 +271,37 @@ export async function saveRecording(formData: FormData): Promise<SaveRecordingRe
       });
     } catch { /* best-effort */ }
   } else if (targetKind === "claude") {
-    // Owner-only: drop a message into the Claude dev-loop queue (claude_messages).
-    if (!isOwner(me.realEmail)) return { ok: false, error: "Send to Claude is owner-only." };
+    // Owner-only dev-loop queue (validated above).
     const msg = (transcript || label || "").trim();
-    if (!msg) return { ok: false, error: "Nothing to send — the transcript is empty." };
     const { error: qErr } = await supa.from("claude_messages").insert({
       from_email: me.email,
       source: "voice",
       label,
       body: msg.slice(0, 8000),
-      recording_id: row.id,
+      recording_id: id,
       status: "pending",
     });
     if (qErr) return { ok: false, error: `queue: ${qErr.message}` };
   }
 
   revalidatePath("/");
-  return { ok: true, id: String(row.id) };
+  return { ok: true, id };
 }
 
-// Transcribe an audio blob via the transcribe-audio edge fn (Whisper). Called
-// right after recording stops, before the user picks what to do with it. The
-// recording itself is stored separately by saveRecording.
-export async function transcribeRecording(formData: FormData): Promise<{ ok: true; transcript: string } | { ok: false; error: string }> {
+// ── 6. Discard an unfiled capture (deletes object + row) ─────────────────────
+export async function discardRecording(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await getCurrentTech();
   if (!me) return { ok: false, error: "not signed in" };
-  const audio = formData.get("audio");
-  if (!(audio instanceof File) || audio.size === 0) return { ok: false, error: "no audio captured" };
-  if (audio.size > 25 * 1024 * 1024) return { ok: false, error: "recording too large (25MB max)" };
-
-  const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-  try {
-    const fwd = new FormData();
-    fwd.append("audio", audio, audio.name || "recording.webm");
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${KEY}` },
-      body: fwd,
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.ok) return { ok: false, error: json?.error ?? `transcribe ${res.status}` };
-    return { ok: true, transcript: String(json.transcript ?? "") };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  const supa = db();
+  const { data: rec } = await supa.from("recordings").select("audio_path, created_by, finalized_at").eq("id", id).maybeSingle();
+  if (!rec) return { ok: true }; // already gone
+  if (rec.created_by !== whoIdentity(me)) return { ok: false, error: "not your recording" };
+  if (rec.finalized_at) return { ok: false, error: "already saved — manage it from Studio" };
+  if (rec.audio_path) {
+    try { await supa.storage.from(BUCKET).remove([rec.audio_path as string]); } catch { /* best-effort */ }
   }
+  await supa.from("recordings").delete().eq("id", id).eq("created_by", whoIdentity(me)).is("finalized_at", null);
+  return { ok: true };
 }
 
 // Short-lived signed URL for playing a recording. Signed-in users only; the
@@ -189,9 +310,17 @@ export async function getRecordingSignedUrl(recordingId: string): Promise<{ ok: 
   const me = await getCurrentTech();
   if (!me) return { ok: false, error: "not signed in" };
   const supa = db();
-  const { data: rec } = await supa.from("recordings").select("audio_path").eq("id", recordingId).maybeSingle();
-  const audioPath = rec?.audio_path as string | undefined;
-  if (!audioPath) return { ok: false, error: "recording not found" };
+  const { data: rec } = await supa.from("recordings").select("audio_path, created_by, target_kind").eq("id", recordingId).maybeSingle();
+  if (!rec?.audio_path) return { ok: false, error: "recording not found" };
+  const audioPath = rec.audio_path as string;
+  // Authorize before signing: creator or leadership always; job/customer/estimate
+  // recordings are company work product (playable by any signed-in staffer who can
+  // reach them); private captures (note_to_danny / claude / file / unfiled) are
+  // creator-or-leadership only — closes the IDOR on a directly-POSTed action.
+  const mine = rec.created_by === whoIdentity(me);
+  const leadership = me.isAdmin || me.isManager;
+  const workProduct = ["job", "customer", "estimate"].includes(String(rec.target_kind ?? ""));
+  if (!mine && !leadership && !workProduct) return { ok: false, error: "not authorized" };
   const { data, error } = await supa.storage.from(BUCKET).createSignedUrl(audioPath, 3600);
   if (error || !data?.signedUrl) return { ok: false, error: error?.message ?? "could not sign url" };
   return { ok: true, url: data.signedUrl };
