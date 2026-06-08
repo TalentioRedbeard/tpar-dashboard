@@ -28,8 +28,12 @@ export async function uploadReceipt(formData: FormData): Promise<UploadReceiptRe
     return { ok: false, error: "Photo is required." };
   }
 
-  const amount = amountStr ? Number(amountStr.replace(/[^0-9.-]/g, "")) : null;
-  if (amountStr && (!Number.isFinite(amount) || amount! < 0)) {
+  // Blank amount is the documented happy path (the field is "(optional)" and the
+  // total often gets filled in later). receipts_master.amount is NOT NULL, so
+  // coerce blank -> 0 to match every other ingest path (slack/email) instead of
+  // throwing on insert and losing the tech's receipt.
+  const amount = amountStr ? Number(amountStr.replace(/[^0-9.-]/g, "")) : 0;
+  if (amountStr && (!Number.isFinite(amount) || amount < 0)) {
     return { ok: false, error: "Amount must be a positive number." };
   }
 
@@ -67,6 +71,8 @@ export async function uploadReceipt(formData: FormData): Promise<UploadReceiptRe
     .single();
 
   if (insErr || !row) {
+    // Don't leave the just-uploaded photo orphaned in the bucket if the row failed.
+    await supabase.storage.from("job-photos").remove([path]).catch(() => {});
     return { ok: false, error: insErr?.message ?? "Insert failed" };
   }
 
