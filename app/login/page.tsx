@@ -16,6 +16,11 @@ import { lookupTechByPhone } from "./phone-actions";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
+// Phone-OTP login is gated OFF by default: SMS delivery requires an approved A2P
+// 10DLC campaign (currently rejected), so a "Text me a code" path would silently
+// dead-end and look broken. Flip NEXT_PUBLIC_ENABLE_PHONE_LOGIN=true once A2P is live.
+const PHONE_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_PHONE_LOGIN === "true";
+
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="flex flex-1 items-center justify-center text-sm text-neutral-500">Loading…</div>}>
@@ -150,7 +155,9 @@ function LoginInner() {
 
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Sign in</h1>
           <p className="mt-2 text-sm text-neutral-600">
-            Use your TPAR Google account, a one-time link by email, or a code by text.
+            {PHONE_LOGIN_ENABLED
+              ? "Use your TPAR Google account, a one-time link by email, or a code by text."
+              : "Use your TPAR Google account, or a one-time link by email."}
           </p>
 
           {errorParam === "not_allowed" && (
@@ -211,6 +218,8 @@ function LoginInner() {
             </div>
           )}
 
+          {PHONE_LOGIN_ENABLED && (
+          <>
           <div className="my-5 flex items-center gap-2 text-xs text-neutral-400">
             <div className="h-px flex-1 bg-neutral-200" />
             <span>or sign in with your phone</span>
@@ -276,6 +285,8 @@ function LoginInner() {
             <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {smsErr}
             </div>
+          )}
+          </>
           )}
 
           <p className="mt-8 text-xs text-neutral-500">

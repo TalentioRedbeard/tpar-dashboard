@@ -3,6 +3,7 @@
 
 import { db } from "@/lib/supabase";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AckButton } from "../components/AckButton";
 import { ClockButton } from "../components/ClockButton";
 import { PageShell } from "../components/PageShell";
@@ -14,7 +15,6 @@ import { TechName } from "../components/ui/TechName";
 import { getCurrentTech, canResolveComms } from "../lib/current-tech";
 import { getFormerTechNames } from "../lib/former-techs";
 import { getCurrentState as getClockState } from "./time/actions";
-import TechHome from "./TechHome";
 import AdminHome from "./AdminHome";
 
 export const dynamic = "force-dynamic";
@@ -185,8 +185,12 @@ export default async function Today() {
   //   admin/manager/pm → AdminHome (intent launcher: ask + 6 action tiles + today strip)
   //   unauthenticated → fall through to legacy operational view (won't reach in practice;
   //                     middleware redirects to /login)
+  // Techs land on /me — the day surface that actually carries the lifecycle
+  // buttons (On My Way / Start / Finish) + the GPS prompt. TechHome lacked them,
+  // so a tech logging in didn't see the controls training points at. Reversible:
+  // restore `return <TechHome me={me} />` to bring back the intent-first front door.
   if (me && me.dashboardRole === "tech" && me.tech) {
-    return <TechHome me={me} />;
+    redirect("/me");
   }
   if (me && (me.isAdmin || me.isManager)) {
     return <AdminHome me={me} />;
