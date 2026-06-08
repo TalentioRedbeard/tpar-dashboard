@@ -122,7 +122,7 @@ export async function sendComms(_prev: SendResult, formData: FormData): Promise<
     // 3. Emit communication_events so it shows up in customer 360, /ask, etc.
     await supa.from("communication_events").insert({
       occurred_at: now,
-      channel: "sms",
+      channel: "text", // valid communication_events.channel (CHECK: call|text|email|slack|in_person|other) — 'sms' silently failed the constraint, so outbound texts never hit the timeline
       direction: "outbound",
       hcp_customer_id: hcpCustomerId,
       hcp_employee_id: writer.emp_id,
