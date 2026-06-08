@@ -437,7 +437,7 @@ export function EstimateBuilder({
           ) : null}
 
           {opt.line_items.map((li, lineIdx) => (
-            <div key={lineIdx} className="mb-2 grid grid-cols-12 gap-2 rounded-md border border-neutral-100 bg-neutral-50 p-2">
+            <div key={lineIdx} className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-12 rounded-md border border-neutral-100 bg-neutral-50 p-2">
               <input
                 type="text"
                 name={`options[${optIdx}][line_items][${lineIdx}][name]`}
@@ -445,7 +445,7 @@ export function EstimateBuilder({
                 onChange={(e) => setLineField(optIdx, lineIdx, "name", e.target.value)}
                 placeholder="Line item name"
                 disabled={isPending}
-                className="col-span-4 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="col-span-2 sm:col-span-4 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
               <input
                 type="number"
@@ -456,7 +456,7 @@ export function EstimateBuilder({
                 min="0"
                 placeholder="Qty"
                 disabled={isPending}
-                className="col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="col-span-1 sm:col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
               <input
                 type="number"
@@ -467,7 +467,7 @@ export function EstimateBuilder({
                 min="0"
                 placeholder="Unit price ($)"
                 disabled={isPending}
-                className="col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="col-span-1 sm:col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
               <input
                 type="number"
@@ -478,9 +478,9 @@ export function EstimateBuilder({
                 min="0"
                 placeholder="Unit cost ($) opt"
                 disabled={isPending}
-                className="col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="col-span-1 sm:col-span-2 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
-              <div className="col-span-2 flex items-center justify-end gap-1 text-xs text-neutral-500">
+              <div className="col-span-2 sm:col-span-2 flex items-center justify-end gap-1 text-xs text-neutral-500">
                 <span>${(Number(li.quantity) * Number(li.unit_price) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 {opt.line_items.length > 1 ? (
                   <button type="button" onClick={() => removeLine(optIdx, lineIdx)} disabled={isPending} className="ml-2 text-red-700 hover:text-red-900">×</button>

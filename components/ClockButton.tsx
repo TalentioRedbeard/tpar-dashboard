@@ -61,6 +61,14 @@ export function ClockButton({ initial, techShortName }: Props) {
     return () => clearInterval(id);
   }, [state.state]);
 
+  // Reconcile with the server after a per-job "Clock in here" / suggestion-banner clock-in
+  // (router.refresh updates the prop; useState alone never picks it up, leaving this button stale).
+  useEffect(() => {
+    if (pending) return; // don't clobber an in-flight clock action
+    setState(initial);
+    setNow(Date.now());
+  }, [initial, pending]);
+
   function captureLocation(): Promise<{ lat: number; lng: number; accuracy_m?: number } | undefined> {
     if (typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve(undefined);
     return new Promise((resolve) => {
@@ -81,8 +89,8 @@ export function ClockButton({ initial, techShortName }: Props) {
     // again" double clock-in.
     startTransition(async () => {
       const location = await captureLocation();
-      // Universal tech_locations log (fire-and-forget); reuses the cached fix above.
-      captureTechLocation(isClockedIn ? "clock_out" : "clock_in");
+      // Universal tech_locations log (fire-and-forget); reuses the fix resolved above.
+      captureTechLocation(isClockedIn ? "clock_out" : "clock_in", location ? { fix: { lat: location.lat, lng: location.lng, accuracyM: location.accuracy_m ?? null } } : undefined);
       const result =
         state.state === "clocked-in"
           ? await clockOut({ location, client_reported_at })

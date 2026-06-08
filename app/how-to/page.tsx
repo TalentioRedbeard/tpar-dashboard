@@ -44,7 +44,7 @@ export default function HowToPage() {
       <div className="space-y-4">
         <Step n={1} title="Getting in">
           <ul className="list-disc space-y-1.5 pl-5">
-            <li>Open the app link on your phone, tap <strong>&ldquo;Email me a link&rdquo;</strong>, enter your work email, then tap the link in your inbox. You&rsquo;re in — no password. <em>(Or log in with your phone number + a texted code.)</em></li>
+            <li>Open the app link on your phone. Tap <strong>&ldquo;Continue with Google&rdquo;</strong> (your work Gmail), or enter your work email and tap <strong>&ldquo;Send magic link&rdquo;</strong>, then tap the link in your inbox in the same browser. You&rsquo;re in — no password.</li>
             <li><strong>Add it to your home screen</strong> so it opens like an app: Share → &ldquo;Add to Home Screen.&rdquo;</li>
             <li><strong>Allow Location when it asks.</strong> That&rsquo;s what powers the one-tap status prompts below — say yes once.</li>
           </ul>
@@ -56,7 +56,7 @@ export default function HowToPage() {
 
         <Step n={3} title="Clock in / out">
           <ul className="list-disc space-y-1.5 pl-5">
-            <li>Tap <strong>Clock In</strong> when you start, <strong>Clock Out</strong> when you&rsquo;re done.</li>
+            <li>Tap <strong>&ldquo;Clock in&rdquo;</strong> on your day when you start, and <strong>&ldquo;Clock out&rdquo;</strong> when you&rsquo;re done. On a specific job, the button says <strong>&ldquo;Clock in here&rdquo;</strong>.</li>
             <li>If the app sees you&rsquo;re at a job site it&rsquo;ll <strong>offer to clock you in</strong> — just tap yes.</li>
           </ul>
         </Step>
@@ -87,7 +87,7 @@ export default function HowToPage() {
         <Step n={5} title="Line items & estimates">
           <ul className="list-disc space-y-1.5 pl-5">
             <li>Build the line items right on the job, then send a <strong>multi-option estimate</strong> (Good / Better / Best) for the customer to pick.</li>
-            <li>The pricebook walks you through it (4 quick picks → the line). <em>Same engine as the old Slack estimate form — the website is the new front door.</em></li>
+            <li>The pricebook walks you through it (4 quick picks → the line).</li>
           </ul>
         </Step>
 
@@ -100,7 +100,7 @@ export default function HowToPage() {
 
         <Step n={7} title="Comms & the whiteboard">
           <ul className="list-disc space-y-1.5 pl-5">
-            <li><strong>Comms</strong> shows the calls / texts / emails tied to your jobs and customers — check it so nothing falls through.</li>
+            <li>Your calls / texts / emails for your jobs show up right on your day under <strong>&ldquo;My recent comms&rdquo;</strong> — scan it in the morning so nothing falls through.</li>
             <li>The <strong>Team whiteboard</strong> on your day is where the company posts heads-ups, wins, and questions. Read it in the morning; post anything the team should see.</li>
           </ul>
         </Step>

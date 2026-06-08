@@ -42,13 +42,14 @@ const BUTTONS: Array<{
   trigger: TriggerNum;
   label: string;
   variant: "primary" | "secondary" | "danger";
+  hint?: string;
 }> = [
-  { trigger: 2, label: "On my way", variant: "secondary" },
-  { trigger: 3, label: "Start job", variant: "secondary" },
-  { trigger: 4, label: "Build estimate", variant: "secondary" },
-  { trigger: 5, label: "Present", variant: "secondary" },
-  { trigger: 6, label: "Finish work", variant: "secondary" },
-  { trigger: 7, label: "Done", variant: "primary" },
+  { trigger: 2, label: "On my way", variant: "secondary", hint: "Let the customer know you're on the way" },
+  { trigger: 3, label: "Start job", variant: "secondary", hint: "Start the job clock" },
+  { trigger: 4, label: "Build estimate", variant: "secondary", hint: "Build the estimate" },
+  { trigger: 5, label: "Present", variant: "secondary", hint: "Present the estimate to the customer" },
+  { trigger: 6, label: "Finish work", variant: "secondary", hint: "Finish the work" },
+  { trigger: 7, label: "Done", variant: "primary", hint: "Mark the job done" },
 ];
 
 // Trigger numbers that mirror to HCP via the bot — show sync status pill
@@ -71,6 +72,7 @@ type MirrorEntry = { firedAt: string; status: HcpMirrorStatus };
 
 export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors, destAddress, destLat, destLng, ppSubmitted, eojSubmitted }: Props) {
   const [pending, startTransition] = useTransition();
+  const [firing, setFiring] = useState<TriggerNum | null>(null);
   const [lastFired, setLastFired] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   // OMW-without-Finish guard: a prior open job to resolve before On-My-Way fires.
@@ -178,6 +180,9 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
       return;
     }
     setLastFired(triggerNumber);
+    // "Build estimate" → open the 4-question builder for this job once the
+    // trigger is logged (in-app route push, not a new tab; only on success).
+    if (triggerNumber === 4) router.push(`/estimate/new?job=${hcpJobId}`);
     // Start tracking HCP mirror status if this trigger has one.
     if (HCP_MIRRORED_TRIGGERS.has(triggerNumber)) {
       setMirror((prev) => ({
@@ -199,14 +204,19 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     if (triggerNumber === 2 && directionsUrl && typeof window !== "undefined") {
       window.open(directionsUrl, "_blank", "noopener,noreferrer");
     }
+    setFiring(triggerNumber);
     startTransition(async () => {
-      // OMW guard: before On-My-Way, check for a prior job left open (started,
-      // never Finished). If found, prompt Finish/Pause/Other and defer the fire.
-      if (triggerNumber === 2) {
-        const open = await getOpenJobForTech(hcpJobId);
-        if (open) { setGuardJob(open); return; }
+      try {
+        // OMW guard: before On-My-Way, check for a prior job left open (started,
+        // never Finished). If found, prompt Finish/Pause/Other and defer the fire.
+        if (triggerNumber === 2) {
+          const open = await getOpenJobForTech(hcpJobId);
+          if (open) { setGuardJob(open); return; }
+        }
+        await runFire(triggerNumber);
+      } finally {
+        setFiring(null);
       }
-      await runFire(triggerNumber);
     });
   };
 
@@ -221,6 +231,11 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     }
     return null;
   })();
+
+  // Soft "what's next" cue — the first un-fired step in normal order. Triggers
+  // 3 and 4 are legitimately skippable, so this only de-emphasizes (never
+  // disables) the off-path buttons and strengthens the call-to-action one.
+  const nextTrigger = [2, 3, 4, 5, 6, 7].find((t) => !(firedTriggers.includes(t) || lastFired === t)) ?? 7;
 
   return (
     <div className="mt-2.5">
@@ -241,24 +256,31 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
           const mirrorEntry = mirror[b.trigger];
           const baseClass =
             "rounded-md px-2.5 py-1.5 text-xs font-medium transition disabled:opacity-50";
+          const isNext = !wasFired && b.trigger === nextTrigger;
           const variantClass = wasFired
             ? "border border-emerald-300 bg-emerald-50 text-emerald-800"
             : b.variant === "primary"
               ? "border border-blue-600 bg-blue-600 text-white hover:bg-blue-700"
               : "border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50";
+          // Soft emphasis: ring the expected next step, dim the off-path ones.
+          const emphasisClass = wasFired
+            ? ""
+            : isNext
+              ? " ring-2 ring-blue-400"
+              : " opacity-60";
           return (
             <span key={b.trigger} className="inline-flex items-center gap-1">
               <button
                 type="button"
-                disabled={pending}
+                disabled={firing === b.trigger || wasFired}
                 onClick={() => onFire(b.trigger)}
-                className={`${baseClass} ${variantClass}`}
-                title={`Fire trigger ${b.trigger}`}
+                className={`${baseClass} ${variantClass}${emphasisClass}`}
+                title={b.hint ?? b.label}
               >
-                {wasFired ? "✓ " : ""}{b.label}
+                {firing === b.trigger ? "… " : (wasFired ? "✓ " : "")}{b.label}
               </button>
               {mirrorEntry ? (
-                <MirrorPill entry={mirrorEntry} hcpJobId={hcpJobId} onRetry={() => onFire(b.trigger)} retryDisabled={pending} />
+                <MirrorPill entry={mirrorEntry} hcpJobId={hcpJobId} onRetry={() => onFire(b.trigger)} retryDisabled={firing === b.trigger} />
               ) : null}
             </span>
           );

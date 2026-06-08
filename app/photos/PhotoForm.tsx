@@ -80,7 +80,13 @@ export function PhotoForm({
         fd.set("primary_subject", primarySubject);
         fd.set("notes", notes);
         startTransition(async () => {
-          const res = await uploadJobMedia(fd);
+          let res: Awaited<ReturnType<typeof uploadJobMedia>>;
+          try {
+            res = await uploadJobMedia(fd);
+          } catch (e) {
+            setError(`Upload failed: ${e instanceof Error ? e.message : String(e)}. Your photo wasn't saved — try again (a large video may be too big to send).`);
+            return;
+          }
           if (res.ok) setSuccess({ photo_id: res.photo_id, photo_url: res.photo_url, job_id: hcpJobId });
           else setError(res.error);
         });

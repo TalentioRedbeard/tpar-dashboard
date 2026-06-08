@@ -68,7 +68,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             description={
               <>
                 For privacy + system safety, techs only see customers they've worked for.
-                If you need access, ask the production manager.
+                If you should have access to this customer, text Danny to get access.
               </>
             }
           />

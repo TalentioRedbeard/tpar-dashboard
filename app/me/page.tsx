@@ -284,10 +284,11 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       });
       if (!match) {
         // If fired_at is more than 5 min ago and we still have no log row,
-        // treat as failed (the bot never ran or its log got lost).
+        // treat as the calm amber "unconfirmed" state (matches the in-session
+        // poll path). RED stays reserved for a real bot-error log row below.
         const ageMs = Date.now() - new Date(firedAt).getTime();
         perTrigger[trigger] = ageMs > 5 * 60 * 1000
-          ? { fired_at: firedAt, state: "failed", message: "No mirror log found within 5 min of firing." }
+          ? { fired_at: firedAt, state: "unconfirmed", message: "Your press was saved. HCP is still catching up — it'll sync on its own." }
           : { fired_at: firedAt, state: "pending" };
         continue;
       }
@@ -310,7 +311,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   return (
     <PageShell
       title={`Hi, ${techName}`}
-      description={`${viewingAs ? `(viewing as ${viewingAs}) ` : ""}Your day. ${appts.length} appointment${appts.length === 1 ? "" : "s"} today.`}
+      description={`${viewingAs ? `(viewing as ${viewingAs}) ` : ""}Your day. ${activeAppts.length} appointment${activeAppts.length === 1 ? "" : "s"} today${dismissedAppts.length ? ` (+${dismissedAppts.length} handled)` : ""}.`}
       help={{
         intent: "Your home base. Today's jobs in order, plus the buttons you'll hit during a job: clock in, OMW, Start, Finish.",
         actions: [
@@ -371,6 +372,16 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
             techShortName={me.tech.tech_short_name}
           />
         </section>
+      ) : null}
+
+      {/* "Read this first" how-to entry point — only for real techs (not
+          view-as), so a first-time tech has a plain path to the field guide
+          beyond the icon-only nav button. */}
+      {!viewingAs && me.tech ? (
+        <Link href="/how-to" className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-brand-300 bg-brand-50/60 px-4 py-3 text-sm text-brand-900 transition hover:bg-brand-50">
+          <span><strong>New here?</strong> Read the 60-second field guide — what each button does.</span>
+          <span aria-hidden className="font-semibold whitespace-nowrap">How to use this app →</span>
+        </Link>
       ) : null}
 
       {/* Daily expectations — owner-authored "what your day looks like" basics,
@@ -551,6 +562,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                   ) : null}
                   {!viewingAs && me.tech && (
                     <div className="mt-2.5">
+                      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">Your hours</p>
                       <StartAppointmentButton
                         appointmentId={apptId}
                         jobId={jobId}
@@ -558,6 +570,9 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                         isClockedInElsewhere={isElsewhere}
                       />
                     </div>
+                  )}
+                  {!viewingAs && me.tech && jobId && (
+                    <p className="mb-1 mt-2.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500">On the job</p>
                   )}
                   {!viewingAs && me.tech && jobId && (
                     <LifecycleButtons

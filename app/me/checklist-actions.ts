@@ -100,6 +100,7 @@ export async function submitPostPresentationChecklist(input: {
 
   const allowed = new Set(["performing", "scheduling", "estimate", "service_fee", "other", "no_answer"]);
   const result = input.appointment_result && allowed.has(input.appointment_result) ? input.appointment_result : null;
+  if (!result) return { ok: false, error: "Pick a result first." };
 
   const { error } = await db().from("checklist_post_presentation").insert({
     hcp_job_id: input.hcp_job_id,
@@ -135,6 +136,7 @@ export async function submitEndOfJobChecklist(input: {
   const me = await getCurrentTech();
   if (!me?.tech) return { ok: false, error: "Not signed in as a tech." };
   if (!input.hcp_job_id) return { ok: false, error: "Missing job." };
+  if (input.obtained_work_approval === null) return { ok: false, error: "Answer 'Work approval obtained?' first." };
 
   const office = input.office_update ?? null;
   const { error } = await db().from("checklist_end_of_job").insert({

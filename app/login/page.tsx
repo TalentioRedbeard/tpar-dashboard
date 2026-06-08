@@ -162,10 +162,15 @@ function LoginInner() {
 
           {errorParam === "not_allowed" && (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              That account isn&apos;t on the access list. Use a tulsapar.com email or contact Danny.
+              That account isn&apos;t on our list. Make sure you picked the email or Google account Danny set up for you (it may be your personal one), then try again — or contact Danny.
             </div>
           )}
-          {errorParam && errorParam !== "not_allowed" && (
+          {errorParam === "link_wrong_browser" ? (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              That link was opened in a different browser or device than you requested it from, or it expired. Tap &quot;Send magic link&quot; again and open the email on this phone — or use Continue with Google.
+            </div>
+          ) : null}
+          {errorParam && errorParam !== "not_allowed" && errorParam !== "link_wrong_browser" && (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {decodeURIComponent(errorParam)}
             </div>
@@ -209,7 +214,10 @@ function LoginInner() {
 
           {status === "sent" && (
             <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              Check <span className="font-medium">{email}</span> — your link expires in 1 hour.
+              <div>Check <span className="font-medium">{email}</span> — your link expires in 1 hour.</div>
+              <div className="mt-1">
+                Open it on this phone, in this same browser — forwarding it or opening it elsewhere won&apos;t work. (Or use Continue with Google.)
+              </div>
             </div>
           )}
           {status === "error" && errorMsg && (

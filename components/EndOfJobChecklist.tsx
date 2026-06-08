@@ -53,6 +53,7 @@ export function EndOfJobChecklist({ hcpJobId }: { hcpJobId: string }) {
 
   const onSubmit = () => start(async () => {
     setErr(null);
+    if (approval === null) { setErr("Answer 'Work approval obtained?' first."); return; }
     const res = await submitEndOfJobChecklist({
       hcp_job_id: hcpJobId,
       obtained_work_approval: approval,
@@ -148,7 +149,7 @@ export function EndOfJobChecklist({ hcpJobId }: { hcpJobId: string }) {
       {err ? <div className="mt-1 text-xs text-red-700">{err}</div> : null}
       <button
         type="button"
-        disabled={pending}
+        disabled={pending || approval === null}
         onClick={onSubmit}
         className="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
       >

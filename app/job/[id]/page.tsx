@@ -54,6 +54,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const me = await getCurrentTech().catch(() => null);
   const canWrite = !!me?.canWrite;
   const canEdit = !!(me?.isAdmin || me?.isManager); // MGMT — direct HCP edit
+  // Techs get bounced from /jobs to /me; send them to /find instead (#36).
+  const techBackHref = me?.dashboardRole === "tech" ? "/find" : "/jobs";
+  const techBackLabel = me?.dashboardRole === "tech" ? "Find a job" : "All jobs";
   const formerSet = await getFormerTechNames();
   const supabase = db();
 
@@ -83,8 +86,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         <PageShell
           kicker="Multiple matches"
           title={`Job #${resolved.trunk} has multiple segments`}
-          backHref="/jobs"
-          backLabel="All jobs"
+          backHref={techBackHref}
+          backLabel={techBackLabel}
         >
           <EmptyState
             title={`Pick the right segment of #${resolved.trunk}`}
@@ -149,7 +152,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         }
       }
       return (
-        <PageShell title="Job not found" backHref="/jobs" backLabel="All jobs">
+        <PageShell title="Job not found" backHref={techBackHref} backLabel={techBackLabel}>
           <EmptyState
             title="Couldn't find that job."
             description={
@@ -160,7 +163,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 </p>
                 <p className="mt-2 text-xs text-neutral-600">
                   If you got here from a Slack link or someone&apos;s screenshot, the invoice/estimate may not be synced yet. Try{" "}
-                  <Link href={`/jobs?q=${encodeURIComponent(id)}`} className="text-brand-700 hover:underline">searching /jobs</Link>.
+                  {me?.dashboardRole === "tech" ? (
+                    <Link href={`/find?q=${encodeURIComponent(id)}`} className="text-brand-700 hover:underline">searching for the job</Link>
+                  ) : (
+                    <Link href={`/jobs?q=${encodeURIComponent(id)}`} className="text-brand-700 hover:underline">searching /jobs</Link>
+                  )}.
                 </p>
               </>
             }
@@ -189,7 +196,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             description={
               <>
                 For privacy + system safety, techs only see jobs they were on.
-                If you need access, ask the production manager.
+                If you should have access to this job, text Danny the job number and he&apos;ll add you.
               </>
             }
           />
@@ -485,13 +492,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
           <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatCard label="Revenue" value={fmtMoney(j.revenue)} tone="brand" />
-            <StatCard label="Materials" value={fmtMoney(j.materials_cost)} />
-            <StatCard
-              label="Gross margin"
-              value={j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}
-              tone={Number(j.gross_margin_pct) >= 50 ? "green" : Number(j.gross_margin_pct) < 30 ? "amber" : "neutral"}
-            />
-            <StatCard label="Receipts cost" value={fmtMoney(j.receipts_cost)} />
+            {canEdit ? (
+              <>
+                <StatCard label="Materials" value={fmtMoney(j.materials_cost)} />
+                <StatCard
+                  label="Gross margin"
+                  value={j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}
+                  tone={Number(j.gross_margin_pct) >= 50 ? "green" : Number(j.gross_margin_pct) < 30 ? "amber" : "neutral"}
+                />
+                <StatCard label="Receipts cost" value={fmtMoney(j.receipts_cost)} />
+              </>
+            ) : null}
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -563,21 +574,25 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           title="Job cost"
           description="Three factors: HCP line-item materials + logged receipts + GPS-derived labor. Receipts attach by invoice number."
         >
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard label="Materials (HCP)" value={fmtMoney((jobCost?.materials_cost as number) ?? j.materials_cost)} />
-            <StatCard label="Receipts" value={fmtMoney((jobCost?.receipts_cost as number) ?? j.receipts_cost)} />
-            <StatCard label="Labor (GPS-derived)" value={fmtMoney(jobCost?.derived_labor_cost)} />
-            <StatCard label="Est. total cost" value={fmtMoney(jobCost?.derived_total_cost)} />
-          </div>
-          {jobCost?.derived_labor_cost == null ? (
-            <p className="mt-2 text-xs text-neutral-500">GPS-derived labor isn&apos;t available for this job yet (needs matched trips + on-site time).</p>
-          ) : (
-            <p className="mt-2 text-xs text-neutral-500">
-              Labor estimate quality: {String(jobCost?.margin_data_quality ?? "—")}
-              {jobCost?.derived_gross_margin_pct != null ? ` · est. margin ${Number(jobCost.derived_gross_margin_pct).toFixed(0)}%` : ""}
-              {jobCost?.burden_rate_used != null ? ` · burden ${fmtMoney(jobCost.burden_rate_used)}/hr` : ""}
-            </p>
-          )}
+          {canEdit ? (
+            <>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <StatCard label="Materials (HCP)" value={fmtMoney((jobCost?.materials_cost as number) ?? j.materials_cost)} />
+                <StatCard label="Receipts" value={fmtMoney((jobCost?.receipts_cost as number) ?? j.receipts_cost)} />
+                <StatCard label="Labor (GPS-derived)" value={fmtMoney(jobCost?.derived_labor_cost)} />
+                <StatCard label="Est. total cost" value={fmtMoney(jobCost?.derived_total_cost)} />
+              </div>
+              {jobCost?.derived_labor_cost == null ? (
+                <p className="mt-2 text-xs text-neutral-500">GPS-derived labor isn&apos;t available for this job yet (needs matched trips + on-site time).</p>
+              ) : (
+                <p className="mt-2 text-xs text-neutral-500">
+                  Labor estimate quality: {String(jobCost?.margin_data_quality ?? "—")}
+                  {jobCost?.derived_gross_margin_pct != null ? ` · est. margin ${Number(jobCost.derived_gross_margin_pct).toFixed(0)}%` : ""}
+                  {jobCost?.burden_rate_used != null ? ` · burden ${fmtMoney(jobCost.burden_rate_used)}/hr` : ""}
+                </p>
+              )}
+            </>
+          ) : null}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-neutral-800">

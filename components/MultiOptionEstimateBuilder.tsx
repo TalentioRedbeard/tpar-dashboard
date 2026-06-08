@@ -282,6 +282,9 @@ export function MultiOptionEstimateBuilder({
           {result.hcp_url ? (
             <a href={result.hcp_url} target="_blank" rel="noreferrer" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">Open in HCP ↗</a>
           ) : null}
+          {initialJob?.hcpJobId ? (
+            <button type="button" onClick={() => router.push(`/job/${initialJob.hcpJobId}`)} className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800">Back to job →</button>
+          ) : null}
           {customer ? (
             <button type="button" onClick={() => router.push(`/customer/${customer.hcpCustomerId}`)} className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-100">Back to customer</button>
           ) : null}

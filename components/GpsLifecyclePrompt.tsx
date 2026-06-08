@@ -46,7 +46,7 @@ export function GpsLifecyclePrompt({
   const [fix, setFix] = useState<{ lat: number; lng: number; dist: number } | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [geoDenied, setGeoDenied] = useState(false);
+  const [geoErr, setGeoErr] = useState<null | "denied" | "unavailable">(null);
 
   const started = firedTriggers.includes(3);
   const finished = firedTriggers.includes(6);
@@ -61,7 +61,7 @@ export function GpsLifecyclePrompt({
         if (cancelled) return;
         setFix({ lat: p.coords.latitude, lng: p.coords.longitude, dist: Math.round(distanceM(p.coords.latitude, p.coords.longitude, custLat, custLng)) });
       },
-      () => { if (!cancelled) setGeoDenied(true); }, // surface a re-enable instead of staying silent
+      (e) => { if (!cancelled) setGeoErr(e.code === 1 ? "denied" : "unavailable"); }, // surface a re-enable instead of staying silent
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
     );
     return () => { cancelled = true; };
@@ -71,10 +71,10 @@ export function GpsLifecyclePrompt({
   // from a non-gesture context after a first dismissal, so the button matters.
   const requestFix = () => {
     if (custLat == null || custLng == null || typeof navigator === "undefined" || !navigator.geolocation) return;
-    setGeoDenied(false);
+    setGeoErr(null);
     navigator.geolocation.getCurrentPosition(
       (p) => setFix({ lat: p.coords.latitude, lng: p.coords.longitude, dist: Math.round(distanceM(p.coords.latitude, p.coords.longitude, custLat, custLng)) }),
-      () => setGeoDenied(true),
+      (e) => setGeoErr(e.code === 1 ? "denied" : "unavailable"),
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
     );
   };
@@ -94,15 +94,20 @@ export function GpsLifecyclePrompt({
     // don't go silent on the headline feature — offer a one-tap re-enable. (When
     // there's no geocode, location can't help, so we render nothing and the manual
     // Start button below covers it.)
-    if (!started && custLat != null && custLng != null && geoDenied) {
+    if (!started && custLat != null && custLng != null && geoErr) {
       return (
         <div className="mt-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <span className="mr-1">📍</span>Turn on location to auto-detect when you arrive.
+          <span className="mr-1">📍</span>
+          {geoErr === "denied"
+            ? "Turn on location to auto-detect when you arrive."
+            : "Couldn't get a GPS fix — tap to retry, or just use Start below."}
           <button type="button" onClick={requestFix}
             className="ml-2 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100">
             Enable location
           </button>
-          <span className="ml-1 text-[10px] text-amber-700">— or just use Start below.</span>
+          {geoErr === "denied"
+            ? <span className="ml-1 text-[10px] text-amber-700">— or just use Start below.</span>
+            : null}
         </div>
       );
     }

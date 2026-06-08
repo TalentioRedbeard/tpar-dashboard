@@ -52,6 +52,7 @@ export function PostPresentationChecklist({ hcpJobId }: { hcpJobId: string }) {
 
   const onSubmit = () => start(async () => {
     setErr(null);
+    if (!result) { setErr("Pick a result first."); return; }
     const res = await submitPostPresentationChecklist({
       hcp_job_id: hcpJobId,
       before_photo_taken: beforePhoto,
@@ -69,7 +70,9 @@ export function PostPresentationChecklist({ hcpJobId }: { hcpJobId: string }) {
     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-900">
         Post-presentation checklist
-        <span className="rounded bg-amber-200/70 px-1 py-0.5 text-[9px] font-medium text-amber-800">auto-filled</span>
+        {(photoCount > 0 || optionsHint !== null)
+          ? <span className="rounded bg-amber-200/70 px-1 py-0.5 text-[9px] font-medium text-amber-800">auto-filled</span>
+          : null}
       </div>
       <div className="space-y-2.5 text-xs text-neutral-700">
         <Row label="Before photo taken?" hint={photoCount > 0 ? `📸 ${photoCount} on file` : undefined}>
@@ -108,7 +111,7 @@ export function PostPresentationChecklist({ hcpJobId }: { hcpJobId: string }) {
       {err ? <div className="mt-1 text-xs text-red-700">{err}</div> : null}
       <button
         type="button"
-        disabled={pending}
+        disabled={pending || !result}
         onClick={onSubmit}
         className="mt-2 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-amber-700 disabled:opacity-50"
       >

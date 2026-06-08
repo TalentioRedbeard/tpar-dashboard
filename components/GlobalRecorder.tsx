@@ -26,7 +26,7 @@ type UploadState = "idle" | "uploading" | "stored" | "error";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
+export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isOwner?: boolean; clockedInJobId?: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const [state, setState] = useState<"idle" | "recording" | "review">("idle");
@@ -145,6 +145,7 @@ export function GlobalRecorder({ isOwner = false }: { isOwner?: boolean }) {
         if (tickRef.current) { window.clearInterval(tickRef.current); tickRef.current = null; }
         const d = detectFromUrl();
         if (d) { setTarget(d.target); setTargetRef(d.ref); }
+        else if (!isOwner && clockedInJobId) { setTarget("job"); setTargetRef(clockedInJobId); }
         setState("review");
         void beginUpload(b, dMs); // persist immediately — before the user picks a target
       };

@@ -31,9 +31,12 @@ export async function GET(req: NextRequest) {
     const supa = await supabaseServer();
     const { error } = await supa.auth.exchangeCodeForSession(code);
     if (error) throw error;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(msg)}`);
+  } catch {
+    // Any failed exchange here is a wrong-browser / expired-link case: the PKCE
+    // verifier cookie lives in the browser that requested the link, so opening
+    // it elsewhere (or after expiry) can't complete. Show friendly recovery copy
+    // instead of the raw Supabase error.
+    return NextResponse.redirect(`${origin}/login?error=link_wrong_browser`);
   }
 
   return NextResponse.redirect(`${origin}${next}`);

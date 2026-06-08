@@ -160,9 +160,15 @@ export async function clockIn(input: {
 
   const current = await getCurrentState();
   if (current.state === "clocked-in") {
+    const since = new Date(current.clocked_in_at).toLocaleTimeString("en-US", {
+      timeZone: "America/Chicago",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
     return {
       ok: false,
-      error: `Already clocked in (since ${current.clocked_in_at}). Clock out before clocking in again.`,
+      error: `Already clocked in since ${since}. Clock out first.`,
     };
   }
 

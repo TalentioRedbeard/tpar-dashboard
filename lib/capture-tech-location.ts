@@ -12,8 +12,12 @@ import { logTechLocation } from "./log-tech-location";
 
 export function captureTechLocation(
   actionType: string,
-  opts?: { hcpJobId?: string | null; raw?: Record<string, unknown> | null }
+  opts?: { hcpJobId?: string | null; raw?: Record<string, unknown> | null; fix?: { lat: number; lng: number; accuracyM?: number | null } }
 ): void {
+  if (opts?.fix && Number.isFinite(opts.fix.lat) && Number.isFinite(opts.fix.lng)) {
+    void logTechLocation({ actionType, hcpJobId: opts.hcpJobId ?? null, lat: opts.fix.lat, lng: opts.fix.lng, accuracyM: opts.fix.accuracyM ?? null, raw: opts.raw ?? null });
+    return;
+  }
   if (typeof navigator === "undefined" || !navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(
     (pos) => {

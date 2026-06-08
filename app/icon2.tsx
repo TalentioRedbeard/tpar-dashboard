@@ -31,8 +31,8 @@ export default function IconXL() {
         <div
           style={{
             position: "absolute",
-            bottom: 70,
-            right: 76,
+            bottom: 150,
+            right: 156,
             width: 52,
             height: 52,
             borderRadius: 52,

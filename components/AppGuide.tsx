@@ -39,9 +39,9 @@ export type ActionTarget =
   | "use";       // generic "I picked this one" — only meaningful with onSelect
 
 const ACTION_LABELS: Record<ActionTarget, string> = {
-  omw:      "OMW",
-  start:    "Start",
-  finish:   "Finish",
+  omw:      "On my way",
+  start:    "Start job",
+  finish:   "Finish work",
   estimate: "Estimate",
   receipt:  "Receipt",
   photo:    "Photo",

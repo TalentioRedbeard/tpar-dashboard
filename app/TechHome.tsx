@@ -118,7 +118,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   }> = [
     { label: "Receipt", emoji: "🧾", href: "/receipt", subtitle: "Snap a receipt" },
     clockedJobId
-      ? { label: "Estimate current job", emoji: "✏️", href: `/job/${clockedJobId}/estimate/new`, primary: true, subtitle: "You're clocked in" }
+      ? { label: "Estimate current job", emoji: "✏️", href: `/estimate/new?job=${clockedJobId}`, primary: true, subtitle: "You're clocked in" }
       : { label: "Estimate current job", emoji: "✏️", href: "#", disabled: true, subtitle: "Clock into a job first" },
     { label: "Estimate for job", emoji: "📝", href: "/jobs", subtitle: "Pick the job" },
     clockedJobId
@@ -288,7 +288,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       if (estCount === 0) {
         nextStep = {
           label: "Build the estimate",
-          href: `/job/${clockedJobId}/estimate/new`,
+          href: `/estimate/new?job=${clockedJobId}`,
           subtitle: "No estimate yet — Trigger #4. Open Tool 3 with options.",
           emoji: "✏️",
           tone: "brand",

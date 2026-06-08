@@ -4,6 +4,7 @@ import "./globals.css";
 import { getSessionUser } from "../lib/supabase-server";
 import { getCurrentTech } from "../lib/current-tech";
 import { getUnreadCounts } from "./notes/board-actions";
+import { getCurrentState } from "./time/actions";
 import { Nav } from "../components/Nav";
 import { RegisterServiceWorker } from "../components/RegisterServiceWorker";
 import { InstallPrompt } from "../components/InstallPrompt";
@@ -53,6 +54,10 @@ export default async function RootLayout({
   // get redirected there. /me stays a deliberate destination.
   const hasTechRow = !!me?.tech;
   const counts = user ? await getUnreadCounts().catch(() => ({ inbox: 0, board: 0 })) : { inbox: 0, board: 0 };
+  // Pre-fill the global recorder's target to the tech's clocked-in JOB — but only
+  // when there's an appointment-level clock-in carrying an hcp_job_id (workday-vs-
+  // appointment landmine: merely "clocked in" is NOT enough). Owner stays Danny.
+  const clock = user ? await getCurrentState().catch(() => null) : null;
 
   return (
     <html
@@ -80,7 +85,12 @@ export default async function RootLayout({
         <div className="flex-1">{children}</div>
         <RegisterServiceWorker />
         {user && <InstallPrompt />}
-        {user ? <GlobalRecorder isOwner={isOwner(user.email)} /> : null}
+        {user ? (
+          <GlobalRecorder
+            isOwner={isOwner(user.email)}
+            clockedInJobId={clock?.state === "clocked-in" ? clock.hcp_job_id : null}
+          />
+        ) : null}
       </body>
     </html>
   );
