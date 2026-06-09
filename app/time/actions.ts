@@ -135,6 +135,106 @@ export async function getCurrentState(): Promise<CurrentClockState> {
   };
 }
 
+// ── Parallel-clocks Phase 1 (docs/CLOCK_SYNC_SPEC_2026-06-08.md) ─────────────
+// Make the /me button mirror HCP's live status. Calls the cached hcp-clock-status
+// edge fn (which drives the bot's read_only HCP read). Service-role bearer.
+async function callHcpClockStatus(
+  hcp_employee_id: string,
+  tech_short_name: string,
+): Promise<{ ok: boolean; hcp_open: boolean; hcp_open_start: string | null } | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return null;
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/hcp-clock-status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+      body: JSON.stringify({ hcp_employee_id, tech_short_name }),
+    });
+    const data = await res.json();
+    return { ok: !!data.ok, hcp_open: !!data.hcp_open, hcp_open_start: data.hcp_open_start ?? null };
+  } catch {
+    return null; // never block the button on an HCP read
+  }
+}
+
+// HCP renders the open entry's start as a Chicago wall-clock like "11:57am".
+// Turn it into today's ISO timestamp, honoring CDT/CST (so the clocked-in
+// duration is right, not off by an hour).
+function chicagoTimeToTodayIso(timeStr: string | null): string | null {
+  if (!timeStr) return null;
+  const m = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const pm = m[3].toLowerCase() === "pm";
+  if (h === 12) h = pm ? 12 : 0;
+  else if (pm) h += 12;
+  const ymd = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" }); // YYYY-MM-DD
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    timeZoneName: "longOffset",
+  }).formatToParts(new Date());
+  const tzn = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
+  const off = tzn.match(/GMT([+-]\d{2}:\d{2})/)?.[1] ?? "-05:00";
+  return `${ymd}T${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}:00${off}`;
+}
+
+/**
+ * Phase 1: reconcile the /me button with HCP's live status. Non-blocking —
+ * the page renders TPAR state immediately and calls this on mount.
+ *
+ * SAFE direction only for v1: if HCP shows the tech clocked in (an open entry
+ * TODAY) but the app thinks they're clocked OUT, back-fill a TPAR 'in' row so
+ * the button shows "Clock out" — killing the "9-second blip" (clocking in just
+ * to clock out). The reverse (HCP closed while the app shows open) is left
+ * alone: an app-started shift that hasn't mirrored to HCP yet is the normal
+ * case (Phase 2 territory). Returns {changed} so the client can router.refresh().
+ */
+export async function syncHcpClockStatus(): Promise<{ changed: boolean; reason?: string }> {
+  const me = await getCurrentTech();
+  const empId = me?.tech?.hcp_employee_id ?? null;
+  if (!me?.tech || !empId) return { changed: false };
+
+  // Only ever ADD a missing 'in' — never touch an app shift that's already open.
+  const current = await getCurrentState();
+  if (current.state === "clocked-in") return { changed: false };
+
+  const status = await callHcpClockStatus(empId, me.tech.tech_short_name);
+  if (!status?.ok || !status.hcp_open) return { changed: false };
+
+  const ts = chicagoTimeToTodayIso(status.hcp_open_start);
+  if (!ts) return { changed: false };
+
+  const supabase = db();
+  // Re-check latest row is still 'out' (guards against a concurrent back-fill).
+  const { data: latest } = await supabase
+    .from("tech_time_entries")
+    .select("kind")
+    .eq("tech_id", me.tech.tech_id)
+    .is("voided_at", null)
+    .order("ts", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (latest?.kind === "in") return { changed: false };
+
+  const { error } = await supabase.from("tech_time_entries").insert({
+    tech_id: me.tech.tech_id,
+    tech_slack_user_id: me.tech.slack_user_id,
+    tech_short_name: me.tech.tech_short_name,
+    kind: "in",
+    ts,
+    source: "hcp-mirror",
+    created_by: "system-hcp-read",
+    notes: "auto: mirrored from HCP open clock-in (parallel-clocks Phase 1)",
+  });
+  if (error) return { changed: false };
+
+  revalidatePath("/");
+  revalidatePath("/me");
+  return { changed: true, reason: `HCP open since ${status.hcp_open_start}` };
+}
+
 /**
  * Convenience wrapper: clock in for a specific scheduled appointment.
  * Used by the /me per-appointment "Start" buttons.

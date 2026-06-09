@@ -14,6 +14,7 @@ import { getCurrentTech, type DashboardRole } from "../../lib/current-tech";
 import { PageShell } from "../../components/PageShell";
 import { AppGuide } from "../../components/AppGuide";
 import { ClockButton } from "../../components/ClockButton";
+import { HcpClockSync } from "../../components/HcpClockSync";
 import { StartAppointmentButton } from "../../components/StartAppointmentButton";
 import { ClockSuggestionBanner } from "../../components/ClockSuggestionBanner";
 import { LifecycleButtons } from "../../components/LifecycleButtons";
@@ -371,6 +372,8 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
             initial={clockState}
             techShortName={me.tech.tech_short_name}
           />
+          {/* Phase 1: reconcile the button with HCP's live status (kills the blip) */}
+          <HcpClockSync />
         </section>
       ) : null}
 
