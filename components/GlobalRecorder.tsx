@@ -200,7 +200,7 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
   const saveDisabled = pending || uploadState !== "stored";
 
   return (
-    <div className="fixed right-4 top-4 z-[60] print:hidden">
+    <div className="fixed right-4 top-16 z-[60] print:hidden">
       {state === "idle" ? (
         <button
           type="button"
