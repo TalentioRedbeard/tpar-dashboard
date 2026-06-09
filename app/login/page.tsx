@@ -8,7 +8,7 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { BrandMark } from "../../components/ui/Brand";
 import { lookupTechByPhone } from "./phone-actions";
@@ -60,6 +60,48 @@ function LoginInner() {
   // @supabase/ssr; /auth/callback is now a server-side Route Handler
   // that reads the cookie reliably via createServerClient.
   const supa = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // PWA Google-OAuth recovery (reference_pwa_google_login_bug_2026-06-08).
+  // In the installed Android PWA, "Continue with Google" breaks out into a
+  // Chrome Custom Tab; OAuth completes there and the @supabase/ssr session
+  // cookie lands in the shared cookie jar, but this standalone window stays
+  // parked on /login until it's closed and reopened (the "phantom logout").
+  // So whenever we regain visibility/focus, re-check for a session and route
+  // in if one now exists — turning "close & reopen to fix it" into "it just
+  // works when you come back from the Google tab." The session cookie is
+  // client-readable, so getSession() picks up the freshly-set one. If we come
+  // back WITHOUT a session (OAuth cancelled/failed in the tab), clear the
+  // Google button's stuck spinner so it's tappable again.
+  const navigatingRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    async function recheck() {
+      if (document.visibilityState !== "visible") return;
+      if (navigatingRef.current) return;
+      const { data } = await supa.auth.getSession();
+      if (cancelled) return;
+      if (data.session) {
+        navigatingRef.current = true;
+        // Same-origin only (defense-in-depth against an ?from= open redirect).
+        const dest = fromParam.startsWith("/") && !fromParam.startsWith("//") ? fromParam : "/";
+        window.location.assign(dest);
+      } else {
+        setPending((p) => (p === "google" ? null : p));
+        setStatus((s) => (s === "sending" ? "idle" : s));
+      }
+    }
+    document.addEventListener("visibilitychange", recheck);
+    window.addEventListener("focus", recheck);
+    window.addEventListener("pageshow", recheck);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", recheck);
+      window.removeEventListener("focus", recheck);
+      window.removeEventListener("pageshow", recheck);
+    };
+    // Run once. supa is memoized by @supabase/ssr and fromParam is stable for
+    // this URL; live state is read via the setter callback form.
+  }, []);
 
   async function signInGoogle() {
     if (pending) return;
