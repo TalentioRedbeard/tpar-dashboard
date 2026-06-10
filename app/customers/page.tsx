@@ -7,6 +7,7 @@ import { getCurrentTech } from "../../lib/current-tech";
 import { PageShell } from "../../components/PageShell";
 import { Table, Pagination, FilterBar, fmtMoney, fmtDateShort, type Column } from "../../components/Table";
 import { StatCard } from "../../components/ui/StatCard";
+import { TechCustomersView } from "./TechCustomersView";
 
 export const metadata = { title: "Customers · TPAR-DB" };
 
@@ -34,7 +35,14 @@ export default async function CustomersListPage({
   // customer. Gate to admin/manager; techs reach their own jobs' customers
   // via scoped /customer/[id].
   const me = await getCurrentTech().catch(() => null);
-  if (!me?.isAdmin && !me?.isManager) redirect("/me");
+  // Techs get their own scheduled customers (contact info, financials redacted)
+  // instead of the company list; office users (no tech row) still go to /me.
+  if (!me?.isAdmin && !me?.isManager) {
+    if (me?.tech) {
+      return <TechCustomersView fullName={me.tech.hcp_full_name} shortName={me.tech.tech_short_name} />;
+    }
+    redirect("/me");
+  }
   const params = await searchParams;
   const q = (params.q ?? "").trim();
   const page = Math.max(1, Number(params.page ?? "1"));

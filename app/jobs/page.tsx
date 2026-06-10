@@ -19,6 +19,7 @@ import { StatCard } from "../../components/ui/StatCard";
 import { getEffectiveTechName, getCurrentTech } from "../../lib/current-tech";
 import { getFormerTechNames } from "../../lib/former-techs";
 import { TechName } from "../../components/ui/TechName";
+import { TechJobsView } from "./TechJobsView";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -76,7 +77,14 @@ export default async function JobsListPage({
   // exposes company-wide revenue + gross margin, so gate to admin/manager
   // (same pattern as /dispatch + /schedule + /reports).
   const me = await getCurrentTech().catch(() => null);
-  if (!me?.isAdmin && !me?.isManager) redirect("/me");
+  // Techs get their own jobs ("what pertains to me", margin/AR redacted) instead
+  // of the company-wide list; office users (no tech row) still go to /me.
+  if (!me?.isAdmin && !me?.isManager) {
+    if (me?.tech) {
+      return <TechJobsView fullName={me.tech.hcp_full_name} shortName={me.tech.tech_short_name} />;
+    }
+    redirect("/me");
+  }
   const params = await searchParams;
   const q = (params.q ?? "").trim();
   const tech = (params.tech ?? "").trim();

@@ -9,6 +9,7 @@ import { PageShell } from "../../components/PageShell";
 import { StatCard } from "../../components/ui/StatCard";
 import { EstimatesTable, type EstimateRow } from "../../components/EstimatesTable";
 import { getCurrentTech } from "../../lib/current-tech";
+import { TechEstimatesView } from "./TechEstimatesView";
 
 export const metadata = { title: "Estimates · TPAR-DB" };
 
@@ -17,7 +18,14 @@ const STATUSES = ["draft", "preview", "approved", "pushed", "archived"] as const
 export default async function EstimatesPage() {
   // Pipeline shows pricing + margins across all customers. Gate to admin/manager.
   const me = await getCurrentTech().catch(() => null);
-  if (!me?.isAdmin && !me?.isManager) redirect("/me");
+  // Techs get estimates on their own scheduled customers instead of the company
+  // pipeline; office users (no tech row) still go to /me.
+  if (!me?.isAdmin && !me?.isManager) {
+    if (me?.tech) {
+      return <TechEstimatesView fullName={me.tech.hcp_full_name} shortName={me.tech.tech_short_name} />;
+    }
+    redirect("/me");
+  }
   const supa = db();
   const { data } = await supa
     .from("bid_estimates")

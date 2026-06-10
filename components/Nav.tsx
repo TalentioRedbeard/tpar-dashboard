@@ -36,6 +36,19 @@ const PRIMARY_ITEMS = [
   { href: "/schedule",  label: "Schedule" },
 ];
 
+// Tech banner — the daily-driver destinations a field tech gets. Each renders a
+// tech-scoped "what pertains to me" view (own work, financials redacted), plus
+// Shopping and the field guide.
+const TECH_PRIMARY_ITEMS = [
+  { href: "/jobs",      label: "Jobs" },
+  { href: "/customers", label: "Customers" },
+  { href: "/estimates", label: "Estimates" },
+  { href: "/schedule",  label: "Schedule" },
+  { href: "/comms",     label: "Comms" },
+  { href: "/shopping",  label: "Shopping" },
+  { href: "/how-to",    label: "How-to" },
+];
+
 const TOOL_ITEMS = [
   { href: "/price", label: "Price" },
   { href: "/ask",   label: "Ask" },
@@ -88,13 +101,13 @@ export function Nav({
   // Leadership-only surfaces (company-wide revenue/margins/all customers+comms).
   // Techs are page-gated to /me on these; hide the links too so the nav honors
   // "you only see your own work". Scoped object pages (/job/[id], /customer/[id])
-  // stay reachable; /schedule and /comms render tech-scoped views (own
-  // appointments / own customers' comms) so they are NOT leadership-gated.
-  // Admin + manager see all.
+  // stay reachable. /schedule, /comms, /jobs, /customers, /estimates all render
+  // tech-scoped views (own work, financials redacted), so they are NOT
+  // leadership-gated — only /dispatch and /reports stay leadership-only.
   const leadershipView = showAdmin || isManager;
-  const LEADERSHIP_LIST = new Set(["/customers", "/jobs", "/estimates", "/dispatch", "/reports"]);
+  const LEADERSHIP_LIST = new Set(["/dispatch", "/reports"]);
   const navItems = leadershipView ? NAV_ITEMS : NAV_ITEMS.filter((i) => !LEADERSHIP_LIST.has(i.href));
-  const primaryItems = leadershipView ? PRIMARY_ITEMS : PRIMARY_ITEMS.filter((i) => !LEADERSHIP_LIST.has(i.href));
+  const primaryItems = leadershipView ? PRIMARY_ITEMS : TECH_PRIMARY_ITEMS;
 
   // Build the section list once — shared by the logo dropdown + mobile drawer.
   const mobileSections = [
