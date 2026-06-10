@@ -105,6 +105,22 @@ export default function HowToPage() {
           </ul>
         </Step>
 
+        <section className="rounded-2xl border border-amber-300 bg-amber-50/60 p-5">
+          <h2 className="text-base font-semibold text-amber-900">Before you work on an old system</h2>
+          <p className="mt-2 text-sm leading-relaxed text-neutral-700">
+            Most damage disputes start the same way: you work on an older system, something nearby fails, and the customer blames the repair. A fair share of that risk belongs to the <strong>old system</strong> — not you — but you have to set that up front, or it becomes a fight you can&rsquo;t win after the fact.
+          </p>
+          <p className="mt-3 text-sm font-semibold text-neutral-900">Three moves, every time, before you start:</p>
+          <ol className="mt-1.5 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-neutral-700">
+            <li><strong>Say it up front.</strong> &ldquo;Here&rsquo;s the condition of what we&rsquo;re working on — repairs on an older system carry some inherent risk that&rsquo;s the system&rsquo;s, not ours.&rdquo; Set the expectation before you touch it.</li>
+            <li><strong>Photo the arrival condition.</strong> Snap the area and anything already worn, cracked, or corroded, and drop it on the job (tap the job → photos). That picture is your protection.</li>
+            <li><strong>Tell them what you find as you go.</strong> A surprise at the end becomes a dispute; a heads-up becomes trust.</li>
+          </ol>
+          <p className="mt-3 text-sm leading-relaxed text-neutral-700">
+            This isn&rsquo;t about dodging responsibility — when it&rsquo;s genuinely on us, we make it right, no charge. It&rsquo;s about not eating fault that belongs to a decades-old system, and heading off the dispute before it ever starts.
+          </p>
+        </section>
+
         <section className="rounded-2xl border border-brand-300 bg-brand-50 p-5">
           <h2 className="text-base font-semibold text-brand-900">The deal</h2>
           <p className="mt-2 text-sm leading-relaxed text-neutral-700">
