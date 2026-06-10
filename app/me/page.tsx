@@ -377,10 +377,12 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
         </section>
       ) : null}
 
-      {/* "Read this first" how-to entry point — only for real techs (not
-          view-as), so a first-time tech has a plain path to the field guide
-          beyond the icon-only nav button. */}
-      {!viewingAs && me.tech ? (
+      {/* "Read this first" how-to entry point for techs. This is READ-ONLY nav
+          (unlike the clock/status actions below, which gate on !viewingAs to
+          prevent admin writes-as-tech), so show it in view-as too — an admin
+          reviewing the tech experience should see the same plain path to the
+          field guide that a real tech sees. */}
+      {me.tech ? (
         <Link href="/how-to" className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-brand-300 bg-brand-50/60 px-4 py-3 text-sm text-brand-900 transition hover:bg-brand-50">
           <span><strong>New here?</strong> Read the 60-second field guide — what each button does.</span>
           <span aria-hidden className="font-semibold whitespace-nowrap">How to use this app →</span>
