@@ -663,7 +663,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
 
         {/* KPI snapshot */}
         <section>
-          <h2 className="mb-3 text-base font-semibold text-neutral-800">My 30-day snapshot</h2>
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <h2 className="text-base font-semibold text-neutral-800">My 30-day snapshot</h2>
+            <Link href="/me/production" className="text-xs font-medium text-brand-700 hover:underline">My production →</Link>
+          </div>
           {kpi ? (
             <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm">
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
