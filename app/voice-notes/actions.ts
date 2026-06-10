@@ -62,6 +62,7 @@ export async function uploadVoiceNote(formData: FormData): Promise<UploadVoiceNo
       method: "POST",
       headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
       body: fwd,
+      signal: AbortSignal.timeout(60_000),
     });
   } catch (e) {
     const msg = `network: ${e instanceof Error ? e.message : String(e)}`;
@@ -163,6 +164,7 @@ export async function finalizeVoiceNote(input: {
       method: "POST",
       headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(60_000),
     });
   } catch (e) {
     const msg = `network: ${e instanceof Error ? e.message : String(e)}`;

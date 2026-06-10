@@ -61,6 +61,18 @@ function LoginInner() {
   // that reads the cookie reliably via createServerClient.
   const supa = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+  // Landing on /login means the prior session ended (sign-out or rejection).
+  // Purge the SW's route cache so a logged-out device can't serve a stale,
+  // previously-rendered authenticated page for a different user.
+  useEffect(() => {
+    if (typeof caches === "undefined") return;
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.filter((k) => k.startsWith("tpar-db-routes")).map((k) => caches.delete(k))
+      )
+    ).catch(() => {});
+  }, []);
+
   // PWA Google-OAuth recovery (reference_pwa_google_login_bug_2026-06-08).
   // In the installed Android PWA, "Continue with Google" breaks out into a
   // Chrome Custom Tab; OAuth completes there and the @supabase/ssr session

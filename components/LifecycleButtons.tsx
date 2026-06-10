@@ -255,7 +255,7 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
           const wasFired = firedTriggers.includes(b.trigger) || lastFired === b.trigger;
           const mirrorEntry = mirror[b.trigger];
           const baseClass =
-            "rounded-md px-2.5 py-1.5 text-xs font-medium transition disabled:opacity-50";
+            "min-h-11 inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-50";
           const isNext = !wasFired && b.trigger === nextTrigger;
           const variantClass = wasFired
             ? "border border-emerald-300 bg-emerald-50 text-emerald-800"

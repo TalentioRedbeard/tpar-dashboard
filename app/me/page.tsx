@@ -736,10 +736,6 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           </ul>
         )}
       </section>
-
-      <p className="mt-8 text-xs text-neutral-500">
-        v0 of per-tech scoped views. v1 will add &quot;My customers&quot;, &quot;My jobs&quot;, and &quot;My comms&quot; filters on the global pages, plus a personal PIP rollup.
-      </p>
     </PageShell>
   );
 }

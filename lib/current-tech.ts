@@ -6,6 +6,7 @@ import { getSessionUser } from "./supabase-server";
 import { isAdmin, isOwner } from "./admin";
 import { toE164US } from "./phone";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 export type DashboardRole = "admin" | "manager" | "production_manager" | "tech" | null;
 
@@ -35,7 +36,7 @@ export type CurrentTech = {
 
 const VIEW_AS_COOKIE = "tpar_view_as";
 
-export async function getCurrentTech(): Promise<CurrentTech | null> {
+export const getCurrentTech = cache(async function getCurrentTech(): Promise<CurrentTech | null> {
   const user = await getSessionUser();
   if (!user || (!user.email && !user.phone)) return null;
 
@@ -151,7 +152,7 @@ export async function getCurrentTech(): Promise<CurrentTech | null> {
       email: (data.email as string | null) ?? (user.email ? null : identityEmail),
     } : null,
   };
-}
+});
 
 // Role label for nav rendering decisions.
 //   "admin"   — full read+write

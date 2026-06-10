@@ -139,6 +139,7 @@ export function AppGuide({
   const [ambient, setAmbient] = useState<AmbientSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const recRef = useRef<SpeechRecInstance | null>(null);
 
   // Debounced search — fires on mount with empty query (returns ambient + today's jobs),
@@ -164,9 +165,10 @@ export function AppGuide({
     const w = window as SpeechWindow;
     const Rec = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!Rec) {
-      alert("Voice input not supported in this browser. Try Chrome or Safari on mobile.");
+      setVoiceError("Voice input not supported in this browser. Try Chrome or Safari on mobile.");
       return;
     }
+    setVoiceError(null);
     if (listening && recRef.current) {
       recRef.current.stop();
       setListening(false);
@@ -237,6 +239,9 @@ export function AppGuide({
             Search
           </button>
         </form>
+        {voiceError ? (
+          <p className="mt-2 text-xs text-red-600">{voiceError}</p>
+        ) : null}
       </div>
 
       {/* Ambient strip */}
@@ -364,33 +369,38 @@ function ActionButton({
   onSelect?: (cand: FinderCandidate, action: ActionTarget) => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [fireError, setFireError] = useState<string | null>(null);
   const isTrigger = TRIGGER_ACTIONS.has(action);
   const alreadyFired = isTrigger && isTriggerAlreadyFired(action, cand);
 
   if (isTrigger) {
     const triggerNum = TRIGGER_NUMBER[action as "omw" | "start" | "finish"];
     return (
-      <button
-        type="button"
-        disabled={alreadyFired || pending}
-        onClick={() => {
-          if (alreadyFired) return;
-          if (onSelect) { onSelect(cand, action); return; }
-          startTransition(async () => {
-            const r = await fireLifecycleTrigger({ trigger_number: triggerNum, hcp_job_id: cand.hcp_job_id });
-            if (!r.ok) alert(`${ACTION_LABELS[action]} failed: ${r.error}`);
-          });
-        }}
-        className={
-          alreadyFired
-            ? "rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 cursor-default"
-            : pending
-              ? "rounded-md border border-brand-300 bg-brand-100 px-3 py-1.5 text-sm font-medium text-brand-700 opacity-70"
-              : "rounded-md border border-brand-300 bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
-        }
-      >
-        {alreadyFired ? `${ACTION_LABELS[action]} ✓` : pending ? `${ACTION_LABELS[action]}…` : ACTION_LABELS[action]}
-      </button>
+      <span className="inline-flex flex-col items-start gap-0.5">
+        <button
+          type="button"
+          disabled={alreadyFired || pending}
+          onClick={() => {
+            if (alreadyFired) return;
+            if (onSelect) { onSelect(cand, action); return; }
+            setFireError(null);
+            startTransition(async () => {
+              const r = await fireLifecycleTrigger({ trigger_number: triggerNum, hcp_job_id: cand.hcp_job_id });
+              if (!r.ok) setFireError(`${ACTION_LABELS[action]} failed: ${r.error}`);
+            });
+          }}
+          className={
+            alreadyFired
+              ? "rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 cursor-default"
+              : pending
+                ? "rounded-md border border-brand-300 bg-brand-100 px-3 py-1.5 text-sm font-medium text-brand-700 opacity-70"
+                : "rounded-md border border-brand-300 bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+          }
+        >
+          {alreadyFired ? `${ACTION_LABELS[action]} ✓` : pending ? `${ACTION_LABELS[action]}…` : ACTION_LABELS[action]}
+        </button>
+        {fireError ? <span className="text-xs text-red-600">{fireError}</span> : null}
+      </span>
     );
   }
 

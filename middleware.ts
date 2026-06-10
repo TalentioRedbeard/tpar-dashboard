@@ -7,6 +7,7 @@
 // latency to the response.
 
 import { createServerClient } from "@supabase/ssr";
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { toE164US } from "./lib/phone";
 
@@ -62,13 +63,19 @@ async function isAllowedPhone(phone: string | null | undefined): Promise<boolean
   try {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/tech_directory?select=tech_id&is_active=eq.true&phone=eq.${encodeURIComponent(e164)}&limit=1`,
-      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } },
+      {
+        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        signal: AbortSignal.timeout(4_000),
+      },
     );
     if (!r.ok) return false;
     const rows = await r.json();
     return Array.isArray(rows) && rows.length > 0;
   } catch {
-    return false;
+    // Network blip reaching PostgREST — fail open so a flaky connection
+    // doesn't bounce an otherwise-valid tech to /login. A definitive
+    // "not found" (r.ok with empty array) still returns false above.
+    return true;
   }
 }
 
@@ -84,13 +91,19 @@ async function isAllowedEmail(email: string | null | undefined): Promise<boolean
   try {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/tech_directory?select=tech_id&is_active=eq.true&email=ilike.${encodeURIComponent(e)}&limit=1`,
-      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } },
+      {
+        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        signal: AbortSignal.timeout(4_000),
+      },
     );
     if (!r.ok) return false;
     const rows = await r.json();
     return Array.isArray(rows) && rows.length > 0;
   } catch {
-    return false;
+    // Network blip reaching PostgREST — fail open so a flaky connection
+    // doesn't bounce an otherwise-valid tech to /login. A definitive
+    // "not found" (r.ok with empty array) still returns false above.
+    return true;
   }
 }
 
@@ -170,8 +183,15 @@ export async function middleware(req: NextRequest) {
     },
   });
 
-  const { data: { user } } = await supa.auth.getUser();
+  const { data: { user }, error: authError } = await supa.auth.getUser();
 
+  // Fail OPEN on a transient network error (flaky LTE): a blip must not look
+  // like a signed-out session. Let the request through — page-level
+  // getCurrentTech() still resolves the tech row, and a genuinely invalid
+  // session (no error, user null) still redirects below.
+  if (!user && authError && isAuthRetryableFetchError(authError)) {
+    return res;
+  }
   if (!user) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";

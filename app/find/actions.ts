@@ -116,8 +116,13 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
   // HCP employee_id (pro_<hex>) in tech_primary_id + tech_all_ids — NOT the
   // tech_directory.tech_id short slug. Compare to hcp_employee_id.
   const myHcpEmpId = me.tech.hcp_employee_id ?? null;
+  // Scope ambient/today to THIS tech only. Admin/manager (full visibility, like
+  // job-detail page) keep all rows; a scoped tech with no HCP mapping FAILS CLOSED
+  // (empty) rather than leaking the whole office's schedule.
+  const isScopedTech = me.dashboardRole === "tech";
   const mineToday = allAppts.filter((a) => {
-    if (!myHcpEmpId) return true; // fail-open for techs without HCP mapping
+    if (!isScopedTech) return true;                 // admin/manager: full visibility
+    if (!myHcpEmpId) return false;                  // fail CLOSED: no HCP id => no rows
     return a.tech_primary_id === myHcpEmpId || (a.tech_all_ids ?? []).includes(myHcpEmpId);
   });
 
@@ -316,7 +321,7 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
   // 3) Load job_360 + appointment + lifecycle for each candidate
   const [jobsRes, apptByJobRes, lifecycleRes] = await Promise.all([
     supa.from("job_360")
-        .select("hcp_job_id, invoice_number, customer_name, tech_primary_name, job_date, appointment_status, due_amount")
+        .select("hcp_job_id, invoice_number, customer_name, tech_primary_name, tech_all_names, job_date, appointment_status, due_amount")
         .in("hcp_job_id", Array.from(candidateJobIds)),
     supa.from("appointments_master")
         .select("hcp_job_id, street, city, scheduled_start, status")
@@ -371,9 +376,18 @@ export async function findJobs(input: FinderInput): Promise<{ candidates: Finder
   const now = Date.now();
   const compoundActiveOnly = compound && ["active", "in progress", "in-progress", "current", "started", "now"].includes(compound.filter);
   const candidates: FinderCandidate[] = [];
+  // Per-tech scope gate — techs only see jobs they were on (#130, per Danny
+  // 2026-05-04). Mirrors app/job/[id]/page.tsx ownership check. Admin/manager
+  // bypass. job_360.tech_primary_name + tech_all_names store FULL names.
+  const myFullName = me.tech.hcp_full_name ?? me.tech.tech_short_name;
   for (const id of candidateJobIds) {
     const j = jobsById.get(id);
     if (!j) continue;
+    if (isScopedTech) {
+      const onPrimary = j.tech_primary_name === myFullName;
+      const onCrew = Array.isArray(j.tech_all_names) && (j.tech_all_names as string[]).includes(myFullName);
+      if (!onPrimary && !onCrew) continue; // not this tech's job — drop from results
+    }
     const appt = apptByJob.get(id);
     const lifecycle = lifecycleByJob.get(id) ?? { started_at: null, finished_at: null, omw_at: null };
     const custId = apptCustByJob.get(id);
@@ -552,9 +566,9 @@ function emptyAmbient(): AmbientSnapshot {
 
 function isToday(iso: string | null | undefined): boolean {
   if (!iso) return false;
-  const d = new Date(iso);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  // Compare calendar day in America/Chicago (server runs UTC on Vercel).
+  const fmt = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/Chicago" }); // YYYY-MM-DD
+  return fmt(new Date(iso)) === fmt(new Date());
 }
 
 function maxIso(a: string | null, b: string | null): string | null {

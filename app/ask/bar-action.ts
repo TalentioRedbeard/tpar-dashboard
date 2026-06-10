@@ -34,6 +34,7 @@ export async function askBar(input: { question: string; pageContext?: string }):
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
       body: JSON.stringify({ question, page_context: input.pageContext ?? null }),
+      signal: AbortSignal.timeout(30_000),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: json?.error ?? `appguide-route ${res.status}` };

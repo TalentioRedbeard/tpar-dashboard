@@ -33,7 +33,6 @@ export const viewport = {
   themeColor: "#1e40af",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   userScalable: true as const,
 };
 
@@ -45,7 +44,16 @@ export default async function RootLayout({
   // Probe session — null on /login or /auth/* (no cookie yet, or middleware
   // redirected). Nav is only rendered when a session exists.
   const user = await getSessionUser().catch(() => null);
-  const me = user ? await getCurrentTech().catch(() => null) : null;
+  // me / counts / clock all internally resolve getCurrentTech(), which is now
+  // React-cache() memoized — so these run concurrently and share ONE auth +
+  // tech_directory resolution for the whole request.
+  const [me, counts, clock] = user
+    ? await Promise.all([
+        getCurrentTech().catch(() => null),
+        getUnreadCounts().catch(() => ({ inbox: 0, board: 0 })),
+        getCurrentState().catch(() => null),
+      ])
+    : [null, { inbox: 0, board: 0 }, null];
   const isTech = !!me?.tech && me?.dashboardRole === "tech";
   const isAdmin = !!me?.isAdmin;
   const isManager = !!me?.isManager;
@@ -53,11 +61,6 @@ export default async function RootLayout({
   // see the My day link so they can intentionally visit /me — but they don't
   // get redirected there. /me stays a deliberate destination.
   const hasTechRow = !!me?.tech;
-  const counts = user ? await getUnreadCounts().catch(() => ({ inbox: 0, board: 0 })) : { inbox: 0, board: 0 };
-  // Pre-fill the global recorder's target to the tech's clocked-in JOB — but only
-  // when there's an appointment-level clock-in carrying an hcp_job_id (workday-vs-
-  // appointment landmine: merely "clocked in" is NOT enough). Owner stays Danny.
-  const clock = user ? await getCurrentState().catch(() => null) : null;
 
   return (
     <html

@@ -12,15 +12,15 @@
 // background sync. The point is "the page Danny loaded yesterday is
 // still readable when his iPhone has 1 bar."
 
-const CACHE = "tpar-db-v2";
-const ROUTE_CACHE = "tpar-db-routes-v2";
+const CACHE = "tpar-db-v3";
+const ROUTE_CACHE = "tpar-db-routes-v3";
 
-// Pages to pre-warm on install. Static + likely-revisited tech-day surfaces.
+// Pre-warm ONLY non-sensitive static/PWA assets. Authenticated HTML routes
+// (/, /me, /time, /price, ...) are per-user and were leaking across techs:
+// Cache Storage is keyed by URL with no cookie partitioning, so the offline
+// branch could serve tech A's page to tech B on a shared device. Never cache
+// authed navigations.
 const PRECACHE_ROUTES = [
-  "/",
-  "/me",
-  "/time",
-  "/price",
   "/manifest.webmanifest",
   "/icon",
   "/icon1",
@@ -94,39 +94,31 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML / page routes — network-first with cache fallback
+  // HTML / page routes — network-ONLY. These are per-user authenticated pages;
+  // caching them leaks one tech's data to another on a shared device (Cache
+  // Storage is URL-keyed, no cookie partitioning). On network failure show a
+  // GENERIC offline notice — never a previously-cached page.
   if (req.mode === "navigate" || (req.headers.get("accept") || "").includes("text/html")) {
     event.respondWith(
-      fetch(req)
-        .then((resp) => {
-          // Only cache successful responses
-          if (resp.ok) {
-            const copy = resp.clone();
-            caches.open(ROUTE_CACHE).then((c) => c.put(req, copy));
-          }
-          return resp;
-        })
-        .catch(() =>
-          caches.match(req).then((hit) =>
-            hit || new Response(
-              `<!doctype html><html><head><title>TPAR-DB · Offline</title>
-                <meta charset="utf-8"><meta name="viewport" content="width=device-width">
-                <style>
-                  body{font-family:system-ui,sans-serif;padding:2rem;color:#171717;background:#fafafa}
-                  .card{max-width:32rem;margin:4rem auto;padding:1.5rem;border:1px solid #e5e5e5;border-radius:1rem;background:#fff}
-                  h1{margin:0 0 0.5rem;font-size:1.25rem}
-                  p{margin:0.5rem 0;color:#525252;font-size:0.9rem}
-                  code{background:#f5f5f5;padding:0.1rem 0.4rem;border-radius:0.25rem}
-                </style></head>
-                <body><div class="card">
-                  <h1>You're offline.</h1>
-                  <p>This page hasn't been visited recently enough to cache.</p>
-                  <p>Try a page you've opened today, like <code>/</code> or a customer/job you visited recently.</p>
-                </div></body></html>`,
-              { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
-            )
-          )
+      fetch(req).catch(() =>
+        new Response(
+          `<!doctype html><html><head><title>TPAR-DB · Offline</title>
+            <meta charset="utf-8"><meta name="viewport" content="width=device-width">
+            <style>
+              body{font-family:system-ui,sans-serif;padding:2rem;color:#171717;background:#fafafa}
+              .card{max-width:32rem;margin:4rem auto;padding:1.5rem;border:1px solid #e5e5e5;border-radius:1rem;background:#fff}
+              h1{margin:0 0 0.5rem;font-size:1.25rem}
+              p{margin:0.5rem 0;color:#525252;font-size:0.9rem}
+              code{background:#f5f5f5;padding:0.1rem 0.4rem;border-radius:0.25rem}
+            </style></head>
+            <body><div class="card">
+              <h1>You're offline.</h1>
+              <p>This page needs a connection to load your latest info.</p>
+              <p>Reconnect and try again — your data will be current when you do.</p>
+            </div></body></html>`,
+          { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
         )
+      )
     );
     return;
   }

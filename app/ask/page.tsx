@@ -48,6 +48,7 @@ async function askTpar(question: string): Promise<AskTparResult> {
         "Authorization": `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ question }),
+      signal: AbortSignal.timeout(30_000),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -84,6 +85,7 @@ async function routeQuery(question: string): Promise<RouteResult> {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
       body: JSON.stringify({ question }),
+      signal: AbortSignal.timeout(30_000),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: json?.error ?? `appguide-route ${res.status}` };
