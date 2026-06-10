@@ -20,6 +20,22 @@ export const metadata = { title: "Comms · TPAR-DB" };
 
 const PAGE_SIZE = 50;
 
+// occurred_at -> "3:15 PM" in shop-local (Chicago) time.
+function fmtTime(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+}
+
+// counterparty is an E.164 / 10-digit phone for calls (a Sendbird user id for some
+// texts) — pretty-print real phones, return null for anything that isn't one.
+function prettyPhone(cp: string | null): string | null {
+  if (!cp) return null;
+  const d = cp.replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("1")) return `(${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  return null;
+}
+
 type CommRow = {
   id: number;
   occurred_at: string;
@@ -27,6 +43,7 @@ type CommRow = {
   direction: string | null;
   hcp_customer_id: string | null;
   customer_name: string | null;
+  counterparty: string | null;
   tech_short_name: string | null;
   importance: number | null;
   sentiment: string | null;
@@ -82,7 +99,7 @@ export default async function CommsPage({
   const supa = db();
   let query = supa
     .from("communication_events")
-    .select("id, occurred_at, channel, direction, hcp_customer_id, customer_name, tech_short_name, importance, sentiment, summary, flags, acked_at, raw_metadata", { count: "exact" });
+    .select("id, occurred_at, channel, direction, hcp_customer_id, customer_name, counterparty, tech_short_name, importance, sentiment, summary, flags, acked_at, raw_metadata", { count: "exact" });
   if (q) query = query.or(`customer_name.ilike.%${q}%,summary.ilike.%${q}%`);
   if (channel) query = query.eq("channel", channel);
   if (!q) {
@@ -120,7 +137,15 @@ export default async function CommsPage({
   const unacked = stats.filter((r) => r.flags?.some((f) => ["needs_followup","unresolved","escalation_needed"].includes(f)) && !r.acked_at).length;
 
   const columns: Column<CommRow>[] = [
-    { header: "When", cell: (r) => fmtDateShort(r.occurred_at), className: "text-neutral-600" },
+    {
+      header: "When",
+      cell: (r) => (
+        <div className="whitespace-nowrap text-neutral-600">
+          <div>{fmtDateShort(r.occurred_at)}</div>
+          <div className="text-[11px] text-neutral-400">{fmtTime(r.occurred_at)}</div>
+        </div>
+      ),
+    },
     {
       header: "Channel",
       cell: (r) => {
@@ -143,6 +168,19 @@ export default async function CommsPage({
         ) : (
           <span className="font-medium text-neutral-900">{r.customer_name ?? "—"}</span>
         ),
+    },
+    {
+      header: "Phone",
+      cell: (r) => {
+        const p = prettyPhone(r.counterparty);
+        return p ? (
+          <a href={`tel:${r.counterparty}`} className="whitespace-nowrap text-sm text-neutral-700 hover:underline">
+            {p}
+          </a>
+        ) : (
+          <span className="text-neutral-400">—</span>
+        );
+      },
     },
     {
       header: "Tech",
