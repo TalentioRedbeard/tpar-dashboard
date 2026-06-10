@@ -88,9 +88,10 @@ export function Nav({
   // Leadership-only surfaces (company-wide revenue/margins/all customers+comms).
   // Techs are page-gated to /me on these; hide the links too so the nav honors
   // "you only see your own work". Scoped object pages (/job/[id], /customer/[id])
-  // stay reachable. Admin + manager see everything.
+  // stay reachable; /schedule renders a tech-scoped "My schedule" (own
+  // appointments only) so it is NOT leadership-gated. Admin + manager see all.
   const leadershipView = showAdmin || isManager;
-  const LEADERSHIP_LIST = new Set(["/customers", "/jobs", "/estimates", "/comms", "/dispatch", "/schedule", "/reports"]);
+  const LEADERSHIP_LIST = new Set(["/customers", "/jobs", "/estimates", "/comms", "/dispatch", "/reports"]);
   const navItems = leadershipView ? NAV_ITEMS : NAV_ITEMS.filter((i) => !LEADERSHIP_LIST.has(i.href));
   const primaryItems = leadershipView ? PRIMARY_ITEMS : PRIMARY_ITEMS.filter((i) => !LEADERSHIP_LIST.has(i.href));
 

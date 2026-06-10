@@ -10,7 +10,8 @@
 //   ?revenue=1                  only appts with total_amount > 0
 //   ?action=1                   only appts that "require action" (see needsAction below)
 //
-// Gate: admin + manager only (techs use /me for their own day).
+// Gate: admin + manager get the full dispatch grid below; techs get a scoped
+// "My schedule" agenda (their own appointments only) via TechScheduleView.
 // Read-only v1.5; drag-to-reassign is v2.
 
 import Link from "next/link";
@@ -21,6 +22,7 @@ import { fmtMoney } from "../../components/Table";
 import { AutoRefresh } from "../../components/AutoRefresh";
 import { TechDayTimeline, type TLRow, type TLActivity, type TLJob, type TLLifeSeg } from "../../components/TechDayTimeline";
 import { getCurrentTech } from "../../lib/current-tech";
+import { TechScheduleView } from "./TechScheduleView";
 import { TechAvatar } from "../../components/TechAvatar";
 import { CellAddMenu } from "../../components/CellAddMenu";
 import { RescheduleButton } from "../../components/RescheduleButton";
@@ -422,10 +424,16 @@ export default async function SchedulePage({
 }) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/schedule");
-  if (!me.isAdmin && !me.isManager) redirect("/me");
-  const canApply = me.isAdmin || me.isManager; // MGMT can apply (page is already MGMT-gated); each apply is logged to dispatch_audit
-
   const params = await searchParams;
+
+  // Techs get a scoped "My schedule" — their OWN appointments only ("what
+  // pertains to me") — instead of the leadership dispatch grid. Office users
+  // (signed in, no tech row) still go to /me.
+  if (!me.isAdmin && !me.isManager) {
+    if (!me.tech) redirect("/me");
+    return <TechScheduleView fullName={me.tech.hcp_full_name} shortName={me.tech.tech_short_name} centerKey={params.date} />;
+  }
+  const canApply = me.isAdmin || me.isManager; // MGMT can apply (page is already MGMT-gated); each apply is logged to dispatch_audit
   const todayKey = chicagoTodayKey();
 
   // Parse URL state
