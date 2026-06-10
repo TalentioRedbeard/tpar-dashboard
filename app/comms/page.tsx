@@ -14,6 +14,7 @@ import { AckButton } from "../../components/AckButton";
 import { TechName } from "../../components/ui/TechName";
 import { getEffectiveTechName, getCurrentTech, canResolveComms } from "../../lib/current-tech";
 import { getFormerTechShortNames } from "../../lib/former-techs";
+import { TechCommsView } from "./TechCommsView";
 
 export const metadata = { title: "Comms · TPAR-DB" };
 
@@ -43,7 +44,15 @@ export default async function CommsPage({
   // The unified inbox shows every customer's calls/texts/emails company-wide.
   // Gate to admin/manager; techs work their own comms from /me + /job/[id].
   const me = await getCurrentTech().catch(() => null);
-  if (!me?.isAdmin && !me?.isManager) redirect("/me");
+  // Techs get a scoped view — calls/texts for the customers they're scheduled
+  // with ("what pertains to me") — instead of the company-wide inbox. Anyone
+  // who is neither admin/manager nor a tech (office) still goes to /me.
+  if (!me?.isAdmin && !me?.isManager) {
+    if (me?.tech) {
+      return <TechCommsView fullName={me.tech.hcp_full_name} shortName={me.tech.tech_short_name} />;
+    }
+    redirect("/me");
+  }
   const params = await searchParams;
   const q = (params.q ?? "").trim();
   const channel = (params.channel ?? "").trim();
