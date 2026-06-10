@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { PageShell } from "../../components/PageShell";
+import { getCurrentTech } from "../../lib/current-tech";
 
 export const metadata = { title: "Reports · TPAR-DB" };
 
@@ -16,7 +18,12 @@ const REPORTS = [
   { href: "/reports/notes",    title: "Notes feed",          desc: "Recent operator notes added across customers and jobs. Filter by author + window. Pure read." },
 ];
 
-export default function ReportsIndexPage() {
+export default async function ReportsIndexPage() {
+  // Company-wide financials (margin, AR, per-tech revenue) — leadership only.
+  // Techs are scoped to their own work on /me, so bounce them here too (the
+  // nav link is already hidden). Matches /jobs, /customers, /schedule, etc.
+  const me = await getCurrentTech().catch(() => null);
+  if (!me?.isAdmin && !me?.isManager) redirect("/me");
   return (
     <PageShell title="Reports" description="Operational + financial views of the substrate.">
       <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">

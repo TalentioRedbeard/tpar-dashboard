@@ -120,7 +120,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
     clockedJobId
       ? { label: "Estimate current job", emoji: "✏️", href: `/estimate/new?job=${clockedJobId}`, primary: true, subtitle: "You're clocked in" }
       : { label: "Estimate current job", emoji: "✏️", href: "#", disabled: true, subtitle: "Clock into a job first" },
-    { label: "Estimate for job", emoji: "📝", href: "/jobs", subtitle: "Pick the job" },
+    { label: "Estimate for job", emoji: "📝", href: "/find", subtitle: "Find any job" },
     clockedJobId
       ? { label: "Photos", emoji: "📸", href: `/photos?job=${clockedJobId}`, primary: true, subtitle: "For your current job" }
       : { label: "Photos", emoji: "📸", href: "/photos", subtitle: "Pick the job" },

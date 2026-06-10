@@ -125,7 +125,7 @@ export function Nav({
   ];
 
   return (
-    <nav className="sticky top-0 z-30 bg-gold-500 shadow-sm">
+    <nav className="sticky top-0 z-50 bg-gold-500 shadow-sm">
       <div className="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2.5 md:gap-4 md:px-6 md:py-3">
         {/* Logo doubles as the full-app menu (red dropdown). */}
         <LogoMenu sections={mobileSections} />
