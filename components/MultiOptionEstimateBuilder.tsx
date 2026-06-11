@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { getPricebookOptions, type PriceItem } from "@/lib/job-line-actions";
 import {
   createMultiOptionEstimate,
+  generateEstimateWriteup,
   searchEstimateCustomers,
   getExcavatorModifier,
   loadEstimateTechs,
@@ -130,6 +131,8 @@ export function MultiOptionEstimateBuilder({
   const [genBusy, setGenBusy] = useState<Record<string, boolean>>({});
   const [genErr, setGenErr] = useState<Record<string, string | null>>({});
   const [polishing, setPolishing] = useState(false);
+  const [writeupBusy, setWriteupBusy] = useState(false);
+  const [writeupErr, setWriteupErr] = useState<string | null>(null);
 
   async function genDesc(oi: number, li: number) {
     const line = options[oi]?.lines[li];
@@ -158,6 +161,32 @@ export function MultiOptionEstimateBuilder({
     setPolishing(true);
     await Promise.all(targets.map(([oi, li]) => genDesc(oi, li)));
     setPolishing(false);
+  }
+
+  // (b) Whole-estimate write-up → fills the customer-facing message in Danny's
+  // voice (Summary / Work Description / Notes). The full Danny's Descriptions
+  // generator on Sonnet, not the per-line blurb.
+  async function genWriteup() {
+    const payloadOptions = options
+      .map((o) => ({
+        name: o.name.trim() || "Option",
+        line_items: o.lines
+          .filter((l) => chosenName(l))
+          .map((l) => ({ name: chosenName(l), description: l.description.trim() || undefined })),
+      }))
+      .filter((o) => o.line_items.length > 0);
+    if (payloadOptions.length === 0) { setWriteupErr("Add at least one option with a line item first."); return; }
+    setWriteupBusy(true);
+    setWriteupErr(null);
+    const addr = addresses.find((a) => a.address_id === addressId);
+    const res = await generateEstimateWriteup({
+      options: payloadOptions,
+      customerName: customer?.name,
+      address: addr ? [addr.street, addr.city].filter(Boolean).join(", ") : undefined,
+    });
+    setWriteupBusy(false);
+    if (res.ok) setMessage(res.writeup);
+    else setWriteupErr(res.error);
   }
 
   // Fill the builder from a "Based On…" generated draft. Each generated line
@@ -478,8 +507,19 @@ export function MultiOptionEstimateBuilder({
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <label className="text-xs"><span className="mb-1 block font-medium text-neutral-600">Internal note (HCP Pro Notes)</span>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className={inputCls} placeholder="Scope / internal context (not customer-facing)" /></label>
-        <label className="text-xs"><span className="mb-1 block font-medium text-neutral-600">Customer-facing message (HCP PDF prose)</span>
-          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} className={inputCls} placeholder="Free-form prose shown to the customer above the options" /></label>
+        <label className="text-xs">
+          <span className="mb-1 flex flex-wrap items-center gap-2 font-medium text-neutral-600">
+            Customer-facing message (HCP PDF prose)
+            <button type="button" onClick={genWriteup} disabled={writeupBusy || !hasValid}
+              title="Write the full estimate description in Danny's voice — Summary, Work Description, Notes (Claude Sonnet)."
+              className="rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50">
+              {writeupBusy ? "Writing…" : "✍️ Generate full write-up"}
+            </button>
+          </span>
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={6} className={inputCls}
+            placeholder="Free-form prose shown to the customer above the options — or click ✍️ to draft it in Danny's voice (Summary / Work Description / Notes)" />
+          {writeupErr ? <span className="mt-1 block text-red-700">{writeupErr}</span> : null}
+        </label>
       </div>
 
       {/* Submit */}

@@ -14,6 +14,7 @@ import { db } from "./supabase";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SECRET = process.env.CREATE_ESTIMATE_DIRECT_SECRET ?? "";
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 // An optional equipment/pricing modifier the builder can offer per option
 // (e.g. excavator_daily). Data-driven from price_modifiers so rate edits flow
@@ -279,4 +280,39 @@ export async function loadEstimateTechs(): Promise<EstimateTech[]> {
     hcp_full_name: (d.hcp_full_name as string | null) ?? "",
     is_lead: !!d.is_lead,
   }));
+}
+
+// ── (b) Whole-estimate write-up ──────────────────────────────────────────────
+// Calls the generate-estimate-writeup edge fn (canonical Danny's Descriptions
+// prompt + few-shot examples on Sonnet 4.6) and returns the full Summary /
+// Work Description / Notes for the whole estimate — the rich write-up Danny
+// asked for, vs. the thin per-line blurb. Service-role bearer (the fn does its
+// own isServiceRoleRequest auth). Fills the builder's customer-facing message.
+export type WriteupResult = { ok: true; writeup: string } | { ok: false; error: string };
+
+export async function generateEstimateWriteup(input: {
+  options: Array<{ name: string; line_items: Array<{ name: string; description?: string; customer_supplied?: boolean }> }>;
+  customerName?: string;
+  address?: string;
+}): Promise<WriteupResult> {
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
+  if (!SUPABASE_URL || !SERVICE_KEY) return { ok: false, error: "server config missing (service key)" };
+
+  const options = (input.options ?? [])
+    .map((o) => ({ name: o.name, line_items: (o.line_items ?? []).filter((li) => li.name && li.name.trim()) }))
+    .filter((o) => o.line_items.length > 0);
+  if (options.length === 0) return { ok: false, error: "Add at least one option with a line item first." };
+
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/generate-estimate-writeup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+    body: JSON.stringify({ options, customer_name: input.customerName, address: input.address }),
+  });
+  const text = await r.text();
+  if (!r.ok) return { ok: false, error: `write-up failed: ${r.status} ${text.slice(0, 200)}` };
+  let parsed: { ok?: boolean; error?: string; writeup?: string };
+  try { parsed = JSON.parse(text); } catch { return { ok: false, error: "non-JSON response from generate-estimate-writeup" }; }
+  if (!parsed.ok) return { ok: false, error: parsed.error ?? "generate-estimate-writeup returned ok=false" };
+  return { ok: true, writeup: parsed.writeup ?? "" };
 }
