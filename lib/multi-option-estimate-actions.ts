@@ -316,3 +316,69 @@ export async function generateEstimateWriteup(input: {
   if (!parsed.ok) return { ok: false, error: parsed.error ?? "generate-estimate-writeup returned ok=false" };
   return { ok: true, writeup: parsed.writeup ?? "" };
 }
+
+// ── Phase 2: estimate modifier engine ────────────────────────────────────────
+// Every ACTIVE price_modifiers row, with the full effect payload, for the
+// searchable per-line modifier picker + the compute engine. Inactive rows
+// (e.g. the cert modifiers seeded 2026-06-10 with placeholder rates) stay out
+// of the picker until Danny sets the real rate and activates them.
+export type EstimateModifier = {
+  key: string;
+  name: string;
+  category: string;            // rate_adjustment | equipment_charge | permit | discount | promo | floor_price | specialty | certification
+  effectType: string;          // hourly_rate_add | labor_multiplier | equipment_charge | permit | flat_discount | promo_price | floor_price
+  manualApply: boolean;
+  triggerDescription: string | null;
+  notes: string | null;
+  // Effect payloads (only the ones relevant to effectType are non-null)
+  rateAddPerJob: number | null;
+  rateAddPerAdditionalTech: number | null;
+  laborMultiplier: number | null;
+  dailyRate: number | null;
+  deliveryCharge: number | null;
+  minIncrement: number | null;
+  floorAmount: number | null;
+  floorHoursThreshold: number | null;
+  hourlyRateAfterFloor: number | null;
+  discountAmount: number | null;
+  promoPrice: number | null;
+  promoCovers: string | null;
+};
+
+function numOrNull(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function loadEstimateModifiers(): Promise<EstimateModifier[]> {
+  const writer = await requireWriter();
+  if (!writer.ok) return [];
+  const { data } = await db()
+    .from("price_modifiers")
+    .select("modifier_key, name, category, effect_type, manual_apply, trigger_description, notes, rate_add_per_job, rate_add_per_additional_tech, labor_multiplier, daily_rate, delivery_charge, min_increment, floor_amount, floor_hours_threshold, hourly_rate_after_floor, discount_amount, promo_price, promo_covers")
+    .eq("active", true)
+    .order("category")
+    .order("name");
+  return (data ?? []).map((m) => ({
+    key: m.modifier_key as string,
+    name: (m.name as string | null) ?? (m.modifier_key as string),
+    category: (m.category as string | null) ?? "other",
+    effectType: m.effect_type as string,
+    manualApply: !!m.manual_apply,
+    triggerDescription: (m.trigger_description as string | null) ?? null,
+    notes: (m.notes as string | null) ?? null,
+    rateAddPerJob: numOrNull(m.rate_add_per_job),
+    rateAddPerAdditionalTech: numOrNull(m.rate_add_per_additional_tech),
+    laborMultiplier: numOrNull(m.labor_multiplier),
+    dailyRate: numOrNull(m.daily_rate),
+    deliveryCharge: numOrNull(m.delivery_charge),
+    minIncrement: numOrNull(m.min_increment),
+    floorAmount: numOrNull(m.floor_amount),
+    floorHoursThreshold: numOrNull(m.floor_hours_threshold),
+    hourlyRateAfterFloor: numOrNull(m.hourly_rate_after_floor),
+    discountAmount: numOrNull(m.discount_amount),
+    promoPrice: numOrNull(m.promo_price),
+    promoCovers: (m.promo_covers as string | null) ?? null,
+  }));
+}
