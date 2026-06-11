@@ -96,24 +96,36 @@ export function ClockButton({ initial, techShortName }: Props) {
   function handleClick() {
     setError(null);
     const client_reported_at = new Date().toISOString();
+    const wasClockedIn = state.state === "clocked-in";
     // Do the GPS read INSIDE the transition so the button gives instant feedback
     // (shows "…", disabled) the moment it's tapped — not dead-looking for up to 4s
     // while it waits on getCurrentPosition. Prevents the "nothing happened, tap
     // again" double clock-in.
     startTransition(async () => {
-      const location = await captureLocation();
-      // Universal tech_locations log (fire-and-forget); reuses the fix resolved above.
-      captureTechLocation(isClockedIn ? "clock_out" : "clock_in", location ? { fix: { lat: location.lat, lng: location.lng, accuracyM: location.accuracy_m ?? null } } : undefined);
-      const result =
-        state.state === "clocked-in"
+      try {
+        const location = await captureLocation();
+        // Universal tech_locations log (fire-and-forget); reuses the fix resolved above.
+        captureTechLocation(wasClockedIn ? "clock_out" : "clock_in", location ? { fix: { lat: location.lat, lng: location.lng, accuracyM: location.accuracy_m ?? null } } : undefined);
+        const result = wasClockedIn
           ? await clockOut({ location, client_reported_at })
           : await clockIn({ location, client_reported_at });
-      if (!result.ok) {
-        setError(result.error);
-        return;
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setState(result.state);
+        setNow(Date.now());
+      } catch {
+        // A THROWN (not returned) failure is almost always the server-action POST
+        // never completing on spotty field signal. NEVER swallow it — a silently
+        // dropped tap becomes a lost clock-in with no trace (the hole that ate a
+        // real morning clock-in, 2026-06-10). Tell the tech loudly it didn't take.
+        setError(
+          wasClockedIn
+            ? "Couldn't reach the server — you are NOT clocked out. Check your signal and tap again."
+            : "Couldn't reach the server — you are NOT clocked in. Check your signal and tap again.",
+        );
       }
-      setState(result.state);
-      setNow(Date.now());
     });
   }
 
