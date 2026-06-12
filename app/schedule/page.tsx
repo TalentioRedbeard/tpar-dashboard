@@ -517,10 +517,23 @@ export default async function SchedulePage({
   const cellByDay = new Map<string, Appt[]>();
   for (const a of appts) {
     const dayKey = chicagoDateKey(a.scheduled_start);
-    const tech = a.tech_primary_name ?? "Unassigned";
-    const k = cellKey(tech, dayKey);
-    if (!cells.has(k)) cells.set(k, []);
-    cells.get(k)!.push(a);
+    // Populate EVERY assigned crew member's row (lead + helpers), not just the
+    // primary, so a helper sees the jobs they're crewed on in their own row —
+    // not just a "+N assist" count. (Danny 2026-06-12)
+    const crew = (a.tech_all_names && a.tech_all_names.length
+      ? a.tech_all_names
+      : (a.tech_primary_name ? [a.tech_primary_name] : ["Unassigned"]))
+      .filter((n): n is string => !!n);
+    const rows = crew.length ? crew : ["Unassigned"];
+    const seen = new Set<string>();
+    for (const tech of rows) {
+      if (seen.has(tech)) continue; // de-dupe if a name appears twice on a job
+      seen.add(tech);
+      const k = cellKey(tech, dayKey);
+      if (!cells.has(k)) cells.set(k, []);
+      cells.get(k)!.push(a);
+    }
+    // Day totals count each appt ONCE, regardless of crew size.
     if (!cellByDay.has(dayKey)) cellByDay.set(dayKey, []);
     cellByDay.get(dayKey)!.push(a);
   }
@@ -1037,12 +1050,20 @@ function DayView({
                   </div>
                 ) : cell.map((a) => {
                   const chg = a.appointment_id ? pendingByAppt.get(a.appointment_id) : undefined;
+                  // If this row's tech isn't the job's lead, mark it as an assist
+                  // so a helper's populated row still reads "who's leading".
+                  const assistingLead = a.tech_primary_name && a.tech_primary_name !== techFullName
+                    ? (shortByFull.get(a.tech_primary_name) ?? a.tech_primary_name.split(" ")[0])
+                    : null;
                   return (
                     <DraggableAppt
                       key={a.appointment_id ?? a.hcp_job_id ?? Math.random()}
                       payload={{ apptId: a.appointment_id, hcpJobId: a.hcp_job_id, customerName: a.customer_name, currentStart: a.scheduled_start, currentTech: techFullName, currentDate: dayKey }}
                     >
                       <div className="space-y-0.5">
+                        {assistingLead ? (
+                          <span className="inline-block rounded bg-sky-50 px-1 py-0.5 text-[9px] font-medium text-sky-700 ring-1 ring-inset ring-sky-200">assisting {assistingLead}</span>
+                        ) : null}
                         {a.hcp_job_id ? (
                           <Link href={`/job/${a.hcp_job_id}`} className="block"><ApptDetail a={a} opts={{ color }} /></Link>
                         ) : (
@@ -1155,22 +1176,29 @@ function WeekView({
                           </div>
                         ) : (
                           <div className="space-y-1">
-                            {cell.map((a) => (
+                            {cell.map((a) => {
+                              // Mark assist cards so a helper's populated week row shows who leads.
+                              const assisting = !!a.tech_primary_name && a.tech_primary_name !== techFullName;
+                              return (
                               <DraggableAppt
                                 key={a.appointment_id ?? a.hcp_job_id ?? Math.random()}
                                 payload={{ apptId: a.appointment_id, hcpJobId: a.hcp_job_id, customerName: a.customer_name, currentStart: a.scheduled_start, currentTech: techFullName, currentDate: dayKey }}
                               >
-                                {a.hcp_job_id ? (
-                                  <Link href={`/job/${a.hcp_job_id}`} title={`${a.customer_name ?? "—"} · ${a.street ?? ""}${a.city ? ", " + a.city : ""} · ${a.status ?? ""}`} className="block">
-                                    <ApptBlock a={a} opts={{ color }} />
-                                  </Link>
-                                ) : (
-                                  <div title={`${a.customer_name ?? "—"} · ${a.status ?? ""}`}>
-                                    <ApptBlock a={a} opts={{ color }} />
-                                  </div>
-                                )}
+                                <div className="space-y-0.5">
+                                  {assisting ? <span className="block text-[8px] font-semibold uppercase tracking-wide text-sky-600">assisting</span> : null}
+                                  {a.hcp_job_id ? (
+                                    <Link href={`/job/${a.hcp_job_id}`} title={`${a.customer_name ?? "—"} · ${a.street ?? ""}${a.city ? ", " + a.city : ""} · ${a.status ?? ""}`} className="block">
+                                      <ApptBlock a={a} opts={{ color }} />
+                                    </Link>
+                                  ) : (
+                                    <div title={`${a.customer_name ?? "—"} · ${a.status ?? ""}`}>
+                                      <ApptBlock a={a} opts={{ color }} />
+                                    </div>
+                                  )}
+                                </div>
                               </DraggableAppt>
-                            ))}
+                              );
+                            })}
                             {!isPast ? <div className="pt-0.5"><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></div> : null}
                           </div>
                         )}
