@@ -68,6 +68,25 @@ const TRIGGER_ACTION: Record<TriggerNum, string> = {
   7: "done",
 };
 
+// Resolve a fresh GPS fix as an awaitable Promise (mirrors ClockButton.captureLocation).
+// We resolve the fix and pass it to captureTechLocation({ fix }) BEFORE firing the
+// trigger — the old path passed no fix, so captureTechLocation ran its own async
+// getCurrentPosition fire-and-forget whose late tech_locations POST raced (and lost)
+// against runFire's revalidatePath/router.refresh. Result: zero start/finish rows ever
+// landed and lifecycle_adherence_v stayed empty (2026-06-12 diagnosis). Resolving first
+// issues the write while the fix is in hand and before any revalidation — the same shape
+// the clock path uses, which lands rows reliably.
+function resolveFix(): Promise<{ lat: number; lng: number; accuracyM: number | null } | undefined> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracyM: pos.coords.accuracy }),
+      () => resolve(undefined),
+      { enableHighAccuracy: false, timeout: 4000, maximumAge: 60_000 },
+    );
+  });
+}
+
 type MirrorEntry = { firedAt: string; status: HcpMirrorStatus };
 
 export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors, destAddress, destLat, destLng, ppSubmitted, eojSubmitted }: Props) {
@@ -193,9 +212,6 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
   };
 
   const onFire = (triggerNumber: TriggerNum) => {
-    // Universal location ping for the per-action audit + dispatch map
-    // (fire-and-forget). Pairs the button press with the tech's GPS.
-    captureTechLocation(TRIGGER_ACTION[triggerNumber], { hcpJobId });
     // "On my way" → launch turn-by-turn directions immediately so the tech can
     // drive while the HCP status mirrors in the background (Danny 2026-06-04:
     // OMW should pull up directions). Opened synchronously inside the click
@@ -207,6 +223,16 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     setFiring(triggerNumber);
     startTransition(async () => {
       try {
+        // Resolve a GPS fix and write the per-action tech_locations row (the
+        // adherence signal lifecycle_adherence_v reads) BEFORE firing the trigger,
+        // so the location POST is issued while we hold the fix and ahead of any
+        // revalidation. Passing a resolved { fix } makes captureTechLocation POST
+        // immediately — the old no-fix path ran its own async getCurrentPosition
+        // whose late POST raced (and lost) to runFire's revalidate, landing 0 rows.
+        // A missing/denied fix just skips the row — the trigger still fires.
+        const fix = await resolveFix();
+        if (fix) captureTechLocation(TRIGGER_ACTION[triggerNumber], { hcpJobId, fix });
+
         // OMW guard: before On-My-Way, check for a prior job left open (started,
         // never Finished). If found, prompt Finish/Pause/Other and defer the fire.
         if (triggerNumber === 2) {

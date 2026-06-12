@@ -18,7 +18,9 @@ import { fireLifecycleTrigger } from "@/app/me/lifecycle-actions";
 import { captureTechLocation } from "@/lib/capture-tech-location";
 
 const START_WITHIN_M = 200;   // arrived at the job site
-const FINISH_BEYOND_M = 300;  // clearly left the job site
+const FINISH_BEYOND_M = 200;  // left the job site (no dead-zone vs START: 200-300m
+                              // used to match NEITHER start nor finish — a tech in
+                              // that band saw no prompt at all)
 
 function distanceM(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000, toR = (d: number) => (d * Math.PI) / 180;
@@ -118,7 +120,15 @@ export function GpsLifecyclePrompt({
   const fire = () => {
     setErr(null);
     const triggerNumber: 3 | 6 = m === "start" ? 3 : 6;
-    captureTechLocation(m === "start" ? "start" : "finish", { hcpJobId });
+    // Reuse the high-accuracy fix we already hold and pass it so logTechLocation
+    // POSTs immediately. Without a fix, captureTechLocation re-acquires async and
+    // its late POST races (and loses to) the fireLifecycleTrigger revalidation —
+    // the same bug that left tech_locations empty (2026-06-12). Demo mode may have
+    // no fix; it then falls back to a self-acquired one (owner test path only).
+    captureTechLocation(m === "start" ? "start" : "finish", {
+      hcpJobId,
+      fix: fix ? { lat: fix.lat, lng: fix.lng } : undefined,
+    });
     start(async () => {
       const r = await fireLifecycleTrigger({
         trigger_number: triggerNumber,
