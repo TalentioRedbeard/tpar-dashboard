@@ -140,7 +140,6 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
       if (recRef.current && recRef.current.state !== "inactive") { try { recRef.current.stop(); } catch { /* ignore */ } }
       if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOwner]);
 
   if (!isOwner) return null;
