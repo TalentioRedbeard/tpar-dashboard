@@ -490,8 +490,13 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                 !!clockState &&
                 clockState.state === "clocked-in" &&
                 clockState.hcp_appointment_id === apptId;
+              // "Clocked in elsewhere" only when we KNOW it is a different specific
+              // appointment. An HCP-native/mirror open shift has a null appointment
+              // id - that is "on the clock, no specific job", not "elsewhere" on every card.
               const isElsewhere =
-                !!clockState && clockState.state === "clocked-in" && !isHere;
+                !!clockState && clockState.state === "clocked-in" &&
+                clockState.hcp_appointment_id != null &&
+                clockState.hcp_appointment_id !== apptId;
               return (
                 <li key={apptId ?? "(no-id)"} className={"rounded-2xl border bg-white p-4 " + (isHere ? "border-emerald-300" : "border-neutral-200")}>
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
