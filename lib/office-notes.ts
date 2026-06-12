@@ -10,7 +10,6 @@
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { isOwner } from "@/lib/admin";
-import { revalidatePath } from "next/cache";
 
 const BUCKET = "recordings";
 const MAX_TRANSCRIBE_BYTES = 25 * 1024 * 1024; // Whisper hard cap
