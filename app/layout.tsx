@@ -10,6 +10,7 @@ import { RegisterServiceWorker } from "../components/RegisterServiceWorker";
 import { InstallPrompt } from "../components/InstallPrompt";
 import { ImpersonationBanner } from "../components/ImpersonationBanner";
 import { GlobalRecorder } from "../components/GlobalRecorder";
+import { AmbientRecorder } from "../components/AmbientRecorder";
 import { isOwner } from "../lib/admin";
 
 const geistSans = Geist({
@@ -89,10 +90,13 @@ export default async function RootLayout({
         <RegisterServiceWorker />
         {user && <InstallPrompt />}
         {user ? (
-          <GlobalRecorder
-            isOwner={isOwner(user.email)}
-            clockedInJobId={clock?.state === "clocked-in" ? clock.hcp_job_id : null}
-          />
+          <>
+            <GlobalRecorder
+              isOwner={isOwner(user.email)}
+              clockedInJobId={clock?.state === "clocked-in" ? clock.hcp_job_id : null}
+            />
+            <AmbientRecorder isOwner={isOwner(user.email)} />
+          </>
         ) : null}
       </body>
     </html>
