@@ -10,6 +10,21 @@ import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
 
+// Mon–Sun week containing `now`. receipts_master requires week_label/week_start/
+// week_end + source_file/source_row_index/source_section (all NOT NULL, no
+// default) — omitting them is what made EVERY dashboard receipt insert fail with
+// 23502 and never save once (audit 2026-06-12). Mirrors lib/job-cost-actions.ts
+// weekBounds; kept local because that file is "use server" and a "use server"
+// module can only export async functions.
+function weekBounds(now: Date): { label: string; start: string; end: string } {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const sinceMon = (d.getUTCDay() + 6) % 7;
+  const mon = new Date(d); mon.setUTCDate(d.getUTCDate() - sinceMon);
+  const sun = new Date(mon); sun.setUTCDate(mon.getUTCDate() + 6);
+  const iso = (x: Date) => x.toISOString().slice(0, 10);
+  return { label: iso(mon), start: iso(mon), end: iso(sun) };
+}
+
 export type UploadReceiptResult =
   | { ok: true; receipt_id: number; photo_url: string }
   | { ok: false; error: string };
@@ -52,10 +67,20 @@ export async function uploadReceipt(formData: FormData): Promise<UploadReceiptRe
 
   const { data: publicUrl } = supabase.storage.from("job-photos").getPublicUrl(path);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const wk = weekBounds(now);
   const { data: row, error: insErr } = await supabase
     .from("receipts_master")
     .insert({
+      // The 6 NOT-NULL columns receipts_master requires — omitting these is what
+      // failed every dashboard receipt with 23502 (audit 2026-06-12).
+      week_label: wk.label,
+      week_start: wk.start,
+      week_end: wk.end,
+      source_file: "dashboard:receipt",
+      source_row_index: 0,
+      source_section: "dashboard-receipt-page",
       source: "dashboard",
       transaction_date: today,
       amount,
@@ -128,10 +153,20 @@ export async function finalizeReceipt(input: {
   const supabase = db();
   const { data: publicUrl } = supabase.storage.from("job-photos").getPublicUrl(path);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const wk = weekBounds(now);
   const { data: row, error: insErr } = await supabase
     .from("receipts_master")
     .insert({
+      // The 6 NOT-NULL columns receipts_master requires — omitting these is what
+      // failed every dashboard receipt with 23502 (audit 2026-06-12).
+      week_label: wk.label,
+      week_start: wk.start,
+      week_end: wk.end,
+      source_file: "dashboard:receipt",
+      source_row_index: 0,
+      source_section: "dashboard-receipt-page",
       source: "dashboard",
       transaction_date: today,
       amount,

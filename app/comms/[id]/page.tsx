@@ -66,6 +66,41 @@ export default async function CommDetailPage({ params }: { params: Promise<{ id:
   if (!event) notFound();
   const e = event as CommEvent;
 
+  // Tech scope guard: a TECHNICIAN may only open a transcript for a customer or
+  // job on their own schedule — mirrors /comms (TechCommsView) + /job/[id].
+  // Without this a tech could id-walk /comms/<n> and read EVERY customer's call
+  // transcripts + text bodies (db() is service-role, so RLS doesn't gate it).
+  // Admin/manager keep full access. (Audit 2026-06-12.)
+  if (!me.isAdmin && !me.isManager) {
+    const fullName = me.tech?.hcp_full_name ?? null;
+    let inScope = false;
+    if (fullName && (e.hcp_customer_id || e.hcp_job_id)) {
+      const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
+      const until = new Date(Date.now() + 30 * 86_400_000).toISOString();
+      const { data: appts } = await supa
+        .from("appointments_master")
+        .select("hcp_customer_id, hcp_job_id, tech_primary_name, tech_all_names")
+        .is("deleted_at", null)
+        .gte("scheduled_start", since)
+        .lt("scheduled_start", until);
+      for (const a of (appts ?? []) as { hcp_customer_id: string | null; hcp_job_id: string | null; tech_primary_name: string | null; tech_all_names: string[] | null }[]) {
+        const mine = a.tech_primary_name === fullName || (a.tech_all_names ?? []).includes(fullName);
+        if (!mine) continue;
+        if (e.hcp_customer_id && a.hcp_customer_id === e.hcp_customer_id) { inScope = true; break; }
+        if (e.hcp_job_id && a.hcp_job_id === e.hcp_job_id) { inScope = true; break; }
+      }
+    }
+    if (!inScope) {
+      return (
+        <PageShell title="Outside your scope" backHref="/comms" backLabel="My comms">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-800">
+            This conversation isn&apos;t with one of your scheduled customers, so it&apos;s outside what you can view. If you think you should have access, ask Danny.
+          </div>
+        </PageShell>
+      );
+    }
+  }
+
   // Look up the underlying call_transcripts row (for audio URL) if this is a call
   let audioUrl: string | null = null;
   if (e.source_table === "call_transcripts" && e.source_id) {

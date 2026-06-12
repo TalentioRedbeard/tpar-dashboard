@@ -89,16 +89,27 @@ async function isAllowedEmail(email: string | null | undefined): Promise<boolean
   const e = (email ?? "").trim().toLowerCase();
   if (!e || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return false;
   try {
+    const headers = { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` };
+    // 1) PRIMARY email, case-insensitive — the proven path, byte-for-byte unchanged.
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/tech_directory?select=tech_id&is_active=eq.true&email=ilike.${encodeURIComponent(e)}&limit=1`,
-      {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-        signal: AbortSignal.timeout(4_000),
-      },
+      { headers, signal: AbortSignal.timeout(4_000) },
     );
     if (!r.ok) return false;
     const rows = await r.json();
-    return Array.isArray(rows) && rows.length > 0;
+    if (Array.isArray(rows) && rows.length > 0) return true;
+    // 2) Fallback ONLY when the primary didn't match: a known alternate in the
+    // secondary_emails[] array (a tech whose installed Google account is their
+    // backup address — Omar, 2026-06-12 audit). Additive — never affects the
+    // proven primary-email path above. Store secondary_emails lowercased
+    // (the cs array-contains match is case-sensitive).
+    const r2 = await fetch(
+      `${SUPABASE_URL}/rest/v1/tech_directory?select=tech_id&is_active=eq.true&secondary_emails=cs.${encodeURIComponent(`{${e}}`)}&limit=1`,
+      { headers, signal: AbortSignal.timeout(4_000) },
+    );
+    if (!r2.ok) return false;
+    const rows2 = await r2.json();
+    return Array.isArray(rows2) && rows2.length > 0;
   } catch {
     // Network blip reaching PostgREST — fail open so a flaky connection
     // doesn't bounce an otherwise-valid tech to /login. A definitive

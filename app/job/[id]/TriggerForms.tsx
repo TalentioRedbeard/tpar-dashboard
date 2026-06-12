@@ -374,6 +374,16 @@ function CollectDoneForm({
             });
           }}
         >
+          <a
+            href={`https://pro.housecallpro.com/app/jobs/${hcpJobId}`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            💳 Open in HCP to take payment
+          </a>
+          <p className="text-[11px] leading-snug text-neutral-500">
+            Payment is taken in <span className="font-medium">Housecall Pro</span> (card, cash, or check). This form does <span className="font-medium">not</span> charge a card — it just logs that payment was collected.
+          </p>
           <div>
             <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-500">Payment method</label>
             <div className="flex flex-wrap gap-2">
