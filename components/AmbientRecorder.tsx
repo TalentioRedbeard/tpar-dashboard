@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browserClient } from "../lib/supabase-browser";
-import { createOfficeNoteUpload, transcribeOfficeNote, saveSilentOfficeNote } from "../lib/office-notes";
+import { createOfficeNoteUpload, transcribeOfficeNote, saveSilentOfficeNote, retranscribePendingOfficeNotes } from "../lib/office-notes";
 
 const CHUNK_MS = 5 * 60 * 1000;  // 5-minute segments (Danny's spec)
 const SILENCE_RMS = 0.012;       // peak below this across the chunk = silent (tune on test)
@@ -140,6 +140,12 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
       if (recRef.current && recRef.current.state !== "inactive") { try { recRef.current.stop(); } catch { /* ignore */ } }
       if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
     };
+  }, [isOwner]);
+
+  // Self-heal any stragglers (audio uploaded but transcribe never finished).
+  useEffect(() => {
+    if (!isOwner) return;
+    void retranscribePendingOfficeNotes();
   }, [isOwner]);
 
   if (!isOwner) return null;

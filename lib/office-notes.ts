@@ -83,12 +83,15 @@ export async function transcribeOfficeNote(id: string): Promise<{ ok: true; kept
   if (!gate.ok) return gate;
   const supa = db();
 
-  const { data: rec } = await supa.from("office_notes").select("audio_path, mime").eq("id", id).maybeSingle();
+  const { data: rec } = await supa.from("office_notes").select("audio_path").eq("id", id).maybeSingle();
   const audioPath = rec?.audio_path as string | undefined;
   if (!audioPath) return { ok: false, error: "office note not found" };
 
   const { data: blob, error: dlErr } = await supa.storage.from(BUCKET).download(audioPath);
-  if (dlErr || !blob) return { ok: false, error: `download: ${dlErr?.message ?? "no file"}` };
+  if (dlErr || !blob) {
+    await supa.from("office_notes").update({ transcript_status: "failed" }).eq("id", id);
+    return { ok: false, error: `download: ${dlErr?.message ?? "no file"}` };
+  }
   if (blob.size > MAX_TRANSCRIBE_BYTES) {
     await supa.from("office_notes").update({ transcript: null, transcript_status: "too_large" }).eq("id", id);
     return { ok: true, kept: false };
@@ -142,4 +145,26 @@ export async function saveSilentOfficeNote(input: {
     transcript_status: "blank",
   });
   return { ok: true };
+}
+
+// Self-heal: re-run transcription for office notes whose audio uploaded but whose
+// transcribe step never finished (status still 'uploading'). Called on the recorder's
+// mount so stragglers don't sit un-transcribed. Owner-only, bounded.
+export async function retranscribePendingOfficeNotes(): Promise<{ retried: number }> {
+  const gate = await requireOwner();
+  if (!gate.ok) return { retried: 0 };
+  const supa = db();
+  const { data } = await supa
+    .from("office_notes")
+    .select("id")
+    .eq("transcript_status", "uploading")
+    .not("audio_path", "is", null)
+    .lt("created_at", new Date(Date.now() - 20000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(5);
+  const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+  for (const id of ids) {
+    try { await transcribeOfficeNote(id); } catch { /* best-effort */ }
+  }
+  return { retried: ids.length };
 }
