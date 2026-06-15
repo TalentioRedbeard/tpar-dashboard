@@ -10,6 +10,7 @@
 import { useState, useTransition } from "react";
 import {
   fireOnMyWay, firePresent, fireFinishWork, fireCollectDone,
+  fireSchedule, fireStart, firePerformWork,
   type CustomerDisposition, type PaymentMethod, type FiredTrigger,
 } from "./trigger-actions";
 import { markBriefingReviewed, type Briefing } from "./briefing-actions";
@@ -33,10 +34,6 @@ const PAYMENT_OPTIONS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "not_yet",   label: "Not yet collected" },
 ];
 
-function hasFired(triggers: FiredTrigger[], n: number): boolean {
-  return triggers.some((t) => t.trigger_number === n);
-}
-
 export function TriggerForms({
   hcpJobId,
   hcpCustomerId,
@@ -53,6 +50,21 @@ export function TriggerForms({
   briefing?: Briefing | null;
 }) {
   const [openForm, setOpenForm] = useState<2 | 5 | 6 | 7 | null>(null);
+  const [lightPending, setLightPending] = useState<number | null>(null);
+  const [lightError, setLightError] = useState<string | null>(null);
+  const [, startLight] = useTransition();
+
+  // One-tap fire for the light, log-only buttons (Schedule #8, Start #3, Perform Work #9).
+  const fireLight = (n: 3 | 8 | 9) => {
+    setLightError(null);
+    setLightPending(n);
+    startLight(async () => {
+      const fn = n === 8 ? fireSchedule : n === 3 ? fireStart : firePerformWork;
+      const res = await fn({ hcp_job_id: hcpJobId, hcp_customer_id: hcpCustomerId });
+      if (!res.ok) setLightError(res.error);
+      setLightPending(null);
+    });
+  };
 
   if (!canWrite) {
     return (
@@ -62,47 +74,42 @@ export function TriggerForms({
     );
   }
 
-  // Determine which trigger should be the primary CTA based on what's fired
-  const fired2 = hasFired(firedTriggers, 2);
-  const fired5 = hasFired(firedTriggers, 5);
-  const fired6 = hasFired(firedTriggers, 6);
-  const fired7 = hasFired(firedTriggers, 7);
-
-  const primary: 2 | 5 | 6 | 7 =
-    !fired2 ? 2 :
-    !fired5 ? 5 :
-    !fired6 ? 6 :
-    !fired7 ? 7 :
-    7; // all fired; last is still the most-recent action
+  // The bar, in Danny's lifecycle order. "light" = one-tap log; "form" = inline form.
+  const firedSet = new Set(firedTriggers.map((t) => t.trigger_number));
+  const BAR: Array<{ n: number; label: string; emoji: string; kind: "light" | "form" }> = [
+    { n: 8, label: "Schedule",     emoji: "🗓️", kind: "light" },
+    { n: 2, label: "On My Way",    emoji: "🚐", kind: "form" },
+    { n: 3, label: "Start",        emoji: "▶️", kind: "light" },
+    { n: 5, label: "Presentation", emoji: "🎯", kind: "form" },
+    { n: 9, label: "Perform Work", emoji: "🔧", kind: "light" },
+    { n: 7, label: "Collect",      emoji: "💵", kind: "form" },
+    { n: 6, label: "Finish",       emoji: "✅", kind: "form" },
+  ];
+  // Next-step hint = first button in the bar not yet fired.
+  const nextN = BAR.find((b) => !firedSet.has(b.n))?.n ?? null;
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-neutral-500">
-        Fire a lifecycle trigger as you progress through the job. The system records timestamp + form data + your attribution.
+        Fire a trigger as you move through the job — Schedule, Start, and Perform Work are one-tap; the rest open a quick form. Each records timestamp + your attribution.
       </p>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <TriggerButton
-          n={2} label="On My Way" emoji="🚐"
-          fired={fired2} primary={primary === 2}
-          onClick={() => setOpenForm(openForm === 2 ? null : 2)}
-        />
-        <TriggerButton
-          n={5} label="Present" emoji="🎯"
-          fired={fired5} primary={primary === 5}
-          onClick={() => setOpenForm(openForm === 5 ? null : 5)}
-        />
-        <TriggerButton
-          n={6} label="Finish work" emoji="✅"
-          fired={fired6} primary={primary === 6}
-          onClick={() => setOpenForm(openForm === 6 ? null : 6)}
-        />
-        <TriggerButton
-          n={7} label="Collect + Done" emoji="💵"
-          fired={fired7} primary={primary === 7}
-          onClick={() => setOpenForm(openForm === 7 ? null : 7)}
-        />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        {BAR.map((b) => (
+          <TriggerButton
+            key={b.n}
+            label={b.label} emoji={b.emoji}
+            fired={firedSet.has(b.n)} primary={nextN === b.n}
+            pending={lightPending === b.n}
+            onClick={() => {
+              if (b.kind === "light") fireLight(b.n as 3 | 8 | 9);
+              else setOpenForm(openForm === b.n ? null : (b.n as 2 | 5 | 6 | 7));
+            }}
+          />
+        ))}
       </div>
+
+      {lightError ? <p className="text-xs text-red-700">{lightError}</p> : null}
 
       {openForm === 2 && (
         <OnMyWayForm
@@ -134,9 +141,9 @@ export function TriggerForms({
 }
 
 function TriggerButton({
-  n, label, emoji, fired, primary, onClick,
+  label, emoji, fired, primary, pending, onClick,
 }: {
-  n: number; label: string; emoji: string; fired: boolean; primary: boolean; onClick: () => void;
+  label: string; emoji: string; fired: boolean; primary: boolean; pending?: boolean; onClick: () => void;
 }) {
   const cls = fired
     ? "border-emerald-300 bg-emerald-50 text-emerald-900"
@@ -147,12 +154,14 @@ function TriggerButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center gap-1 rounded-2xl border p-3 text-center transition ${cls}`}
+      disabled={pending}
+      aria-label={label}
+      className={`flex flex-col items-center gap-1 rounded-2xl border p-3 text-center transition disabled:opacity-60 ${cls}`}
     >
       <span className="text-2xl" aria-hidden>{emoji}</span>
-      <span className="text-sm font-semibold">#{n} · {label}</span>
+      <span className="text-sm font-semibold leading-tight">{label}</span>
       <span className={`text-[10px] uppercase tracking-wide ${fired ? "text-emerald-700" : primary ? "text-brand-700" : "text-neutral-500"}`}>
-        {fired ? "fired" : primary ? "next" : "not yet"}
+        {pending ? "logging…" : fired ? "fired" : primary ? "next" : "not yet"}
       </span>
     </button>
   );
@@ -230,7 +239,7 @@ function PresentForm({
   const [isPending, startTransition] = useTransition();
 
   return (
-    <Wrapper title="🎯 Present (post-presentation)" onClose={onClose} done={done} doneText="Presentation outcome logged.">
+    <Wrapper title="🎯 Presentation (post-presentation)" onClose={onClose} done={done} doneText="Presentation outcome logged.">
       {!done && (
         <form
           className="space-y-3"
@@ -354,7 +363,7 @@ function CollectDoneForm({
   const [isPending, startTransition] = useTransition();
 
   return (
-    <Wrapper title="💵 Collect + Done" onClose={onClose} done={done} doneText="Collect-and-done logged.">
+    <Wrapper title="💵 Collect" onClose={onClose} done={done} doneText="Collection logged.">
       {!done && (
         <form
           className="space-y-3"
@@ -414,7 +423,7 @@ function CollectDoneForm({
           <Checkbox checked={satisfied} onChange={setSatisfied} label="Customer appeared satisfied" />
           <Checkbox checked={requestReview} onChange={setRequestReview} label="Ask for a Google review" />
           <NotesField value={notes} onChange={setNotes} placeholder="Notes for follow-up letter / next visit" />
-          <SubmitRow isPending={isPending} error={error} label="Log Collect + Done" />
+          <SubmitRow isPending={isPending} error={error} label="Log Collect" />
         </form>
       )}
     </Wrapper>

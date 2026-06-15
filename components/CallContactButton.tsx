@@ -13,16 +13,30 @@ export function CallContactButton({
   kind,
   hcpCustomerId,
   hcpJobId,
+  enabled = true,
 }: {
   phone: string;
   name: string;
   kind?: string;
   hcpCustomerId?: string;
   hcpJobId?: string;
+  /** When false, the button renders disabled (capability shipped but turned off). */
+  enabled?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  if (!enabled) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400"
+        title="Client calling is turned off. Enable CUSTOMER_VOICE_CALL_ENABLED to allow calling clients from the business line."
+      >
+        📞 Call (off)
+      </span>
+    );
+  }
 
   function go() {
     setErr(null);

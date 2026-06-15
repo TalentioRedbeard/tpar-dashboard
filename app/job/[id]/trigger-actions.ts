@@ -19,7 +19,7 @@ export type TriggerResult =
   | { ok: false; error: string };
 
 interface FireTriggerArgs {
-  trigger_number: 2 | 5 | 6 | 7;
+  trigger_number: 2 | 3 | 5 | 6 | 7 | 8 | 9;
   hcp_job_id: string;
   hcp_customer_id?: string | null;
   appointment_id?: string | null;
@@ -41,9 +41,12 @@ async function fireJobTrigger(args: FireTriggerArgs): Promise<TriggerResult> {
 
   const TRIGGER_NAMES: Record<number, string> = {
     2: "on_my_way_call_customer",
+    3: "press_start_before_van",
     5: "present_post_presentation",
     6: "finish_work",
     7: "collect_finish_done",
+    8: "schedule",
+    9: "perform_work",
   };
 
   // Direct insert (skipping the fire-trigger HTTP roundtrip for now —
@@ -101,6 +104,43 @@ export async function fireOnMyWay(input: {
       customer_called: input.customer_called,
       notes: input.notes ?? null,
     },
+  });
+}
+
+// ─── Light, log-only triggers (Job 360 bar) ─────────────────────────────
+// #8 Schedule, #3 Start, #9 Perform Work — one-tap logs with an optional note.
+// These are TPAR-only timeline markers on the job page; they do NOT mirror to
+// HCP or auto-fire GPS (those stay on the /me path for #2/#3/#6).
+export async function fireSchedule(input: {
+  hcp_job_id: string; hcp_customer_id?: string | null; notes?: string;
+}): Promise<TriggerResult> {
+  return fireJobTrigger({
+    trigger_number: 8,
+    hcp_job_id: input.hcp_job_id,
+    hcp_customer_id: input.hcp_customer_id,
+    context: { notes: input.notes ?? null },
+  });
+}
+
+export async function fireStart(input: {
+  hcp_job_id: string; hcp_customer_id?: string | null; notes?: string;
+}): Promise<TriggerResult> {
+  return fireJobTrigger({
+    trigger_number: 3,
+    hcp_job_id: input.hcp_job_id,
+    hcp_customer_id: input.hcp_customer_id,
+    context: { notes: input.notes ?? null },
+  });
+}
+
+export async function firePerformWork(input: {
+  hcp_job_id: string; hcp_customer_id?: string | null; notes?: string;
+}): Promise<TriggerResult> {
+  return fireJobTrigger({
+    trigger_number: 9,
+    hcp_job_id: input.hcp_job_id,
+    hcp_customer_id: input.hcp_customer_id,
+    context: { notes: input.notes ?? null },
   });
 }
 

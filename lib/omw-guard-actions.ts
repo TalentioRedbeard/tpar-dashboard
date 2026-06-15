@@ -11,8 +11,9 @@ import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 
 // A job is "in progress" if the tech's most recent lifecycle event on it is one
-// of these (i.e. not Finish(6) / Collect-Done(7)).
-const IN_PROGRESS_TRIGGERS = new Set([2, 3, 4, 5]);
+// of these (i.e. not Finish(6) / Collect-Done(7)). #9 (perform_work) is an
+// active on-site state, so it counts as open; #8 (schedule) does not.
+const IN_PROGRESS_TRIGGERS = new Set([2, 3, 4, 5, 9]);
 const LOOKBACK_MS = 48 * 60 * 60 * 1000;
 
 export type OpenJob = {
@@ -26,7 +27,7 @@ export type OpenJob = {
 };
 
 const TRIGGER_LABEL: Record<number, string> = {
-  2: "On My Way", 3: "Started", 4: "Estimate", 5: "Presented",
+  2: "On My Way", 3: "Started", 4: "Estimate", 5: "Presented", 9: "Performing work",
 };
 
 // Returns the tech's currently-open job (most recent), excluding the job they're

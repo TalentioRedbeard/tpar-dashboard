@@ -32,6 +32,7 @@ import { RecordingPlayer } from "../../../components/RecordingPlayer";
 import { LogReceiptForm } from "../../../components/LogReceiptForm";
 import { EditJobPanel } from "../../../components/EditJobPanel";
 import { JobMediaGallery } from "../../../components/JobMediaGallery";
+import { JobSiteCard } from "../../../components/JobSiteCard";
 
 export const dynamic = "force-dynamic";
 
@@ -385,6 +386,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const directionsUrl = addressLine
     ? `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(addressLine)}`
     : null;
+
+  // Job-site geo (map pin + Street View) + client phone (gated click-to-call).
+  const [siteRes, phoneRes] = await Promise.all([
+    db()
+      .from("appointments_master")
+      .select("geo_lat, geo_lng")
+      .eq("hcp_job_id", id)
+      .not("geo_lat", "is", null)
+      .order("scheduled_start", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    db().from("jobs_master").select("phone10").eq("hcp_job_id", id).maybeSingle(),
+  ]);
+  const siteLat = (siteRes.data?.geo_lat as number | null) ?? null;
+  const siteLng = (siteRes.data?.geo_lng as number | null) ?? null;
+  const clientPhone10 = phoneRes.data?.phone10 != null ? String(phoneRes.data.phone10) : null;
+  const callEnabled = process.env.CUSTOMER_VOICE_CALL_ENABLED === "true";
   const description = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {addressLine ? <span>{addressLine}</span> : null}
@@ -446,6 +464,43 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     >
       <JobBriefingCard hcpJobId={id} briefing={briefing} pinnedEmails={pinnedForJob} />
       <div className="space-y-10">
+        {/* Lifecycle trigger bar — ON TOP per Danny 2026-06-15. The 7-step bar
+            (Schedule · On My Way · Start · Presentation · Perform Work · Collect · Finish). */}
+        <Section
+          title="Lifecycle triggers"
+          description="Fire a trigger as you progress through the job. Records timestamp + form data + your attribution."
+        >
+          <TriggerForms
+            hcpJobId={id}
+            hcpCustomerId={customerId}
+            appointmentId={null}
+            firedTriggers={firedTriggers}
+            canWrite={canWrite}
+            briefing={briefing}
+          />
+          {firedTriggers.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50/50 p-3">
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">Fired so far</div>
+              <ScrollPanel tier="standard">
+              <ul className="space-y-1 text-xs text-neutral-700">
+                {firedTriggers.map((t) => (
+                  <li key={t.id} className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono">#{t.trigger_number}</span>
+                    <span className="font-medium">{t.trigger_name}</span>
+                    <span className="text-neutral-500">·</span>
+                    <span>{t.fired_by ?? "—"}</span>
+                    <span className="text-neutral-400">·</span>
+                    <span className="text-neutral-500">
+                      {new Date(t.fired_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              </ScrollPanel>
+            </div>
+          )}
+        </Section>
+
         {/* Work order / HCP job note — for FM accounts (Vasa/Nfr FM etc.) the
             booking arrives via the vendor's portal and the scope is logged into
             the HCP note, NOT as a captured call/text. Surface it up top so the
@@ -454,7 +509,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
             <div className="mb-1.5 flex items-center gap-2">
               <span className="text-base leading-none">📋</span>
-              <h3 className="text-sm font-semibold text-amber-900">Work order / HCP note</h3>
+              <h3 className="text-sm font-semibold text-amber-900">Private Notes</h3>
               <span className="ml-auto text-[10px] font-medium uppercase tracking-wide text-amber-600">from Housecall Pro</span>
             </div>
             {jobRaw?.hcp_notes ? (
@@ -468,6 +523,20 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             ) : null}
           </div>
         ) : null}
+        {/* Job site — Street View + map pin + directions + (gated) call the client */}
+        <JobSiteCard
+          customerName={(j.customer_name as string) ?? null}
+          street={(j.street as string) ?? null}
+          city={(j.city as string) ?? null}
+          lat={siteLat}
+          lng={siteLng}
+          directionsUrl={directionsUrl}
+          customerPhone={clientPhone10}
+          callEnabled={callEnabled}
+          hcpJobId={id}
+          hcpCustomerId={customerId}
+        />
+
         {canEdit ? (
           <div className="-mt-2">
             <EditJobPanel
@@ -823,40 +892,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           );
         })()}
 
-        <Section
-          title="Lifecycle triggers"
-          description="Fire a trigger as you progress through the job. Records timestamp + form data + your attribution."
-        >
-          <TriggerForms
-            hcpJobId={id}
-            hcpCustomerId={customerId}
-            appointmentId={null}
-            firedTriggers={firedTriggers}
-            canWrite={canWrite}
-            briefing={briefing}
-          />
-          {firedTriggers.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50/50 p-3">
-              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">Fired so far</div>
-              <ScrollPanel tier="standard">
-              <ul className="space-y-1 text-xs text-neutral-700">
-                {firedTriggers.map((t) => (
-                  <li key={t.id} className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono">#{t.trigger_number}</span>
-                    <span className="font-medium">{t.trigger_name}</span>
-                    <span className="text-neutral-500">·</span>
-                    <span>{t.fired_by ?? "—"}</span>
-                    <span className="text-neutral-400">·</span>
-                    <span className="text-neutral-500">
-                      {new Date(t.fired_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              </ScrollPanel>
-            </div>
-          )}
-        </Section>
+        {/* Lifecycle triggers — moved to the top of the page (Danny 2026-06-15) */}
 
         <Section
           title="Procurement needs for this job"

@@ -36,6 +36,9 @@ const TRIGGER_NAMES: Record<number, string> = {
   5: "present_post_presentation",
   6: "finish_work",
   7: "collect_finish_done",
+  // #8/#9: job-page light triggers (Job 360 bar, 2026-06-15). Log-only — no HCP mirror.
+  8: "schedule",
+  9: "perform_work",
 };
 
 // Trigger → HCP action mapping. Triggers not listed (1, 4, 5, 7) don't mirror

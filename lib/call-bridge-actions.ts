@@ -34,6 +34,12 @@ export async function startCallBridge(input: {
   if (!me.isAdmin && me.dashboardRole !== "tech" && !me.isManager) return { ok: false, error: "not authorized" };
   if (!SUPABASE_URL || !SERVICE_KEY) return { ok: false, error: "server config missing" };
 
+  // Customer calling ships behind an off-switch (default OFF) so it can go live
+  // deliberately. Tech/vendor bridges (other contactKinds) are unaffected.
+  if (input.contactKind === "customer" && process.env.CUSTOMER_VOICE_CALL_ENABLED !== "true") {
+    return { ok: false, error: "Client calling is turned off." };
+  }
+
   const contact = toE164(input.contactPhone);
   if (!contact) return { ok: false, error: "invalid contact number" };
 
