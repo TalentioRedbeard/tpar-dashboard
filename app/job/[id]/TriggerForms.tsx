@@ -34,6 +34,21 @@ const PAYMENT_OPTIONS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "not_yet",   label: "Not yet collected" },
 ];
 
+// Map the webhook-fresh HCP work_status to which bar triggers are implied-done, so a
+// job HCP already marks complete/scheduled doesn't show "Schedule" as next even with no
+// app events. Bar trigger #s: 8 Schedule · 2 OMW · 3 Start · 5 Presentation · 9 Perform
+// Work · 7 Collect · 6 Finish. (Danny 2026-06-15 — the buttons should reflect HCP.)
+function impliedDoneFromHcp(status: string | null | undefined): Set<number> {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("complete")) return new Set([8, 2, 3, 5, 9, 7, 6]); // fully done
+  if (s.includes("progress")) return new Set([8, 2, 3]);             // on site, working
+  if (s.includes("scheduled")) return new Set([8]);                  // scheduled (not yet OMW)
+  return new Set();                                                  // needs scheduling / canceled / unknown
+}
+function isCanceledStatus(status: string | null | undefined): boolean {
+  return (status ?? "").toLowerCase().includes("cancel");
+}
+
 export function TriggerForms({
   hcpJobId,
   hcpCustomerId,
@@ -41,6 +56,7 @@ export function TriggerForms({
   firedTriggers,
   canWrite,
   briefing = null,
+  hcpWorkStatus = null,
 }: {
   hcpJobId: string;
   hcpCustomerId: string | null;
@@ -48,6 +64,7 @@ export function TriggerForms({
   firedTriggers: FiredTrigger[];
   canWrite: boolean;
   briefing?: Briefing | null;
+  hcpWorkStatus?: string | null;
 }) {
   const [openForm, setOpenForm] = useState<2 | 5 | 6 | 7 | null>(null);
   const [lightPending, setLightPending] = useState<number | null>(null);
@@ -76,6 +93,9 @@ export function TriggerForms({
 
   // The bar, in Danny's lifecycle order. "light" = one-tap log; "form" = inline form.
   const firedSet = new Set(firedTriggers.map((t) => t.trigger_number));
+  const impliedDone = impliedDoneFromHcp(hcpWorkStatus);
+  const canceled = isCanceledStatus(hcpWorkStatus);
+  const isDone = (n: number) => firedSet.has(n) || impliedDone.has(n);
   const BAR: Array<{ n: number; label: string; emoji: string; kind: "light" | "form" }> = [
     { n: 8, label: "Schedule",     emoji: "🗓️", kind: "light" },
     { n: 2, label: "On My Way",    emoji: "🚐", kind: "form" },
@@ -85,21 +105,27 @@ export function TriggerForms({
     { n: 7, label: "Collect",      emoji: "💵", kind: "form" },
     { n: 6, label: "Finish",       emoji: "✅", kind: "form" },
   ];
-  // Next-step hint = first button in the bar not yet fired.
-  const nextN = BAR.find((b) => !firedSet.has(b.n))?.n ?? null;
+  // Next-step hint = first bar button not done (by an app event OR by HCP status). None if canceled.
+  const nextN = canceled ? null : BAR.find((b) => !isDone(b.n))?.n ?? null;
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-neutral-500">
         Fire a trigger as you move through the job — Schedule, Start, and Perform Work are one-tap; the rest open a quick form. Each records timestamp + your attribution.
       </p>
+      {hcpWorkStatus ? (
+        <p className={`text-[11px] ${canceled ? "text-red-700" : "text-neutral-400"}`}>
+          HCP status: <span className="font-medium">{hcpWorkStatus}</span>
+          {canceled ? " — job canceled in HCP" : impliedDone.size > 0 ? " — steps below reflect HCP progress" : ""}
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {BAR.map((b) => (
           <TriggerButton
             key={b.n}
             label={b.label} emoji={b.emoji}
-            fired={firedSet.has(b.n)} primary={nextN === b.n}
+            fired={firedSet.has(b.n)} impliedDone={impliedDone.has(b.n)} primary={nextN === b.n}
             pending={lightPending === b.n}
             onClick={() => {
               if (b.kind === "light") fireLight(b.n as 3 | 8 | 9);
@@ -141,11 +167,12 @@ export function TriggerForms({
 }
 
 function TriggerButton({
-  label, emoji, fired, primary, pending, onClick,
+  label, emoji, fired, impliedDone, primary, pending, onClick,
 }: {
-  label: string; emoji: string; fired: boolean; primary: boolean; pending?: boolean; onClick: () => void;
+  label: string; emoji: string; fired: boolean; impliedDone?: boolean; primary: boolean; pending?: boolean; onClick: () => void;
 }) {
-  const cls = fired
+  const complete = fired || !!impliedDone;
+  const cls = complete
     ? "border-emerald-300 bg-emerald-50 text-emerald-900"
     : primary
     ? "border-brand-400 bg-brand-50 text-brand-900 ring-2 ring-brand-300"
@@ -160,8 +187,8 @@ function TriggerButton({
     >
       <span className="text-2xl" aria-hidden>{emoji}</span>
       <span className="text-sm font-semibold leading-tight">{label}</span>
-      <span className={`text-[10px] uppercase tracking-wide ${fired ? "text-emerald-700" : primary ? "text-brand-700" : "text-neutral-500"}`}>
-        {pending ? "logging…" : fired ? "fired" : primary ? "next" : "not yet"}
+      <span className={`text-[10px] uppercase tracking-wide ${complete ? "text-emerald-700" : primary ? "text-brand-700" : "text-neutral-500"}`}>
+        {pending ? "logging…" : fired ? "fired" : impliedDone ? "done" : primary ? "next" : "not yet"}
       </span>
     </button>
   );

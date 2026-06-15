@@ -233,7 +233,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     listPinnedEmailsForJob(id, customerId),
     // Provenance probe — single hcp_jobs_raw row gives us last_synced_at +
     // whether HCP notes are present + the linked original_estimate_id.
-    supabase.from("hcp_jobs_raw").select("last_synced_at, hcp_notes, original_estimate_id").eq("hcp_job_id", id).maybeSingle(),
+    supabase.from("hcp_jobs_raw").select("last_synced_at, hcp_notes, original_estimate_id, status").eq("hcp_job_id", id).maybeSingle(),
   ]);
 
   // Resolve the linked estimate row if the job came from one.
@@ -242,7 +242,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     ? await supabase.from("hcp_estimates_raw").select("hcp_estimate_id, last_synced_at, hcp_notes").eq("hcp_estimate_id", linkedEstimateId).maybeSingle()
     : { data: null };
 
-  const jobRaw = provJobRawRes.data as { last_synced_at?: string; hcp_notes?: string | null; original_estimate_id?: string | null } | null;
+  const jobRaw = provJobRawRes.data as { last_synced_at?: string; hcp_notes?: string | null; original_estimate_id?: string | null; status?: string | null } | null;
   const estRaw = linkedEstimateRes.data as { hcp_estimate_id?: string; last_synced_at?: string; hcp_notes?: string | null } | null;
   const provenanceItems: ProvenanceItem[] = [
     {
@@ -392,7 +392,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     : null;
 
   // Job-site geo (map pin + Street View) + client phone (gated click-to-call).
-  const [siteRes, phoneRes] = await Promise.all([
+  const [siteRes, phoneRes, apptRes] = await Promise.all([
     db()
       .from("appointments_master")
       .select("geo_lat, geo_lng")
@@ -402,10 +402,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       .limit(1)
       .maybeSingle(),
     db().from("jobs_master").select("phone10").eq("hcp_job_id", id).maybeSingle(),
+    db()
+      .from("appointments_master")
+      .select("scheduled_start")
+      .eq("hcp_job_id", id)
+      .is("deleted_at", null)
+      .order("scheduled_start", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
   const siteLat = (siteRes.data?.geo_lat as number | null) ?? null;
   const siteLng = (siteRes.data?.geo_lng as number | null) ?? null;
   const clientPhone10 = phoneRes.data?.phone10 != null ? String(phoneRes.data.phone10) : null;
+  // Scheduled appointment time (job_360 carries only the date) — show it for everyone.
+  const apptStart = (apptRes.data as { scheduled_start?: string } | null)?.scheduled_start ?? null;
+  const apptWhen = apptStart
+    ? new Date(apptStart).toLocaleString("en-US", { timeZone: "America/Chicago", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : null;
   const callEnabled = process.env.CUSTOMER_VOICE_CALL_ENABLED === "true";
 
   // Worklist (task distribution) + materials-used. Resolve the crew's short names
@@ -428,9 +441,33 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   }
   const canAssignTasks = !!(me?.isAdmin || me?.isManager || me?.tech?.is_lead);
   const myShortName = me?.tech?.tech_short_name ?? null;
+
+  // HCP invoice line items for this job (the billed work). NOTE: this view is in
+  // DOLLARS (it divides the raw cents), unlike hcp_*_raw — format directly.
+  const { data: lineItemsData } = await db()
+    .from("hcp_invoice_line_items_v")
+    .select("line_item_id, line_item_name, line_item_type, quantity, unit_price, line_amount, invoice_number")
+    .eq("hcp_job_id", id)
+    .order("invoice_number", { ascending: true });
+  const lineItems = (lineItemsData ?? []) as Array<{
+    line_item_id: string;
+    line_item_name: string | null;
+    line_item_type: string | null;
+    quantity: number | string | null;
+    unit_price: number | string | null;
+    line_amount: number | string | null;
+    invoice_number: string | null;
+  }>;
+  const lineItemsTotal = lineItems.reduce((s, li) => s + (Number(li.line_amount) || 0), 0);
+  const lineItemInvoices = Array.from(new Set(lineItems.map((li) => li.invoice_number).filter(Boolean)));
   const description = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {addressLine ? <span>{addressLine}</span> : null}
+      {apptWhen ? (
+        <span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-800" title="Scheduled appointment time (HCP)">
+          📅 {apptWhen}
+        </span>
+      ) : null}
       {directionsUrl ? (
         <a
           href={directionsUrl}
@@ -502,6 +539,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             firedTriggers={firedTriggers}
             canWrite={canWrite}
             briefing={briefing}
+            hcpWorkStatus={jobRaw?.status ?? null}
           />
           {firedTriggers.length > 0 && (
             <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50/50 p-3">
@@ -678,6 +716,57 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             description="Photos + videos from the Slack #job-media flow, served from Google Drive (thumbnails load on demand — no heavy storage). Click any tile to open it in Drive."
           >
             <JobMediaGallery invoiceTrunk={invoiceTrunk} />
+          </Section>
+        ) : null}
+
+        {/* HCP invoice line items — the billed work (Danny 2026-06-15). View is in dollars. */}
+        {lineItems.length > 0 ? (
+          <Section
+            title="Line items"
+            description={
+              lineItemInvoices.length > 1
+                ? `${lineItems.length} items across ${lineItemInvoices.length} invoices`
+                : `${lineItems.length} item${lineItems.length === 1 ? "" : "s"}${lineItemInvoices[0] ? ` · invoice ${lineItemInvoices[0]}` : ""}`
+            }
+          >
+            <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="bg-neutral-50 text-[11px] uppercase tracking-wide text-neutral-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Item</th>
+                    <th className="px-3 py-2 text-right font-medium">Qty</th>
+                    <th className="px-3 py-2 text-right font-medium">Unit price</th>
+                    <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {lineItems.map((li) => (
+                    <tr key={li.line_item_id}>
+                      <td className="px-3 py-2 text-neutral-900">
+                        {li.line_item_name ?? "—"}
+                        {li.line_item_type ? <span className="ml-1.5 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-500">{li.line_item_type}</span> : null}
+                        {lineItemInvoices.length > 1 && li.invoice_number ? <span className="ml-1.5 text-[10px] text-neutral-400">#{li.invoice_number}</span> : null}
+                      </td>
+                      <td className="px-3 py-2 text-right text-neutral-700">{Number(li.quantity ?? 0)}</td>
+                      <td className="px-3 py-2 text-right text-neutral-700">${Number(li.unit_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="px-3 py-2 text-right font-medium text-neutral-900">${Number(li.line_amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t border-neutral-200 bg-neutral-50">
+                  <tr>
+                    <td className="px-3 py-2 font-medium text-neutral-700" colSpan={3}>Total</td>
+                    <td className="px-3 py-2 text-right font-semibold text-neutral-900">${lineItemsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Section>
+        ) : canEdit ? (
+          <Section title="Line items" description="No line items on this job's invoice yet.">
+            <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-sm text-neutral-500">
+              No HCP line items for this job yet. Use the &ldquo;+ Add HCP line item&rdquo; button above to add one.
+            </div>
           </Section>
         ) : null}
 
