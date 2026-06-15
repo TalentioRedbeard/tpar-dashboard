@@ -26,12 +26,13 @@ export type JobTask = {
   skip_reason: string | null;
   completed_by: string | null;
   completed_at: string | null;
+  assignee: string | null;
 };
 
 export type JobTaskResult = { ok: true; task_id: string } | { ok: false; error: string };
 
 const COLS =
-  "id, hcp_job_id, project_key, title, detail, sort_order, status, requires_photo, requires_note, source, skip_reason, completed_by, completed_at";
+  "id, hcp_job_id, project_key, title, detail, sort_order, status, requires_photo, requires_note, source, skip_reason, completed_by, completed_at, assignee";
 
 // Read a job's worklist (ordered). No write gate.
 export async function getJobTasks(hcp_job_id: string): Promise<JobTask[]> {
@@ -188,6 +189,33 @@ export async function editJobTask(input: {
     .update({ title, detail: input.detail ?? null })
     .eq("id", input.task_id);
   if (error) return { ok: false, error: error.message };
+  revalidatePath(`/job/${input.hcp_job_id}`);
+  return { ok: true, task_id: input.task_id };
+}
+
+// Assign (or unassign) a task to a crew member — the "distribute tasks" capability
+// (Danny+Cody 2026-06-15). Lead / manager / admin only. assignee = tech_short_name,
+// or null to unassign. v1 is FYI (no accept/decline); the assignee column is truth.
+export async function assignJobTask(input: {
+  task_id: string;
+  hcp_job_id: string;
+  assignee: string | null;
+}): Promise<JobTaskResult> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "Not signed in." };
+  const canAssign = me.isAdmin || me.isManager || !!me.tech?.is_lead;
+  if (!canAssign) return { ok: false, error: "Only the job lead (or office) can assign tasks." };
+
+  const supabase = db();
+  const actor = me.tech?.tech_short_name ?? me.email;
+  const assignee = input.assignee?.trim() || null;
+  const { error } = await supabase
+    .from("job_tasks")
+    .update({ assignee, assigned_by: actor, assigned_at: new Date().toISOString() })
+    .eq("id", input.task_id);
+  if (error) return { ok: false, error: error.message };
+
+  await logTaskEvent(input.task_id, input.hcp_job_id, assignee ? "assigned" : "unassigned", actor, { assignee });
   revalidatePath(`/job/${input.hcp_job_id}`);
   return { ok: true, task_id: input.task_id };
 }

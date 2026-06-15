@@ -33,6 +33,10 @@ import { LogReceiptForm } from "../../../components/LogReceiptForm";
 import { EditJobPanel } from "../../../components/EditJobPanel";
 import { JobMediaGallery } from "../../../components/JobMediaGallery";
 import { JobSiteCard } from "../../../components/JobSiteCard";
+import { WorklistCard } from "../../../components/WorklistCard";
+import { MaterialsUsedCard } from "../../../components/MaterialsUsedCard";
+import { getJobTasks } from "../../../lib/job-tasks";
+import { getMaterialsUsedForJob } from "../../../lib/materials-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -403,6 +407,27 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const siteLng = (siteRes.data?.geo_lng as number | null) ?? null;
   const clientPhone10 = phoneRes.data?.phone10 != null ? String(phoneRes.data.phone10) : null;
   const callEnabled = process.env.CUSTOMER_VOICE_CALL_ENABLED === "true";
+
+  // Worklist (task distribution) + materials-used. Resolve the crew's short names
+  // (job_360 carries FULL names) for the lead's assignment dropdown.
+  const [jobTasks, materialsUsed] = await Promise.all([
+    getJobTasks(id),
+    getMaterialsUsedForJob(id),
+  ]);
+  const crewFull = ((j.tech_all_names as string[] | null) ?? []).filter(Boolean);
+  let crewShort: string[] = [];
+  if (crewFull.length > 0) {
+    const { data: crewRows } = await db()
+      .from("tech_directory")
+      .select("tech_short_name, hcp_full_name")
+      .in("hcp_full_name", crewFull)
+      .eq("is_active", true);
+    crewShort = ((crewRows ?? []) as Array<{ tech_short_name: string | null }>)
+      .map((r) => r.tech_short_name)
+      .filter((x): x is string => !!x);
+  }
+  const canAssignTasks = !!(me?.isAdmin || me?.isManager || me?.tech?.is_lead);
+  const myShortName = me?.tech?.tech_short_name ?? null;
   const description = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {addressLine ? <span>{addressLine}</span> : null}
@@ -536,6 +561,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           hcpJobId={id}
           hcpCustomerId={customerId}
         />
+
+        {/* Worklist — lead lists + distributes tasks to the crew (Danny+Cody 2026-06-15) */}
+        <Section
+          title="Worklist"
+          description={canAssignTasks
+            ? "Lead view — add tasks and assign them to the crew. Everyone sees the list and checks tasks off."
+            : "Tasks for this job. Your assigned tasks are highlighted; check them off as you go."}
+        >
+          <WorklistCard
+            hcpJobId={id}
+            tasks={jobTasks}
+            canWrite={canWrite}
+            canAssign={canAssignTasks}
+            crew={crewShort}
+            myShortName={myShortName}
+          />
+        </Section>
 
         {canEdit ? (
           <div className="-mt-2">
@@ -893,6 +935,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         })()}
 
         {/* Lifecycle triggers — moved to the top of the page (Danny 2026-06-15) */}
+
+        {/* Materials USED on the job — costing + restock; distinct from procurement needs below */}
+        <Section
+          title="Materials used"
+          description="What got installed/used on this job — search the catalog or type a custom item. Feeds costing + restock."
+        >
+          <MaterialsUsedCard hcpJobId={id} materials={materialsUsed} canWrite={canWrite} />
+        </Section>
 
         <Section
           title="Procurement needs for this job"
