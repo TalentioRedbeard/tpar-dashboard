@@ -14,6 +14,95 @@ import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
 
+const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+// FLAG (default OFF): push a /job trigger press to HCP (mirror OMW/Start/Finish via the
+// bot). The /me path already mirrors these, so this is enabled deliberately — set
+// JOB_TRIGGER_HCP_PUSH_ENABLED=true in Vercel env, then REDEPLOY/restart (read at module
+// load, NOT per request — flipping the env var alone won't take effect). (Danny 2026-06-15.)
+// Enable-time watch-list: the /me path has no dedup (a /me fire AFTER a /job fire can still
+// double-drive the bot — bot is idempotent, low blast radius); canary on 2-3 techs + watch
+// maintenance_logs source='job-trigger-hcp-mirror' for dup (job_id,action) within 30 min.
+const JOB_TRIGGER_HCP_PUSH_ENABLED = process.env.JOB_TRIGGER_HCP_PUSH_ENABLED === "true";
+
+// Only these triggers have an HCP counterpart the bot can drive (matches the /me map).
+const JOB_TRIGGER_TO_HCP_ACTION: Record<number, "on_my_way" | "start" | "finish" | undefined> = {
+  2: "on_my_way",
+  3: "start",
+  6: "finish",
+};
+
+// Fire-and-forget HCP mirror for a /job trigger press. Deliberately replicates the /me
+// path's helper (app/me/lifecycle-actions.ts::fireHcpMirrorInBackground) so the proven
+// /me mirror stays untouched. Posts to hcp-trigger-action; logs the outcome to
+// maintenance_logs (source 'job-trigger-hcp-mirror'). Never awaited by the caller.
+function fireJobHcpMirror(
+  hcpJobId: string,
+  action: "on_my_way" | "start" | "finish",
+  actor: string,
+  triggerNumber: number,
+): void {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+  const t0 = Date.now();
+  void (async () => {
+    const supa = db();
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/hcp-trigger-action`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ job_id: hcpJobId, action }),
+      });
+      const text = await res.text();
+      await supa.from("maintenance_logs").insert({
+        source: "job-trigger-hcp-mirror",
+        level: res.ok ? "info" : "error",
+        message: res.ok ? "HCP mirror fired from /job" : `HCP mirror failed: ${res.status}`,
+        context: { hcp_job_id: hcpJobId, job_id: hcpJobId, action, trigger_number: triggerNumber, actor, http_status: res.status, elapsed_ms: Date.now() - t0, response: text.slice(0, 800) },
+      });
+    } catch (e) {
+      await supa.from("maintenance_logs").insert({
+        source: "job-trigger-hcp-mirror", level: "error",
+        message: `HCP mirror threw: ${e instanceof Error ? e.message : String(e)}`,
+        context: { hcp_job_id: hcpJobId, job_id: hcpJobId, action, trigger_number: triggerNumber, actor, elapsed_ms: Date.now() - t0 },
+      });
+    }
+  })();
+}
+
+// Decide whether to push this freshly-fired /job trigger to HCP. Gated by the flag,
+// limited to OMW/Start/Finish, and skipped if the SAME trigger fired for this job in the
+// last 30 min (the /me GPS/button path, or a rapid re-press) so the bot isn't double-driven.
+async function maybeMirrorJobTriggerToHcp(
+  triggerNumber: number,
+  hcpJobId: string,
+  actor: string,
+  newEventId: string,
+  supabase: ReturnType<typeof db>,
+): Promise<void> {
+  if (!JOB_TRIGGER_HCP_PUSH_ENABLED) return;
+  const action = JOB_TRIGGER_TO_HCP_ACTION[triggerNumber];
+  if (!action) return;
+
+  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { count } = await supabase
+    .from("job_lifecycle_events")
+    .select("id", { count: "exact", head: true })
+    .eq("hcp_job_id", hcpJobId)
+    .eq("trigger_number", triggerNumber)
+    .gte("fired_at", since)
+    .neq("id", newEventId);
+  if ((count ?? 0) > 0) {
+    void supabase.from("maintenance_logs").insert({
+      source: "job-trigger-hcp-mirror", level: "info",
+      message: "skipped HCP mirror: same trigger fired for this job in the last 30 min",
+      context: { hcp_job_id: hcpJobId, action, trigger_number: triggerNumber, actor },
+    });
+    return;
+  }
+  fireJobHcpMirror(hcpJobId, action, actor, triggerNumber);
+}
+
 export type TriggerResult =
   | { ok: true; event_id: string }
   | { ok: false; error: string };
@@ -82,6 +171,16 @@ async function fireJobTrigger(args: FireTriggerArgs): Promise<TriggerResult> {
     }
     return { ok: false, error: insErr.message };
   }
+
+  // Fresh insert only (idempotency hits returned above) — push to HCP behind the flag,
+  // deduped vs the /me path. Mirrors OMW/Start/Finish; no-op for the others.
+  await maybeMirrorJobTriggerToHcp(
+    args.trigger_number,
+    args.hcp_job_id,
+    me.tech?.tech_short_name ?? me.email,
+    row?.id as string,
+    supabase,
+  );
 
   revalidatePath(`/job/${args.hcp_job_id}`);
   return { ok: true, event_id: (row?.id as string) ?? "" };
