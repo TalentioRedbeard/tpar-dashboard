@@ -401,7 +401,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       .order("scheduled_start", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    db().from("jobs_master").select("phone10").eq("hcp_job_id", id).maybeSingle(),
+    db().from("jobs_master").select("phone10, job_description").eq("hcp_job_id", id).maybeSingle(),
     db()
       .from("appointments_master")
       .select("scheduled_start")
@@ -414,6 +414,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const siteLat = (siteRes.data?.geo_lat as number | null) ?? null;
   const siteLng = (siteRes.data?.geo_lng as number | null) ?? null;
   const clientPhone10 = phoneRes.data?.phone10 != null ? String(phoneRes.data.phone10) : null;
+  // Job work description (the "contract" the tech needs to see) — shown atop Line items.
+  const workDescription = ((phoneRes.data?.job_description as string | null | undefined) ?? "").trim() || null;
   // Scheduled appointment time (job_360 carries only the date) — show it for everyone.
   const apptStart = (apptRes.data as { scheduled_start?: string } | null)?.scheduled_start ?? null;
   const apptWhen = apptStart
@@ -732,6 +734,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 : `${lineItems.length} item${lineItems.length === 1 ? "" : "s"}${lineItemInvoices[0] ? ` · invoice ${lineItemInvoices[0]}` : ""}`
             }
           >
+            {workDescription ? (
+              <div className="mb-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                <div className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">Work description</div>
+                <p className="mt-0.5 whitespace-pre-wrap text-sm text-neutral-800">{workDescription}</p>
+              </div>
+            ) : null}
             <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
               <table className="w-full text-sm">
                 <thead className="bg-neutral-50 text-[11px] uppercase tracking-wide text-neutral-500">
