@@ -832,7 +832,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           // a real match clears ~0.6. Hide weak ones and label strength so the
           // compressed band reads clearly.
           const FLOOR = 0.6;
-          const rows = (similarRes.data as Array<Record<string, unknown>>).filter((r) => Number(r.similarity) >= FLOOR);
+          const rows = (similarRes.data as Array<Record<string, unknown>>).filter((r) => Number(r.similarity) >= FLOOR).slice(0, 3); // cap at 3 for now (Danny 2026-06-15)
           const revenues = rows
             .map((r) => Number(r.revenue))
             .filter((v) => Number.isFinite(v) && v > 0);

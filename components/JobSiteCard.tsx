@@ -87,10 +87,10 @@ export function JobSiteCard({
             src={streetViewUrl}
             alt={`Street view of ${addressLine || "the job site"}`}
             onError={() => setSvFailed(true)}
-            className="h-44 w-full rounded-xl border border-neutral-200 object-cover"
+            className="h-72 w-full rounded-xl border border-neutral-200 object-cover"
           />
         ) : (
-          <div className="flex h-44 items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 text-xs text-neutral-400">
+          <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 text-xs text-neutral-400">
             {addressLine ? "No street view available" : "No address on file"}
           </div>
         )}
@@ -99,7 +99,7 @@ export function JobSiteCard({
         {apiKey && hasGeo ? (
           <div className="overflow-hidden rounded-xl border border-neutral-200">
             <APIProvider apiKey={apiKey}>
-              <div className="h-44 w-full">
+              <div className="h-72 w-full">
                 <Map
                   defaultCenter={{ lat: lat as number, lng: lng as number }}
                   defaultZoom={13}
@@ -118,7 +118,7 @@ export function JobSiteCard({
             </APIProvider>
           </div>
         ) : (
-          <div className="flex h-44 items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 text-center text-xs text-neutral-400">
+          <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 text-center text-xs text-neutral-400">
             {apiKey ? "Location not geocoded yet" : "Map key not set"}
           </div>
         )}
