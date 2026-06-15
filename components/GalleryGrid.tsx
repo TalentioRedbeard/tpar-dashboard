@@ -15,6 +15,34 @@ function biggerThumb(url?: string): string | undefined {
   return url.replace(/=s\d+(-c)?$/, "=s1600");
 }
 
+// localStorage cache of the photo LIST per (scope,id) — the slow part on revisit is the
+// Drive listing round-trip, not the image bytes. 1h TTL + stale-while-revalidate (render
+// cache instantly, refetch in the background) + a manual Refresh. (Danny 2026-06-15.)
+// Shared-tablet caveat: caches list metadata in the browser; the gallery is still
+// tech-scoped server-side, and the list is non-sensitive thumbnail metadata.
+const GALLERY_CACHE_TTL_MS = 60 * 60 * 1000;
+function galleryCacheKey(scope: string, id: string): string { return `tpar.gallery.${scope}.${id}`; }
+function readGalleryCache(scope: string, id: string): { photos: GalleryPhoto[]; capped: boolean; ts: number } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(galleryCacheKey(scope, id));
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (!v || !Array.isArray(v.photos) || typeof v.ts !== "number") return null;
+    return v as { photos: GalleryPhoto[]; capped: boolean; ts: number };
+  } catch { return null; }
+}
+function writeGalleryCache(scope: string, id: string, photos: GalleryPhoto[], capped: boolean): void {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(galleryCacheKey(scope, id), JSON.stringify({ photos, capped, ts: Date.now() })); } catch { /* quota/full — ignore */ }
+}
+function agoLabel(ts: number): string {
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  return `${Math.round(m / 60)}h ago`;
+}
+
 export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) {
   const [state, setState] = useState<"loading" | "done" | "error">("loading");
   const [photos, setPhotos] = useState<GalleryPhoto[]>([]);
@@ -22,19 +50,41 @@ export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) 
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lightbox, setLightbox] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [cachedTs, setCachedTs] = useState<number | null>(null);
 
+  // Stale-while-revalidate: render the cached list instantly, then revalidate in the
+  // background; on a cache miss, fetch fresh (spinner).
   useEffect(() => {
     let alive = true;
-    setState("loading");
-    setErr(null);
     setSelected(new Set());
-    getGalleryPhotos(scope, id).then((r) => {
+    (async () => {
+      setErr(null);
+      const cached = readGalleryCache(scope, id);
+      if (cached) {
+        if (!alive) return;
+        setPhotos(cached.photos); setCapped(cached.capped); setCachedTs(cached.ts); setState("done");
+        if (Date.now() - cached.ts < GALLERY_CACHE_TTL_MS) return; // fresh enough — no network
+        setRefreshing(true);
+      } else {
+        setState("loading"); setCachedTs(null);
+      }
+      const r = await getGalleryPhotos(scope, id);
       if (!alive) return;
-      if (!r.ok) { setErr(r.error); setState("error"); return; }
-      setPhotos(r.photos); setCapped(r.capped); setState("done");
-    });
+      if (!r.ok) { if (!cached) { setErr(r.error); setState("error"); } setRefreshing(false); return; }
+      setPhotos(r.photos); setCapped(r.capped); setState("done"); setCachedTs(Date.now()); setRefreshing(false);
+      writeGalleryCache(scope, id, r.photos, r.capped);
+    })();
     return () => { alive = false; };
   }, [scope, id]);
+
+  async function refresh() {
+    setRefreshing(true); setErr(null);
+    const r = await getGalleryPhotos(scope, id);
+    if (!r.ok) { setErr(r.error); setRefreshing(false); return; }
+    setPhotos(r.photos); setCapped(r.capped); setState("done"); setCachedTs(Date.now()); setRefreshing(false);
+    writeGalleryCache(scope, id, r.photos, r.capped);
+  }
 
   const toggle = useCallback((fid: string) => {
     setSelected((s) => { const n = new Set(s); if (n.has(fid)) n.delete(fid); else n.add(fid); return n; });
@@ -59,6 +109,11 @@ export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) 
       <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-600">
         <span>{photos.length} photo{photos.length === 1 ? "" : "s"}</span>
         {capped ? <span className="text-amber-600">· showing the first jobs only (large customer — open a specific job for the rest)</span> : null}
+        <button type="button" onClick={refresh} disabled={refreshing}
+          className="rounded-md border border-neutral-300 bg-white px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-50 disabled:opacity-50">
+          {refreshing ? "refreshing…" : "↻ refresh"}
+        </button>
+        {cachedTs && !refreshing ? <span className="text-[11px] text-neutral-400">cached {agoLabel(cachedTs)}</span> : null}
         {selected.size > 0 ? (
           <button type="button" onClick={openSelected} className="ml-auto rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
             Open {selected.size} selected in Drive ↗
