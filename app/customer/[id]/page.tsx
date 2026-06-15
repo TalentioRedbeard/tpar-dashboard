@@ -328,7 +328,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       kicker="Customer"
       title={displayName}
       description={
-        <span className="font-mono text-xs text-neutral-500">{id}</span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-mono text-xs text-neutral-500">{id}</span>
+          {isLeadership ? (
+            <Link href={`/gallery?scope=customer&id=${id}`} className="text-sm text-brand-700 hover:underline">
+              📷 photos →
+            </Link>
+          ) : null}
+        </span>
       }
       backHref="/customers"
       backLabel="All customers"

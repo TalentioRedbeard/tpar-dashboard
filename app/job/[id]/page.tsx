@@ -485,6 +485,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           customer 360 →
         </Link>
       ) : null}
+      <Link href={`/gallery?scope=job&id=${id}`} className="text-brand-700 hover:underline">
+        📷 photos →
+      </Link>
     </span>
   );
 
