@@ -9,9 +9,37 @@
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { getJobMedia, type MediaFile } from "@/lib/job-media-actions";
+import crypto from "node:crypto";
+
+// drive-media proxy signing — serves Drive media to ANY tech (no personal Google session).
+const PROXY_BASE = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
+const PROXY_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const PROXY_TTL_SEC = 7 * 24 * 3600; // 7d — comfortably outstays the 1h list cache
+
+function biggerThumb(url?: string): string | undefined {
+  if (!url) return url;
+  return url.replace(/=s\d+(-c)?$/, "=s1600");
+}
+
+// HMAC-signed drive-media URL (matches the edge fn: service key, `id:mode:exp`).
+function signProxy(id: string, mode: "thumb" | "download", opts: { name?: string; thumb?: string }): string | undefined {
+  if (!PROXY_BASE || !PROXY_SECRET || !id) return undefined;
+  const exp = Math.floor(Date.now() / 1000) + PROXY_TTL_SEC;
+  const sig = crypto.createHmac("sha256", PROXY_SECRET).update(`${id}:${mode}:${exp}`).digest("hex");
+  const p = new URLSearchParams({ id, mode, exp: String(exp), sig });
+  if (opts.name) p.set("name", opts.name);
+  if (opts.thumb) p.set("t", opts.thumb);
+  return `${PROXY_BASE}/functions/v1/drive-media?${p.toString()}`;
+}
 
 export type GalleryScope = "job" | "customer" | "estimate" | "segment";
-export type GalleryPhoto = MediaFile & { trunk: string; folderLabel: string };
+export type GalleryPhoto = MediaFile & {
+  trunk: string;
+  folderLabel: string;
+  thumbProxyUrl?: string;    // grid thumbnail via drive-media (renders for any tech)
+  lightboxProxyUrl?: string; // larger view via drive-media
+  downloadProxyUrl?: string; // full-file download via drive-media
+};
 export type GalleryResult =
   | { ok: true; photos: GalleryPhoto[]; trunks: string[]; capped: boolean }
   | { ok: false; error: string };
@@ -58,7 +86,15 @@ export async function getGalleryPhotos(scope: GalleryScope, id: string): Promise
     if (!r.ok || !r.folders) continue;
     for (const f of r.folders) {
       for (const file of f.files) {
-        photos.push({ ...file, trunk: t, folderLabel: f.day_number ? `#${t} · Day ${f.day_number}` : `#${t}` });
+        const fid = String(file.id);
+        photos.push({
+          ...file,
+          trunk: t,
+          folderLabel: f.day_number ? `#${t} · Day ${f.day_number}` : `#${t}`,
+          thumbProxyUrl: file.thumbnailLink ? signProxy(fid, "thumb", { thumb: file.thumbnailLink }) : undefined,
+          lightboxProxyUrl: file.thumbnailLink ? signProxy(fid, "thumb", { thumb: biggerThumb(file.thumbnailLink) }) : undefined,
+          downloadProxyUrl: signProxy(fid, "download", { name: file.name }),
+        });
       }
     }
   }

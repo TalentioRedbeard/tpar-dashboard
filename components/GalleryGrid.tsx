@@ -90,8 +90,21 @@ export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) 
     setSelected((s) => { const n = new Set(s); if (n.has(fid)) n.delete(fid); else n.add(fid); return n; });
   }, []);
 
-  function openSelected() {
-    photos.filter((p) => selected.has(p.id)).forEach((p) => { if (p.webViewLink) window.open(p.webViewLink, "_blank", "noopener"); });
+  function downloadSelected() {
+    // Trigger a real download per selected photo via the drive-media proxy (works for any
+    // tech — server proxies the bytes). Staggered so the browser doesn't block the batch.
+    const list = photos.filter((p) => selected.has(p.id) && p.downloadProxyUrl);
+    list.forEach((p, i) => {
+      setTimeout(() => {
+        const a = document.createElement("a");
+        a.href = p.downloadProxyUrl!;
+        a.download = p.name || "photo";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }, i * 400);
+    });
   }
 
   if (state === "loading") return <div className="text-sm text-neutral-500">Loading photos from Drive…</div>;
@@ -115,8 +128,8 @@ export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) 
         </button>
         {cachedTs && !refreshing ? <span className="text-[11px] text-neutral-400">cached {agoLabel(cachedTs)}</span> : null}
         {selected.size > 0 ? (
-          <button type="button" onClick={openSelected} className="ml-auto rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
-            Open {selected.size} selected in Drive ↗
+          <button type="button" onClick={downloadSelected} className="ml-auto rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
+            ⬇ Download {selected.size} selected
           </button>
         ) : (
           <span className="ml-auto text-xs text-neutral-400">Tap a photo to view full-size · check to multi-select</span>
@@ -149,9 +162,9 @@ function GalleryTile({ photo, selected, onToggle, onOpen }: { photo: GalleryPhot
   return (
     <div className={`relative aspect-square overflow-hidden rounded-lg border bg-neutral-100 ${selected ? "border-brand-500 ring-2 ring-brand-400" : "border-neutral-200"}`}>
       <button type="button" onClick={onOpen} title={photo.name} className="block h-full w-full">
-        {photo.thumbnailLink && imgOk ? (
+        {(photo.thumbProxyUrl || photo.thumbnailLink) && imgOk ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo.thumbnailLink} alt={photo.name} loading="lazy" referrerPolicy="no-referrer" onError={() => setImgOk(false)} className="h-full w-full object-cover" />
+          <img src={photo.thumbProxyUrl ?? photo.thumbnailLink} alt={photo.name} loading="lazy" referrerPolicy="no-referrer" onError={() => setImgOk(false)} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-1 text-center">
             <span className="text-2xl" aria-hidden>{isVideo ? "🎬" : "🖼️"}</span>
@@ -191,17 +204,17 @@ function Lightbox({ photo, hasPrev, hasNext, onPrev, onNext, onClose }: {
         {hasPrev ? <button type="button" onClick={onPrev} className="px-3 text-3xl text-white/70 hover:text-white">‹</button> : <span className="px-3" />}
         {isVideo ? (
           <a href={photo.webViewLink} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-white/10 px-6 py-10 text-center text-white">🎬 Open video in Drive ↗</a>
-        ) : photo.thumbnailLink ? (
+        ) : (photo.lightboxProxyUrl || photo.thumbnailLink) ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={biggerThumb(photo.thumbnailLink)} alt={photo.name} referrerPolicy="no-referrer" className="max-h-full max-w-full rounded-lg object-contain" />
+          <img src={photo.lightboxProxyUrl ?? biggerThumb(photo.thumbnailLink)} alt={photo.name} referrerPolicy="no-referrer" className="max-h-full max-w-full rounded-lg object-contain" />
         ) : (
           <div className="text-white/70">No preview</div>
         )}
         {hasNext ? <button type="button" onClick={onNext} className="px-3 text-3xl text-white/70 hover:text-white">›</button> : <span className="px-3" />}
       </div>
       <div className="flex items-center justify-center gap-3 pt-2" onClick={(e) => e.stopPropagation()}>
-        <a href={photo.webViewLink} target="_blank" rel="noopener noreferrer" className="rounded-md bg-white/90 px-4 py-1.5 text-sm font-semibold text-neutral-900 hover:bg-white">
-          Open / download full-size in Drive ↗
+        <a href={photo.downloadProxyUrl ?? photo.webViewLink} download={photo.name} target="_blank" rel="noopener noreferrer" className="rounded-md bg-white/90 px-4 py-1.5 text-sm font-semibold text-neutral-900 hover:bg-white">
+          ⬇ Download full-size
         </a>
       </div>
     </div>
