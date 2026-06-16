@@ -35,6 +35,53 @@ export async function signGalleryZipUrl(fileIds: string[]): Promise<string | nul
   return `${PROXY_BASE}/functions/v1/drive-zip?${p.toString()}`;
 }
 
+// Chooser for the top-nav "Gallery" landing (no scope/id yet): search a job (by invoice
+// or customer name) or a customer to open their photos. Tech-scoped: techs only get jobs
+// they were on; customer-wide is office-only.
+export type GalleryTarget = { kind: "job" | "customer"; id: string; label: string; sub: string };
+export async function searchGalleryTargets(query: string): Promise<GalleryTarget[]> {
+  const me = await getCurrentTech().catch(() => null);
+  if (!me) return [];
+  const safe = query.replace(/[,()*%]/g, " ").trim();
+  if (safe.length < 2) return [];
+  const isOffice = !!(me.isAdmin || me.isManager);
+  const myName = me.tech?.hcp_full_name ?? null;
+  const supa = db();
+  const out: GalleryTarget[] = [];
+
+  const { data: jobs } = await supa
+    .from("job_360")
+    .select("hcp_job_id, invoice_number, customer_name, tech_primary_name, tech_all_names, job_date")
+    .or(`invoice_number.ilike.%${safe}%,customer_name.ilike.%${safe}%`)
+    .order("job_date", { ascending: false, nullsFirst: false })
+    .limit(20);
+  for (const j of (jobs ?? []) as Array<Record<string, unknown>>) {
+    if (!isOffice) {
+      const crew = [j.tech_primary_name as string | null, ...(((j.tech_all_names as string[] | null) ?? []))].filter(Boolean) as string[];
+      if (!myName || !crew.includes(myName)) continue; // techs only see their own jobs
+    }
+    out.push({
+      kind: "job",
+      id: j.hcp_job_id as string,
+      label: (j.customer_name as string | null) ?? (j.invoice_number as string | null) ?? (j.hcp_job_id as string),
+      sub: `job · #${(j.invoice_number as string | null) ?? "?"}${j.job_date ? " · " + (j.job_date as string) : ""}`,
+    });
+    if (out.length >= 15) break;
+  }
+
+  if (isOffice) {
+    const { data: custs } = await supa
+      .from("customer_360")
+      .select("hcp_customer_id, name")
+      .ilike("name", `%${safe}%`)
+      .limit(8);
+    for (const c of (custs ?? []) as Array<Record<string, unknown>>) {
+      out.push({ kind: "customer", id: c.hcp_customer_id as string, label: (c.name as string | null) ?? (c.hcp_customer_id as string), sub: "customer · all jobs" });
+    }
+  }
+  return out.slice(0, 22);
+}
+
 // HMAC-signed drive-media URL (matches the edge fn: service key, `id:mode:exp`).
 function signProxy(id: string, mode: "thumb" | "download", opts: { name?: string; thumb?: string }): string | undefined {
   if (!PROXY_BASE || !PROXY_SECRET || !id) return undefined;

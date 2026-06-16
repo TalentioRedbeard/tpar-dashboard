@@ -328,22 +328,24 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       kicker="Customer"
       title={displayName}
       description={
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="font-mono text-xs text-neutral-500">{id}</span>
-          {isLeadership ? (
-            <Link href={`/gallery?scope=customer&id=${id}`} className="text-sm text-brand-700 hover:underline">
-              📷 photos →
-            </Link>
-          ) : null}
-        </span>
+        <span className="font-mono text-xs text-neutral-500">{id}</span>
       }
       backHref="/customers"
       backLabel="All customers"
-      actions={canWrite ? (
-        <LinkButton href={`/estimate/new?customer=${id}`} variant="primary">
-          + Build estimate
-        </LinkButton>
-      ) : undefined}
+      actions={
+        <div className="flex flex-wrap gap-2">
+          {isLeadership ? (
+            <LinkButton href={`/gallery?scope=customer&id=${id}`} variant="secondary">
+              📷 Photos
+            </LinkButton>
+          ) : null}
+          {canWrite ? (
+            <LinkButton href={`/estimate/new?customer=${id}`} variant="primary">
+              + Build estimate
+            </LinkButton>
+          ) : null}
+        </div>
+      }
       help={{
         intent: "Everything we know about this customer in one place. Open this BEFORE you call them so you're not flying blind.",
         actions: [

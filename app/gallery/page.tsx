@@ -6,6 +6,7 @@
 
 import { PageShell } from "../../components/PageShell";
 import { GalleryGrid } from "../../components/GalleryGrid";
+import { GalleryChooser } from "../../components/GalleryChooser";
 import { getCurrentTech } from "../../lib/current-tech";
 import { db } from "@/lib/supabase";
 import Link from "next/link";
@@ -24,6 +25,21 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
   const me = await getCurrentTech().catch(() => null);
   if (!me) redirect(`/login?from=${encodeURIComponent(`/gallery?scope=${scope}&id=${id}`)}`);
   const isOffice = !!(me.isAdmin || me.isManager);
+
+  // Top-nav "Gallery" lands here with no scope/id → show the chooser (search a job/customer).
+  if (!id) {
+    return (
+      <PageShell
+        kicker="Gallery"
+        title="Photos"
+        description={<span className="text-sm text-neutral-600">Find a job or customer to view their photos.</span>}
+        backHref="/"
+        backLabel="Home"
+      >
+        <GalleryChooser />
+      </PageShell>
+    );
+  }
 
   // Resolve a friendly title + cross-links + (for techs) the job-scope auth check.
   let title = "Photos";

@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/contacts",  label: "Contacts" },
   { href: "/dispatch",  label: "Dispatch" },
   { href: "/schedule",  label: "Schedule" },
+  { href: "/gallery",   label: "Gallery" },
   { href: "/shopping",  label: "Shopping" },
   { href: "/reports",   label: "Reports" },
 ];
@@ -34,6 +35,7 @@ const PRIMARY_ITEMS = [
   { href: "/comms",     label: "Comms" },
   { href: "/dispatch",  label: "Dispatch" },
   { href: "/schedule",  label: "Schedule" },
+  { href: "/gallery",   label: "Gallery" },
 ];
 
 // Tech banner — the daily-driver destinations a field tech gets. Each renders a
@@ -45,6 +47,7 @@ const TECH_PRIMARY_ITEMS = [
   { href: "/estimates", label: "Estimates" },
   { href: "/schedule",  label: "Schedule" },
   { href: "/comms",     label: "Comms" },
+  { href: "/gallery",   label: "Gallery" },
   { href: "/shopping",  label: "Shopping" },
   { href: "/how-to",    label: "How-to" },
 ];
