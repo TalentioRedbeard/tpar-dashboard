@@ -21,6 +21,20 @@ function biggerThumb(url?: string): string | undefined {
   return url.replace(/=s\d+(-c)?$/, "=s1600");
 }
 
+// Sign a drive-zip URL for the selected file ids → one streamed ZIP download. Generated
+// on click (the selection is client-side), 1h expiry. Matches drive-zip's HMAC (`${ids}:${exp}`).
+export async function signGalleryZipUrl(fileIds: string[]): Promise<string | null> {
+  const me = await getCurrentTech().catch(() => null);
+  if (!me) return null;
+  const ids = fileIds.filter(Boolean).slice(0, 80);
+  if (ids.length === 0 || !PROXY_BASE || !PROXY_SECRET) return null;
+  const idsCsv = ids.join(",");
+  const exp = Math.floor(Date.now() / 1000) + 3600;
+  const sig = crypto.createHmac("sha256", PROXY_SECRET).update(`${idsCsv}:${exp}`).digest("hex");
+  const p = new URLSearchParams({ ids: idsCsv, exp: String(exp), sig, name: "tpar-photos.zip" });
+  return `${PROXY_BASE}/functions/v1/drive-zip?${p.toString()}`;
+}
+
 // HMAC-signed drive-media URL (matches the edge fn: service key, `id:mode:exp`).
 function signProxy(id: string, mode: "thumb" | "download", opts: { name?: string; thumb?: string }): string | undefined {
   if (!PROXY_BASE || !PROXY_SECRET || !id) return undefined;

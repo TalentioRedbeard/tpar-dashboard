@@ -6,7 +6,7 @@
 // the page stays fast. v1.1: true bulk/ZIP download + local thumbnail cache (need Drive API).
 
 import { useEffect, useState, useCallback } from "react";
-import { getGalleryPhotos, type GalleryScope, type GalleryPhoto } from "../lib/gallery-actions";
+import { getGalleryPhotos, signGalleryZipUrl, type GalleryScope, type GalleryPhoto } from "../lib/gallery-actions";
 
 // Drive thumbnail URLs (lh3.googleusercontent.com) accept a size token; upsize for the
 // lightbox. Falls through to the original if the pattern doesn't match.
@@ -52,6 +52,7 @@ export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) 
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [cachedTs, setCachedTs] = useState<number | null>(null);
+  const [zipping, setZipping] = useState(false);
 
   // Stale-while-revalidate: render the cached list instantly, then revalidate in the
   // background; on a cache miss, fetch fresh (spinner).
@@ -90,21 +91,28 @@ export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) 
     setSelected((s) => { const n = new Set(s); if (n.has(fid)) n.delete(fid); else n.add(fid); return n; });
   }, []);
 
-  function downloadSelected() {
-    // Trigger a real download per selected photo via the drive-media proxy (works for any
-    // tech — server proxies the bytes). Staggered so the browser doesn't block the batch.
-    const list = photos.filter((p) => selected.has(p.id) && p.downloadProxyUrl);
-    list.forEach((p, i) => {
-      setTimeout(() => {
-        const a = document.createElement("a");
-        a.href = p.downloadProxyUrl!;
-        a.download = p.name || "photo";
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      }, i * 400);
-    });
+  function triggerDownload(href: string, name?: string) {
+    const a = document.createElement("a");
+    a.href = href; a.download = name || ""; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // 1 photo → direct download via the proxy; 2+ → one streamed ZIP via drive-zip.
+  // Both go through the server (works for any tech, no Google session).
+  async function downloadSelected() {
+    const list = photos.filter((p) => selected.has(p.id));
+    if (list.length === 0) return;
+    if (list.length === 1 && list[0].downloadProxyUrl) {
+      triggerDownload(list[0].downloadProxyUrl, list[0].name);
+      return;
+    }
+    setZipping(true);
+    try {
+      const url = await signGalleryZipUrl(list.map((p) => p.id));
+      if (url) triggerDownload(url, "tpar-photos.zip");
+    } finally {
+      setZipping(false);
+    }
   }
 
   if (state === "loading") return <div className="text-sm text-neutral-500">Loading photos from Drive…</div>;
@@ -128,8 +136,8 @@ export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) 
         </button>
         {cachedTs && !refreshing ? <span className="text-[11px] text-neutral-400">cached {agoLabel(cachedTs)}</span> : null}
         {selected.size > 0 ? (
-          <button type="button" onClick={downloadSelected} className="ml-auto rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
-            ⬇ Download {selected.size} selected
+          <button type="button" onClick={downloadSelected} disabled={zipping} className="ml-auto rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+            {zipping ? "preparing ZIP…" : `⬇ Download ${selected.size} selected`}
           </button>
         ) : (
           <span className="ml-auto text-xs text-neutral-400">Tap a photo to view full-size · check to multi-select</span>
