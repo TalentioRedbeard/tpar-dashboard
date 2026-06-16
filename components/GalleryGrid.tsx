@@ -97,8 +97,8 @@ export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) 
     document.body.appendChild(a); a.click(); a.remove();
   }
 
-  // 1 photo → direct download via the proxy; 2+ → one streamed ZIP via drive-zip.
-  // Both go through the server (works for any tech, no Google session).
+  // 1 photo → direct download (Drive via proxy, or Storage public URL); 2+ → one streamed
+  // ZIP via drive-zip, which now handles BOTH Drive files and Storage objects in one archive.
   async function downloadSelected() {
     const list = photos.filter((p) => selected.has(p.id));
     if (list.length === 0) return;
@@ -108,19 +108,19 @@ export function GalleryGrid({ scope, id }: { scope: GalleryScope; id: string }) 
     }
     setZipping(true);
     try {
-      const url = await signGalleryZipUrl(list.map((p) => p.id));
+      const url = await signGalleryZipUrl(list.map((p) => ({ id: p.id, storageUrl: p.storageUrl })));
       if (url) triggerDownload(url, "tpar-photos.zip");
     } finally {
       setZipping(false);
     }
   }
 
-  if (state === "loading") return <div className="text-sm text-neutral-500">Loading photos from Drive…</div>;
+  if (state === "loading") return <div className="text-sm text-neutral-500">Loading photos…</div>;
   if (state === "error") return <div className="text-sm text-red-600">{err}</div>;
   if (photos.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center text-sm text-neutral-500">
-        No photos found for this {scope}. Photos submitted via the Slack #job-media flow appear here once synced to Drive.
+        No photos found for this {scope}. Job photos from Housecall Pro, the Slack #job-media flow, and in-app uploads all appear here.
       </div>
     );
   }

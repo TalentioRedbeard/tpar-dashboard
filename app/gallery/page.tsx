@@ -92,7 +92,7 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
     <PageShell
       kicker="Gallery"
       title={title}
-      description={<span className="text-sm text-neutral-600">Thumbnails from Google Drive · tap to view full-size, check to multi-select.</span>}
+      description={<span className="text-sm text-neutral-600">Photos from Housecall Pro, Slack #job-media, and in-app uploads · tap to view full-size, check to multi-select.</span>}
       backHref={backHref}
       backLabel="Back"
     >

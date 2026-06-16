@@ -21,17 +21,32 @@ function biggerThumb(url?: string): string | undefined {
   return url.replace(/=s\d+(-c)?$/, "=s1600");
 }
 
-// Sign a drive-zip URL for the selected file ids → one streamed ZIP download. Generated
-// on click (the selection is client-side), 1h expiry. Matches drive-zip's HMAC (`${ids}:${exp}`).
-export async function signGalleryZipUrl(fileIds: string[]): Promise<string | null> {
+// Sign a drive-zip URL for the selected photos → one streamed ZIP download. Drive photos
+// go by file id; Storage photos (HCP backfill / in-app uploads) go by their bucket path
+// (derived from the public URL). Generated on click (selection is client-side), 1h expiry.
+// Matches drive-zip's HMAC (`${ids}:${paths}:${exp}`).
+const STORAGE_MARKER = "/object/public/job-photos/";
+export async function signGalleryZipUrl(items: Array<{ id: string; storageUrl?: string }>): Promise<string | null> {
   const me = await getCurrentTech().catch(() => null);
-  if (!me) return null;
-  const ids = fileIds.filter(Boolean).slice(0, 80);
-  if (ids.length === 0 || !PROXY_BASE || !PROXY_SECRET) return null;
-  const idsCsv = ids.join(",");
+  if (!me || !PROXY_BASE || !PROXY_SECRET) return null;
+  const driveIds: string[] = [];
+  const storagePaths: string[] = [];
+  for (const it of items.slice(0, 80)) {
+    if (it.storageUrl) {
+      const path = it.storageUrl.split(STORAGE_MARKER)[1];
+      if (path) storagePaths.push(path);
+    } else if (it.id) {
+      driveIds.push(it.id);
+    }
+  }
+  if (driveIds.length + storagePaths.length === 0) return null;
+  const idsCsv = driveIds.join(",");
+  const pathsCsv = storagePaths.join(",");
   const exp = Math.floor(Date.now() / 1000) + 3600;
-  const sig = crypto.createHmac("sha256", PROXY_SECRET).update(`${idsCsv}:${exp}`).digest("hex");
-  const p = new URLSearchParams({ ids: idsCsv, exp: String(exp), sig, name: "tpar-photos.zip" });
+  const sig = crypto.createHmac("sha256", PROXY_SECRET).update(`${idsCsv}:${pathsCsv}:${exp}`).digest("hex");
+  const p = new URLSearchParams({ exp: String(exp), sig, name: "tpar-photos.zip" });
+  if (idsCsv) p.set("ids", idsCsv);
+  if (pathsCsv) p.set("paths", pathsCsv);
   return `${PROXY_BASE}/functions/v1/drive-zip?${p.toString()}`;
 }
 
@@ -100,6 +115,8 @@ export type GalleryPhoto = MediaFile & {
   thumbProxyUrl?: string;    // grid thumbnail via drive-media (renders for any tech)
   lightboxProxyUrl?: string; // larger view via drive-media
   downloadProxyUrl?: string; // full-file download via drive-media
+  storageUrl?: string;       // set for Supabase-Storage photos (HCP backfill + in-app uploads);
+                             // a direct public URL — not a Drive file, so it bypasses drive-zip.
 };
 export type GalleryResult =
   | { ok: true; photos: GalleryPhoto[]; trunks: string[]; capped: boolean }
@@ -131,19 +148,85 @@ async function trunksForScope(scope: GalleryScope, id: string): Promise<string[]
   return Array.from(new Set(((data ?? []) as Array<{ invoice_number: string | null }>).map((r) => trunkOf(r.invoice_number)).filter((x): x is string => !!x)));
 }
 
+// The job ids a scope covers — for the Storage-backed photos (photo_labels is keyed by
+// hcp_job_id, not by invoice trunk). Parallels trunksForScope.
+async function jobIdsForScope(scope: GalleryScope, id: string): Promise<string[]> {
+  const supa = db();
+  if (scope === "job" || scope === "segment") return [id];
+  if (scope === "estimate") {
+    const { data: links } = await supa.from("job_estimate_links").select("hcp_job_id").eq("hcp_estimate_id", id);
+    return ((links ?? []) as Array<{ hcp_job_id: string | null }>).map((r) => r.hcp_job_id).filter((x): x is string => !!x);
+  }
+  // customer
+  const { data } = await supa.from("job_360").select("hcp_job_id").eq("hcp_customer_id", id);
+  return ((data ?? []) as Array<{ hcp_job_id: string | null }>).map((r) => r.hcp_job_id).filter((x): x is string => !!x);
+}
+
+const JOBS_CAP = 200; // bound the IN() for a huge customer
+
+function mimeFromName(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (["jpg", "jpeg", "png", "gif", "webp", "heic"].includes(ext)) return `image/${ext === "jpg" ? "jpeg" : ext}`;
+  if (["mp4", "mov", "webm", "m4v"].includes(ext)) return `video/${ext}`;
+  return "application/octet-stream";
+}
+
+// Storage-backed photos (photo_labels → public job-photos bucket): the HCP backfill
+// (source='hcp') AND the in-app/Slack uploads. These are direct public URLs, so the proxy
+// fields just point straight at the file (no drive-media needed).
+async function storagePhotosForJobs(jobIds: string[]): Promise<GalleryPhoto[]> {
+  if (jobIds.length === 0) return [];
+  const supa = db();
+  const { data } = await supa
+    .from("photo_labels")
+    .select("id, source, source_id, hcp_job_id, photo_url, primary_subject, labels, created_at")
+    .in("hcp_job_id", jobIds.slice(0, JOBS_CAP))
+    .not("photo_url", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  const out: GalleryPhoto[] = [];
+  for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+    const url = r.photo_url as string;
+    const labels = (r.labels as Record<string, unknown> | null) ?? {};
+    const name = (labels.file_name as string | null) ?? url.split("/").pop()?.split("?")[0] ?? "photo";
+    const mime = (labels.file_type as string | null) ?? mimeFromName(name);
+    const src = (r.source as string | null) ?? "";
+    out.push({
+      id: `pl-${r.id}`,
+      name,
+      mimeType: mime,
+      thumbnailLink: url,
+      webViewLink: url,
+      createdTime: (r.created_at as string | null) ?? undefined,
+      trunk: "",
+      folderLabel: src === "hcp" ? "Housecall Pro" : src === "slack_job_media" ? "Slack" : src === "dashboard" ? "App upload" : "Photo",
+      thumbProxyUrl: url,
+      lightboxProxyUrl: url,
+      downloadProxyUrl: url,
+      storageUrl: url,
+    });
+  }
+  return out;
+}
+
 export async function getGalleryPhotos(scope: GalleryScope, id: string): Promise<GalleryResult> {
   const me = await getCurrentTech().catch(() => null);
   if (!me) return { ok: false, error: "unauthorized" };
   if (!id) return { ok: false, error: "missing id" };
 
-  const allTrunks = await trunksForScope(scope, id);
-  if (allTrunks.length === 0) return { ok: true, photos: [], trunks: [], capped: false };
+  // Two sources, fetched in parallel: Google Drive (Slack #job-media → Drive, keyed by
+  // invoice trunk) and Supabase Storage (HCP photo backfill + in-app uploads, keyed by
+  // hcp_job_id via photo_labels). A job can have photos in either or both.
+  const [allTrunks, jobIds] = await Promise.all([trunksForScope(scope, id), jobIdsForScope(scope, id)]);
   const trunks = allTrunks.slice(0, TRUNK_CAP);
 
-  // Fetch each trunk's Drive media in parallel (capped above), then flatten.
-  const results = await Promise.all(trunks.map((t) => getJobMedia(t).then((r) => ({ t, r }))));
+  const [driveResults, storagePhotos] = await Promise.all([
+    Promise.all(trunks.map((t) => getJobMedia(t).then((r) => ({ t, r })))),
+    storagePhotosForJobs(jobIds),
+  ]);
+
   const photos: GalleryPhoto[] = [];
-  for (const { t, r } of results) {
+  for (const { t, r } of driveResults) {
     if (!r.ok || !r.folders) continue;
     for (const f of r.folders) {
       for (const file of f.files) {
@@ -159,7 +242,9 @@ export async function getGalleryPhotos(scope: GalleryScope, id: string): Promise
       }
     }
   }
-  // Newest first when Drive gave us a createdTime.
+  photos.push(...storagePhotos);
+
+  // Newest first when we have a createdTime.
   photos.sort((a, b) => String(b.createdTime ?? "").localeCompare(String(a.createdTime ?? "")));
   return { ok: true, photos, trunks, capped: allTrunks.length > trunks.length };
 }
