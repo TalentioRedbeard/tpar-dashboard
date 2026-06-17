@@ -330,6 +330,7 @@ export type FiredTrigger = {
   trigger_name: string;
   fired_by: string | null;
   fired_at: string;
+  origin: string | null; // 'dashboard' | 'gps_confirmed' | 'hcp_derived' | …
   context: Record<string, unknown>;
 };
 
@@ -337,7 +338,7 @@ export async function getFiredTriggersForJob(hcp_job_id: string): Promise<FiredT
   const supabase = db();
   const { data } = await supabase
     .from("job_lifecycle_events")
-    .select("id, trigger_number, trigger_name, fired_by, fired_at, context")
+    .select("id, trigger_number, trigger_name, fired_by, fired_at, origin, context")
     .eq("hcp_job_id", hcp_job_id)
     .order("fired_at", { ascending: true });
   return (data ?? []) as FiredTrigger[];

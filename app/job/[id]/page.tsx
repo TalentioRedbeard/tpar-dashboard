@@ -558,7 +558,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                     <span className="font-mono">#{t.trigger_number}</span>
                     <span className="font-medium">{t.trigger_name}</span>
                     <span className="text-neutral-500">·</span>
-                    <span>{t.fired_by ?? "—"}</span>
+                    {t.origin === "hcp_derived" ? (
+                      <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700" title="Derived from HCP work timestamps — not an in-app press">from HCP</span>
+                    ) : (
+                      <span>{t.fired_by ?? "—"}</span>
+                    )}
                     <span className="text-neutral-400">·</span>
                     <span className="text-neutral-500">
                       {new Date(t.fired_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
