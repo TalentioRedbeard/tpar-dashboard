@@ -129,23 +129,34 @@ function trunkOf(invoice: string | null | undefined): string | null {
   return t || null;
 }
 
+// P1 (2026-06-17): resolve an HCP estimate id → its customer. job_estimate_links
+// is effectively empty (estimate scope returned nothing), so we read the customer
+// off hcp_estimates_raw and fan out to that customer's jobs.
+async function customerForEstimate(estimateId: string): Promise<string | null> {
+  const { data } = await db().from("hcp_estimates_raw").select("hcp_customer_id").eq("hcp_estimate_id", estimateId).maybeSingle();
+  return (data as { hcp_customer_id?: string | null } | null)?.hcp_customer_id ?? null;
+}
+
+// P0 (2026-06-17): photo resolution reads jobs_master (full 8,222-job history),
+// NOT job_360 (a ~3-month / 366-job analytics view that hid ~93% of backfilled
+// photos). jobs_master uses hcp_invoice_number (not invoice_number). The
+// `not hcp_job_id is null` guard skips the 2,562 NULL-hcp_job_id legacy rows.
 async function trunksForScope(scope: GalleryScope, id: string): Promise<string[]> {
   const supa = db();
   if (scope === "job" || scope === "segment") {
-    const { data } = await supa.from("job_360").select("invoice_number").eq("hcp_job_id", id).maybeSingle();
-    const t = trunkOf((data as { invoice_number?: string | null } | null)?.invoice_number);
+    const { data } = await supa.from("jobs_master").select("hcp_invoice_number").eq("hcp_job_id", id).maybeSingle();
+    const t = trunkOf((data as { hcp_invoice_number?: string | null } | null)?.hcp_invoice_number);
     return t ? [t] : [];
   }
   if (scope === "estimate") {
-    const { data: links } = await supa.from("job_estimate_links").select("hcp_job_id").eq("hcp_estimate_id", id);
-    const jobIds = ((links ?? []) as Array<{ hcp_job_id: string | null }>).map((r) => r.hcp_job_id).filter((x): x is string => !!x);
-    if (jobIds.length === 0) return [];
-    const { data: jobs } = await supa.from("job_360").select("invoice_number").in("hcp_job_id", jobIds);
-    return Array.from(new Set(((jobs ?? []) as Array<{ invoice_number: string | null }>).map((r) => trunkOf(r.invoice_number)).filter((x): x is string => !!x)));
+    const custId = await customerForEstimate(id);
+    if (!custId) return [];
+    const { data: jobs } = await supa.from("jobs_master").select("hcp_invoice_number").eq("hcp_customer_id", custId).not("hcp_job_id", "is", null);
+    return Array.from(new Set(((jobs ?? []) as Array<{ hcp_invoice_number: string | null }>).map((r) => trunkOf(r.hcp_invoice_number)).filter((x): x is string => !!x)));
   }
-  // customer
-  const { data } = await supa.from("job_360").select("invoice_number").eq("hcp_customer_id", id);
-  return Array.from(new Set(((data ?? []) as Array<{ invoice_number: string | null }>).map((r) => trunkOf(r.invoice_number)).filter((x): x is string => !!x)));
+  // customer — full job history (jobs_master), not the windowed job_360 view
+  const { data } = await supa.from("jobs_master").select("hcp_invoice_number").eq("hcp_customer_id", id).not("hcp_job_id", "is", null);
+  return Array.from(new Set(((data ?? []) as Array<{ hcp_invoice_number: string | null }>).map((r) => trunkOf(r.hcp_invoice_number)).filter((x): x is string => !!x)));
 }
 
 // The job ids a scope covers — for the Storage-backed photos (photo_labels is keyed by
@@ -154,15 +165,17 @@ async function jobIdsForScope(scope: GalleryScope, id: string): Promise<string[]
   const supa = db();
   if (scope === "job" || scope === "segment") return [id];
   if (scope === "estimate") {
-    const { data: links } = await supa.from("job_estimate_links").select("hcp_job_id").eq("hcp_estimate_id", id);
-    return ((links ?? []) as Array<{ hcp_job_id: string | null }>).map((r) => r.hcp_job_id).filter((x): x is string => !!x);
+    const custId = await customerForEstimate(id);
+    if (!custId) return [];
+    const { data } = await supa.from("jobs_master").select("hcp_job_id").eq("hcp_customer_id", custId).not("hcp_job_id", "is", null);
+    return ((data ?? []) as Array<{ hcp_job_id: string | null }>).map((r) => r.hcp_job_id).filter((x): x is string => !!x);
   }
-  // customer
-  const { data } = await supa.from("job_360").select("hcp_job_id").eq("hcp_customer_id", id);
+  // customer — full job history (jobs_master), not the windowed job_360 view
+  const { data } = await supa.from("jobs_master").select("hcp_job_id").eq("hcp_customer_id", id).not("hcp_job_id", "is", null);
   return ((data ?? []) as Array<{ hcp_job_id: string | null }>).map((r) => r.hcp_job_id).filter((x): x is string => !!x);
 }
 
-const JOBS_CAP = 200; // bound the IN() for a huge customer
+const JOBS_CAP = 1000; // bound the IN() for a huge customer (raised from 200 — Equitable has 211 jobs; 2026-06-17)
 
 function mimeFromName(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
