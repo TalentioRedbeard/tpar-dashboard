@@ -70,19 +70,21 @@ export async function searchGalleryTargets(query: string): Promise<GalleryTarget
   // Brookside/vu). ONE row per customer, so a name query collapses to a single
   // "customer · all photos" entry instead of N job rows (Danny's "5 rows" fix, 6/17).
   if (isOffice) {
-    const { data: custs } = await supa
-      .from("customers_master")
-      .select("hcp_customer_id, name")
-      .not("hcp_customer_id", "is", null)
-      .ilike("name", `%${safe}%`)
-      .order("name")
-      .limit(14);
-    const seen = new Set<string>();
+    // P3 recall: gallery_search_customers fuzzy-matches name/company/email AND falls
+    // back to jobs_master.customer_name/address — so NULL-name customers (Sandra
+    // Goodson), site/job terms ("Trinity Trails"), company-only, and typos resolve to
+    // the owning customer. Returns one row per customer, ranked photo-bearing first.
+    const { data: custs } = await supa.rpc("gallery_search_customers", { q: safe, lim: 14 });
     for (const c of (custs ?? []) as Array<Record<string, unknown>>) {
-      const cid = c.hcp_customer_id as string;
-      if (!cid || seen.has(cid)) continue;
-      seen.add(cid);
-      out.push({ kind: "customer", id: cid, label: (c.name as string | null) ?? cid, sub: "customer · all photos" });
+      const cid = c.hcp_customer_id as string | null;
+      if (!cid) continue;
+      const photos = Number(c.photo_count) || 0;
+      out.push({
+        kind: "customer",
+        id: cid,
+        label: (c.display_name as string | null) ?? cid,
+        sub: photos > 0 ? `customer · ${photos} photo${photos === 1 ? "" : "s"}` : "customer · all photos",
+      });
     }
   }
 
