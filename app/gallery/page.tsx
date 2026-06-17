@@ -9,6 +9,7 @@ import { GalleryGrid } from "../../components/GalleryGrid";
 import { GalleryChooser } from "../../components/GalleryChooser";
 import { getCurrentTech } from "../../lib/current-tech";
 import { db } from "@/lib/supabase";
+import { assignedHasEmployee } from "@/lib/assigned-employees";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -51,24 +52,24 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
     unauthorized = "No subject specified. Open a gallery from a job or customer page.";
   } else if (scope === "job" || scope === "segment") {
     const { data } = await db()
-      .from("job_360")
-      .select("customer_name, hcp_customer_id, tech_primary_name, tech_all_names")
+      .from("jobs_master")
+      .select("customer_name, hcp_customer_id, assigned_employees")
       .eq("hcp_job_id", id)
       .maybeSingle();
-    const row = data as { customer_name?: string | null; hcp_customer_id?: string | null; tech_primary_name?: string | null; tech_all_names?: string[] | null } | null;
+    const row = data as { customer_name?: string | null; hcp_customer_id?: string | null; assigned_employees?: string | null } | null;
     customerId = row?.hcp_customer_id ?? null;
     title = `Photos · ${row?.customer_name ?? "job"}`;
     backHref = `/job/${id}`;
-    // Tech scope: a tech may only view photos for a job they were on (mirrors /job auth).
-    if (!isOffice) {
-      const mine = me.tech?.hcp_full_name ?? null;
-      const crew = [row?.tech_primary_name, ...((row?.tech_all_names as string[] | null) ?? [])].filter(Boolean) as string[];
-      if (!mine || !crew.includes(mine)) unauthorized = "You can only view photos for jobs you were on.";
+    // Tech scope: a tech may only view photos for a job they were on. jobs_master has no
+    // tech_* columns — match the signed-in tech's HCP pro id against the job's crew
+    // (assigned_employees). Deny if unverifiable (null row/crew) — never over-shares.
+    if (!isOffice && !assignedHasEmployee(row?.assigned_employees ?? null, me.tech?.hcp_employee_id ?? null)) {
+      unauthorized = "You can only view photos for jobs you were on.";
     }
   } else if (scope === "customer") {
     if (!isOffice) unauthorized = "Customer-wide photo history is office-only.";
     else {
-      const { data } = await db().from("customer_360").select("name").eq("hcp_customer_id", id).maybeSingle();
+      const { data } = await db().from("customers_master").select("name").eq("hcp_customer_id", id).maybeSingle();
       title = `Photos · ${(data as { name?: string } | null)?.name ?? "customer"}`;
       backHref = `/customer/${id}`;
     }

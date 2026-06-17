@@ -9,6 +9,7 @@
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { getJobMedia, type MediaFile } from "@/lib/job-media-actions";
+import { assignedHasEmployee } from "@/lib/assigned-employees";
 import crypto from "node:crypto";
 
 // drive-media proxy signing — serves Drive media to ANY tech (no personal Google session).
@@ -60,39 +61,62 @@ export async function searchGalleryTargets(query: string): Promise<GalleryTarget
   const safe = query.replace(/[,()*%]/g, " ").trim();
   if (safe.length < 2) return [];
   const isOffice = !!(me.isAdmin || me.isManager);
-  const myName = me.tech?.hcp_full_name ?? null;
+  const myEmpId = me.tech?.hcp_employee_id ?? null;
   const supa = db();
   const out: GalleryTarget[] = [];
 
+  // Office: customer matches from the FULL roster (customers_master, 4,077) — not the
+  // carded-only customer_360 (3,429) that hid ~648 customers (Sandra, In-the-Raw
+  // Brookside/vu). ONE row per customer, so a name query collapses to a single
+  // "customer · all photos" entry instead of N job rows (Danny's "5 rows" fix, 6/17).
+  if (isOffice) {
+    const { data: custs } = await supa
+      .from("customers_master")
+      .select("hcp_customer_id, name")
+      .not("hcp_customer_id", "is", null)
+      .ilike("name", `%${safe}%`)
+      .order("name")
+      .limit(14);
+    const seen = new Set<string>();
+    for (const c of (custs ?? []) as Array<Record<string, unknown>>) {
+      const cid = c.hcp_customer_id as string;
+      if (!cid || seen.has(cid)) continue;
+      seen.add(cid);
+      out.push({ kind: "customer", id: cid, label: (c.name as string | null) ?? cid, sub: "customer · all photos" });
+    }
+  }
+
+  // Job matches. Office: by invoice/job number ONLY (name queries are served by the
+  // customer rows above — keeps results to varied candidates, not job spam). Techs:
+  // by invoice OR customer name, tech-scoped to their own crew (assigned_employees
+  // matched on the signed-in tech's HCP pro id) and deduped to one row per customer.
+  const jobOr = isOffice
+    ? `hcp_invoice_number.ilike.%${safe}%`
+    : `hcp_invoice_number.ilike.%${safe}%,customer_name.ilike.%${safe}%`;
   const { data: jobs } = await supa
-    .from("job_360")
-    .select("hcp_job_id, invoice_number, customer_name, tech_primary_name, tech_all_names, job_date")
-    .or(`invoice_number.ilike.%${safe}%,customer_name.ilike.%${safe}%`)
-    .order("job_date", { ascending: false, nullsFirst: false })
-    .limit(20);
+    .from("jobs_master")
+    .select("hcp_job_id, hcp_customer_id, hcp_invoice_number, customer_name, assigned_employees, job_scheduled_start_date")
+    .or(jobOr)
+    .not("hcp_job_id", "is", null)
+    .order("job_scheduled_start_date", { ascending: false, nullsFirst: false })
+    .limit(60);
+  const seenCust = new Set<string>();
   for (const j of (jobs ?? []) as Array<Record<string, unknown>>) {
     if (!isOffice) {
-      const crew = [j.tech_primary_name as string | null, ...(((j.tech_all_names as string[] | null) ?? []))].filter(Boolean) as string[];
-      if (!myName || !crew.includes(myName)) continue; // techs only see their own jobs
+      if (!assignedHasEmployee(j.assigned_employees as string | null, myEmpId)) continue; // techs only see their own jobs
+      const cust = (j.hcp_customer_id as string | null) ?? "";
+      if (cust && seenCust.has(cust)) continue; // one row per customer for techs
+      if (cust) seenCust.add(cust);
     }
+    const inv = j.hcp_invoice_number as string | null;
+    const jd = j.job_scheduled_start_date as string | null;
     out.push({
       kind: "job",
       id: j.hcp_job_id as string,
-      label: (j.customer_name as string | null) ?? (j.invoice_number as string | null) ?? (j.hcp_job_id as string),
-      sub: `job · #${(j.invoice_number as string | null) ?? "?"}${j.job_date ? " · " + (j.job_date as string) : ""}`,
+      label: (j.customer_name as string | null) ?? inv ?? (j.hcp_job_id as string),
+      sub: `job · #${inv ?? "?"}${jd ? " · " + String(jd).slice(0, 10) : ""}`,
     });
-    if (out.length >= 15) break;
-  }
-
-  if (isOffice) {
-    const { data: custs } = await supa
-      .from("customer_360")
-      .select("hcp_customer_id, name")
-      .ilike("name", `%${safe}%`)
-      .limit(8);
-    for (const c of (custs ?? []) as Array<Record<string, unknown>>) {
-      out.push({ kind: "customer", id: c.hcp_customer_id as string, label: (c.name as string | null) ?? (c.hcp_customer_id as string), sub: "customer · all jobs" });
-    }
+    if (out.length >= 22) break;
   }
   return out.slice(0, 22);
 }
@@ -226,6 +250,19 @@ export async function getGalleryPhotos(scope: GalleryScope, id: string): Promise
   const me = await getCurrentTech().catch(() => null);
   if (!me) return { ok: false, error: "unauthorized" };
   if (!id) return { ok: false, error: "missing id" };
+
+  // Scope ownership guard. This is a directly-invocable server action, so it must
+  // self-authorize — the /gallery page gate only controls rendering. Office sees all;
+  // a tech may only pull photos for a job they were on, never customer/estimate-wide.
+  // (2026-06-17 adversarial review: re-basing onto jobs_master widened a pre-existing
+  // action-level hole from ~nothing to the full archive; this closes it.)
+  const isOffice = !!(me.isAdmin || me.isManager);
+  if (!isOffice) {
+    if (scope === "customer" || scope === "estimate") return { ok: false, error: "unauthorized" };
+    const { data: ownRow } = await db().from("jobs_master").select("assigned_employees").eq("hcp_job_id", id).maybeSingle();
+    const ae = (ownRow as { assigned_employees?: string | null } | null)?.assigned_employees ?? null;
+    if (!assignedHasEmployee(ae, me.tech?.hcp_employee_id ?? null)) return { ok: false, error: "unauthorized" };
+  }
 
   // Two sources, fetched in parallel: Google Drive (Slack #job-media → Drive, keyed by
   // invoice trunk) and Supabase Storage (HCP photo backfill + in-app uploads, keyed by
