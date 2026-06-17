@@ -24,6 +24,7 @@
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -72,8 +73,13 @@ function fireHcpMirrorInBackground(
     return;
   }
   const t0 = Date.now();
-  // Intentionally not awaited.
-  void (async () => {
+  // Deferred via after() so the dispatch is GUARANTEED to run on Vercel. A bare
+  // fire-and-forget promise is killed when the serverless instance freezes after
+  // revalidatePath returns — the 2026-06-17 rollout incident: OMW recorded the
+  // TPAR row but the customer text silently never fired (zero hcp-trigger-action
+  // logs). after() keeps the instance alive for the quick (~1-2s) dispatch without
+  // blocking the tech; the bot then runs in the edge fn's waitUntil with retries.
+  after(async () => {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/hcp-trigger-action`, {
         method: "POST",
@@ -112,7 +118,7 @@ function fireHcpMirrorInBackground(
         },
       });
     }
-  })();
+  });
 }
 
 export type FireResult = { ok: true; event_id: string; fired_at: string } | { ok: false; error: string };
@@ -207,6 +213,12 @@ export async function fireLifecycleTrigger(input: {
   // was surfaced from GPS proximity and confirmed by the tech (audit trail);
   // put the evidence (lat/lng/dist) in `context`.
   origin?: string;
+  // Resolved GPS fix from the client (ClockButton pattern). Persisted server-side
+  // into tech_locations via after() so the adherence row lands reliably — the old
+  // client fire-and-forget POST lost the race to revalidate and left 0 lifecycle
+  // rows (2026-06-17 finding). action_type labels the row (omw/start/finish/…).
+  gps?: { lat: number; lng: number; accuracyM?: number | null };
+  action_type?: string;
 }): Promise<FireResult> {
   const me = await getCurrentTech();
   if (!me?.tech) return { ok: false, error: "Not signed in as a tech." };
@@ -246,6 +258,30 @@ export async function fireLifecycleTrigger(input: {
   const hcpAction = TRIGGER_TO_HCP_ACTION[input.trigger_number];
   if (hcpAction) {
     fireHcpMirrorInBackground(input.hcp_job_id, hcpAction, me.tech.tech_short_name, input.trigger_number);
+  }
+
+  // Persist the per-action GPS adherence row server-side (deferred via after();
+  // never blocks or fails the trigger). Replaces the client fire-and-forget POST
+  // that was losing the race to revalidate and landing 0 lifecycle rows.
+  const fix = input.gps;
+  if (fix && Number.isFinite(fix.lat) && Number.isFinite(fix.lng) && Math.abs(fix.lat) <= 90 && Math.abs(fix.lng) <= 180) {
+    const techEmail = me.email?.toLowerCase() ?? null;
+    const techShort = me.tech.tech_short_name;
+    const actionType = (input.action_type ?? triggerName).slice(0, 40);
+    after(async () => {
+      try {
+        await db().from("tech_locations").insert({
+          tech_email: techEmail,
+          tech_short_name: techShort,
+          action_type: actionType,
+          hcp_job_id: input.hcp_job_id || null,
+          lat: fix.lat,
+          lng: fix.lng,
+          accuracy_m: fix.accuracyM ?? null,
+          raw: null,
+        });
+      } catch { /* adherence ping is auxiliary — never fail the trigger */ }
+    });
   }
 
   revalidatePath("/me");

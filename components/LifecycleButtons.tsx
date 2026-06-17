@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { fireLifecycleTrigger, getLifecycleHcpStatus, type HcpMirrorStatus } from "@/app/me/lifecycle-actions";
-import { captureTechLocation } from "@/lib/capture-tech-location";
 import { bounceHcpAppointments } from "@/lib/bounce-hcp-appointments";
 import { getOpenJobForTech, type OpenJob } from "@/lib/omw-guard-actions";
 import { OmwGuardModal } from "./OmwGuardModal";
@@ -69,13 +68,11 @@ const TRIGGER_ACTION: Record<TriggerNum, string> = {
 };
 
 // Resolve a fresh GPS fix as an awaitable Promise (mirrors ClockButton.captureLocation).
-// We resolve the fix and pass it to captureTechLocation({ fix }) BEFORE firing the
-// trigger — the old path passed no fix, so captureTechLocation ran its own async
-// getCurrentPosition fire-and-forget whose late tech_locations POST raced (and lost)
-// against runFire's revalidatePath/router.refresh. Result: zero start/finish rows ever
-// landed and lifecycle_adherence_v stayed empty (2026-06-12 diagnosis). Resolving first
-// issues the write while the fix is in hand and before any revalidation — the same shape
-// the clock path uses, which lands rows reliably.
+// We resolve the fix on the client and hand it to fireLifecycleTrigger, which persists
+// the tech_locations adherence row SERVER-SIDE via after() — reliable because it rides
+// the same awaited action that writes the event. (The old client-side captureTechLocation
+// POST ran its own getCurrentPosition fire-and-forget whose late POST raced — and lost —
+// to runFire's revalidate, landing 0 lifecycle rows; 2026-06-17 fix.)
 function resolveFix(): Promise<{ lat: number; lng: number; accuracyM: number | null } | undefined> {
   if (typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve(undefined);
   return new Promise((resolve) => {
@@ -187,12 +184,14 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
 
   // The actual trigger fire (no guard). Reused by onFire and by the OMW guard
   // modal once a prior open job is resolved.
-  const runFire = async (triggerNumber: TriggerNum) => {
+  const runFire = async (triggerNumber: TriggerNum, fix?: { lat: number; lng: number; accuracyM: number | null }) => {
     setError(null);
     const res = await fireLifecycleTrigger({
       trigger_number: triggerNumber,
       hcp_job_id: hcpJobId,
       hcp_appointment_id: hcpAppointmentId ?? undefined,
+      gps: fix,
+      action_type: TRIGGER_ACTION[triggerNumber],
     });
     if (!res.ok) {
       setError(res.error);
@@ -223,15 +222,12 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     setFiring(triggerNumber);
     startTransition(async () => {
       try {
-        // Resolve a GPS fix and write the per-action tech_locations row (the
-        // adherence signal lifecycle_adherence_v reads) BEFORE firing the trigger,
-        // so the location POST is issued while we hold the fix and ahead of any
-        // revalidation. Passing a resolved { fix } makes captureTechLocation POST
-        // immediately — the old no-fix path ran its own async getCurrentPosition
-        // whose late POST raced (and lost) to runFire's revalidate, landing 0 rows.
-        // A missing/denied fix just skips the row — the trigger still fires.
+        // Resolve a GPS fix and hand it to the server action, which persists the
+        // per-action tech_locations row server-side (via after()). The old path
+        // fired a client-side captureTechLocation whose POST raced (and lost) to
+        // revalidate, landing 0 lifecycle rows (2026-06-17). A missing/denied fix
+        // just skips the row — the trigger still fires.
         const fix = await resolveFix();
-        if (fix) captureTechLocation(TRIGGER_ACTION[triggerNumber], { hcpJobId, fix });
 
         // OMW guard: before On-My-Way, check for a prior job left open (started,
         // never Finished). If found, prompt Finish/Pause/Other and defer the fire.
@@ -239,7 +235,7 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
           const open = await getOpenJobForTech(hcpJobId);
           if (open) { setGuardJob(open); return; }
         }
-        await runFire(triggerNumber);
+        await runFire(triggerNumber, fix);
       } finally {
         setFiring(null);
       }
@@ -303,7 +299,7 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
                 className={`${baseClass} ${variantClass}${emphasisClass}`}
                 title={b.hint ?? b.label}
               >
-                {firing === b.trigger ? "… " : (wasFired ? "✓ " : "")}{b.label}
+                {firing === b.trigger ? "Sending…" : `${wasFired ? "✓ " : ""}${b.label}`}
               </button>
               {mirrorEntry ? (
                 <MirrorPill entry={mirrorEntry} hcpJobId={hcpJobId} onRetry={() => onFire(b.trigger)} retryDisabled={firing === b.trigger} />

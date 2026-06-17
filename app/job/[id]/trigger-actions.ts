@@ -13,6 +13,7 @@
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -45,7 +46,9 @@ function fireJobHcpMirror(
 ): void {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
   const t0 = Date.now();
-  void (async () => {
+  // Deferred via after() (not a bare promise) so Vercel doesn't drop the dispatch
+  // when the instance freezes post-revalidate — see lifecycle-actions.ts.
+  after(async () => {
     const supa = db();
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/hcp-trigger-action`, {
@@ -67,7 +70,7 @@ function fireJobHcpMirror(
         context: { hcp_job_id: hcpJobId, job_id: hcpJobId, action, trigger_number: triggerNumber, actor, elapsed_ms: Date.now() - t0 },
       });
     }
-  })();
+  });
 }
 
 // Decide whether to push this freshly-fired /job trigger to HCP. Gated by the flag,
