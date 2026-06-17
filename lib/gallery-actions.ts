@@ -208,6 +208,15 @@ function mimeFromName(name: string): string {
   return "application/octet-stream";
 }
 
+// Supabase image transformation: serve a resized copy (object/public → render/image/public).
+// Verified live: a 2.6 MB original renders to ~200 KB at width=400 — the grid was loading
+// 30 full-res originals (~80 MB), which is the slowness Danny saw. Images only (not video).
+function storageThumb(url: string, width: number): string {
+  return url.includes("/storage/v1/object/public/")
+    ? `${url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")}?width=${width}&quality=70`
+    : url;
+}
+
 // Storage-backed photos (photo_labels → public job-photos bucket): the HCP backfill
 // (source='hcp') AND the in-app/Slack uploads. These are direct public URLs, so the proxy
 // fields just point straight at the file (no drive-media needed).
@@ -228,17 +237,20 @@ async function storagePhotosForJobs(jobIds: string[]): Promise<GalleryPhoto[]> {
     const name = (labels.file_name as string | null) ?? url.split("/").pop()?.split("?")[0] ?? "photo";
     const mime = (labels.file_type as string | null) ?? mimeFromName(name);
     const src = (r.source as string | null) ?? "";
+    const isImg = mime.startsWith("image/");
     out.push({
       id: `pl-${r.id}`,
       name,
       mimeType: mime,
-      thumbnailLink: url,
+      thumbnailLink: isImg ? storageThumb(url, 400) : url,
       webViewLink: url,
       createdTime: (r.created_at as string | null) ?? undefined,
       trunk: "",
       folderLabel: src === "hcp" ? "Housecall Pro" : src === "slack_job_media" ? "Slack" : src === "dashboard" ? "App upload" : "Photo",
-      thumbProxyUrl: url,
-      lightboxProxyUrl: url,
+      // Lightweight grid (~400px) + larger lightbox (~1400px) via image-transform;
+      // full-res only on download. Videos pass through untransformed. (2026-06-17)
+      thumbProxyUrl: isImg ? storageThumb(url, 400) : url,
+      lightboxProxyUrl: isImg ? storageThumb(url, 1400) : url,
       downloadProxyUrl: url,
       storageUrl: url,
     });
