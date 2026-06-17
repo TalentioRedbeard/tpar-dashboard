@@ -538,17 +538,44 @@ export default async function SchedulePage({
     cellByDay.get(dayKey)!.push(a);
   }
 
-  // Row order: the dispatcher's saved order first (#21), else leads-first default;
-  // then any extra primary names, then Unassigned.
+  // Row order: the dispatcher's saved order wins (#21). With NO saved order, the
+  // DAY view groups same-job crews adjacent (ported from /dispatch/today's crew-walk)
+  // so a 2-tech job's lanes sit together — Danny 2026-06-17; week/month keep the
+  // leads-first default. Idle techs (no job in the window) always keep their lane,
+  // appended in the default order, so e.g. a 0-job lead still shows.
   const savedTechOrder = await getTechOrder();
   const techFulls = techs.map((t) => t.hcp_full_name).filter(Boolean) as string[];
-  const orderedTechFulls = [...techFulls].sort((a, b) => {
-    const ia = savedTechOrder.indexOf(a), ib = savedTechOrder.indexOf(b);
-    if (ia === -1 && ib === -1) return techFulls.indexOf(a) - techFulls.indexOf(b);
-    if (ia === -1) return 1;
-    if (ib === -1) return -1;
-    return ia - ib;
-  });
+  const defaultOrder = [...techFulls]; // tech_directory already sorts leads-first, then alpha
+  let orderedTechFulls: string[];
+  if (savedTechOrder.length) {
+    // Manual dispatcher order wins, all views.
+    orderedTechFulls = [...techFulls].sort((a, b) => {
+      const ia = savedTechOrder.indexOf(a), ib = savedTechOrder.indexOf(b);
+      if (ia === -1 && ib === -1) return defaultOrder.indexOf(a) - defaultOrder.indexOf(b);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+  } else if (view === "day") {
+    // Crew-walk: walk the day's appts in start order, append each appt's crew
+    // (primary first) the first time we see them — same-job crews land adjacent.
+    // Then any active techs with no job today, in the leads-first/alpha default,
+    // so idle lanes (e.g. Danny, 0 jobs) remain visible.
+    const known = new Set(techFulls);
+    const placed = new Set<string>();
+    const walk: string[] = [];
+    const dayAppts = [...appts].sort(
+      (a, b) => new Date(a.scheduled_start).getTime() - new Date(b.scheduled_start).getTime(),
+    );
+    for (const a of dayAppts) {
+      const crew = [a.tech_primary_name, ...(a.tech_all_names ?? [])].filter((n): n is string => !!n);
+      for (const f of crew) if (known.has(f) && !placed.has(f)) { placed.add(f); walk.push(f); }
+    }
+    for (const f of defaultOrder) if (!placed.has(f)) { placed.add(f); walk.push(f); }
+    orderedTechFulls = walk;
+  } else {
+    orderedTechFulls = defaultOrder;
+  }
   const rowOrder: string[] = [...orderedTechFulls];
   for (const a of appts) {
     const tech = a.tech_primary_name;
