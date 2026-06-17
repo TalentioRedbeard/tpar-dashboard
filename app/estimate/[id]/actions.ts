@@ -22,15 +22,27 @@ export type EstimateDetail = {
   hcp_pushed_at: string | null;
   customer_approved_at: string | null;
   tech_authorized_at: string | null;
+  /** True if any line was written by the build-mode AI (intake.source =
+   *  'ai_conversation'). Drives the "Review AI estimate" deep-link. */
+  is_ai_built: boolean;
 };
 
 const COLS =
   "id, project_name, customer_name, hcp_customer_id, hcp_job_id, hcp_estimate_id, hcp_estimate_number, status, source, created_at, created_by, hcp_pushed_at, customer_approved_at, tech_authorized_at";
 
 export async function getEstimateDetail(id: string): Promise<EstimateDetail | null> {
-  const { data } = await db().from("bid_estimates").select(COLS).eq("id", id).maybeSingle();
+  const supa = db();
+  const { data } = await supa.from("bid_estimates").select(COLS).eq("id", id).maybeSingle();
   if (!data) return null;
-  return data as unknown as EstimateDetail;
+  // Cheap AI-built probe: does any line carry an ai_conversation intake?
+  const { data: aiLine } = await supa
+    .from("bid_estimate_lines")
+    .select("id")
+    .eq("estimate_id", id)
+    .eq("intake->>source", "ai_conversation")
+    .limit(1)
+    .maybeSingle();
+  return { ...(data as Record<string, unknown>), is_ai_built: !!aiLine } as unknown as EstimateDetail;
 }
 
 export async function updateEstimate(

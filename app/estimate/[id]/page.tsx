@@ -73,16 +73,28 @@ export default async function EstimateDetailPage({
       }
       backHref="/estimates"
       backLabel="All estimates"
-      actions={hcpUrl ? (
-        <a
-          href={hcpUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-        >
-          Open in HCP ↗
-        </a>
-      ) : undefined}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          {est.is_ai_built ? (
+            <Link
+              href={`/estimate/${est.id}/review`}
+              className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800"
+            >
+              Review AI estimate →
+            </Link>
+          ) : null}
+          {hcpUrl ? (
+            <a
+              href={hcpUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              Open in HCP ↗
+            </a>
+          ) : null}
+        </div>
+      }
     >
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">

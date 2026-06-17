@@ -85,10 +85,11 @@ const COLS: Array<{ key: SortKey; label: string; widthClass: string; align?: "le
   { key: "customer_approved_at", label: "Approved", widthClass: "w-[100px]" },
 ];
 
-export function EstimatesTable({ rows: initialRows }: { rows: EstimateRow[] }) {
+export function EstimatesTable({ rows: initialRows, aiIds = [] }: { rows: EstimateRow[]; aiIds?: string[] }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const aiSet = useMemo(() => new Set(aiIds), [aiIds]);
 
   const visible = useMemo(() => {
     const filtered = query ? initialRows.filter((r) => rowMatchesSearch(r, query)) : initialRows;
@@ -172,7 +173,16 @@ export function EstimatesTable({ rows: initialRows }: { rows: EstimateRow[] }) {
                   )}
                 </td>
                 <td className="truncate px-3 py-2 text-xs text-neutral-700">
-                  <Link href={`/estimate/${r.id}`} className="block truncate">{r.project_name ?? "—"}</Link>
+                  {aiSet.has(r.id) ? (
+                    <Link href={`/estimate/${r.id}/review`} className="flex items-center gap-1.5 truncate">
+                      <span className="shrink-0 rounded-sm bg-brand-50 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-brand-700 ring-1 ring-inset ring-brand-200" title="Built by the estimate-from-conversation AI — click to review">
+                        AI
+                      </span>
+                      <span className="truncate">{r.project_name ?? "—"}</span>
+                    </Link>
+                  ) : (
+                    <Link href={`/estimate/${r.id}`} className="block truncate">{r.project_name ?? "—"}</Link>
+                  )}
                 </td>
                 <td className="truncate px-3 py-2">
                   <Link href={`/estimate/${r.id}`} className="block font-mono text-xs">

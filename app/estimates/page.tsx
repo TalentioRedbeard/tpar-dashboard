@@ -34,6 +34,20 @@ export default async function EstimatesPage() {
     .limit(200);
   const rows = (data ?? []) as EstimateRow[];
 
+  // AI-built badge: which of these estimates have a line written by the
+  // build-mode AI (intake.source = 'ai_conversation')? One query over the
+  // visible ids keeps it cheap. AI rows get a badge + deep-link to the review
+  // surface in the table.
+  let aiIds: string[] = [];
+  if (rows.length) {
+    const { data: aiLines } = await supa
+      .from("bid_estimate_lines")
+      .select("estimate_id")
+      .in("estimate_id", rows.map((r) => r.id))
+      .eq("intake->>source", "ai_conversation");
+    aiIds = Array.from(new Set(((aiLines ?? []) as Array<{ estimate_id: string }>).map((l) => l.estimate_id)));
+  }
+
   const canCreate = !!(me?.isAdmin || me?.isManager);
 
   const byStatus = new Map<string, number>();
@@ -75,7 +89,7 @@ export default async function EstimatesPage() {
         })}
       </section>
 
-      <EstimatesTable rows={rows} />
+      <EstimatesTable rows={rows} aiIds={aiIds} />
     </PageShell>
   );
 }
