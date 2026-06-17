@@ -14,6 +14,7 @@ import { listPinnedEmailsForJob } from "../../customer/[id]/email-actions";
 import { TriggerForms } from "./TriggerForms";
 import { JobBriefingCard } from "../../../components/JobBriefingCard";
 import { AddJobLineItem } from "../../../components/AddJobLineItem";
+import { RefreshFromHcpButton } from "../../../components/RefreshFromHcpButton";
 import { PageShell } from "../../../components/PageShell";
 import { getJob360, resolveJobIdentifier, jobRevenueDollars, jobDueDollars } from "@/lib/typed-db/job-360";
 import { redirect } from "next/navigation";
@@ -513,6 +514,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           <LinkButton href={`/gallery?scope=job&id=${id}`} variant="secondary">
             📷 Photos
           </LinkButton>
+          {canWrite ? <RefreshFromHcpButton hcpJobId={id} /> : null}
           {canWrite ? (
             <>
               <LinkButton href={`/estimate/new?job=${id}`} variant="primary">

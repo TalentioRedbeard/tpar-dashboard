@@ -343,3 +343,34 @@ export async function getFiredTriggersForJob(hcp_job_id: string): Promise<FiredT
     .order("fired_at", { ascending: true });
   return (data ?? []) as FiredTrigger[];
 }
+
+// ─── On-demand "Refresh from HCP" ───────────────────────────────────────
+// Pull this job's latest invoice(s) + line items from HCP into hcp_invoices_raw
+// via the hcp-refresh-job-invoice edge fn, then revalidate so the Line-items
+// section reflects it. Closes the draft-invoice blind spot (a line added in HCP
+// before send/pay produces no webhook). (Danny 2026-06-17)
+export async function refreshJobFromHcp(hcpJobId: string): Promise<{ ok: boolean; message: string }> {
+  const me = await getCurrentTech();
+  if (!me?.canWrite) return { ok: false, message: "No write access." };
+  if (!hcpJobId) return { ok: false, message: "Missing job." };
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return { ok: false, message: "Server not configured." };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/hcp-refresh-job-invoice`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ job_id: hcpJobId }),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean; error?: string; invoices_upserted?: number; line_item_counts?: number[];
+    };
+    if (!res.ok || !data?.ok) return { ok: false, message: data?.error ?? `Pull failed (${res.status}).` };
+    revalidatePath(`/job/${hcpJobId}`);
+    const lines = (data.line_item_counts ?? []).reduce((s, n) => s + (Number(n) || 0), 0);
+    if ((data.invoices_upserted ?? 0) === 0) {
+      return { ok: true, message: "No invoice found in HCP yet for this job (it may still be a draft)." };
+    }
+    return { ok: true, message: `Pulled ${data.invoices_upserted} invoice(s) · ${lines} line item(s) from HCP.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
