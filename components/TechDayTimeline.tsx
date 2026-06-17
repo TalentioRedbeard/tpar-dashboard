@@ -32,6 +32,7 @@ export type TLJob = {
   curState: string;
   leadColor: string;
   liveMinutes: number | null;
+  durationDone: boolean;
   materials: number | null;
   laborEst: number | null;
 };
@@ -151,7 +152,7 @@ export function TechDayTimeline({ rows, isToday, nowMin }: { rows: TLRow[]; isTo
                           style={{ top: bandTop, height: bandH, left: `${pct(j.startMin)}%`, width: `${widthPct(j.startMin, j.endMin)}%`, border: `1px solid ${j.leadColor}66`, backgroundColor: `${j.leadColor}12` }}>
                           <span className="absolute left-1 top-0 truncate text-[10px] font-semibold text-neutral-700" style={{ maxWidth: "calc(100% - 6px)" }}>{j.customer ?? "—"}</span>
                           <span className="absolute bottom-0 left-1 truncate text-[9px] text-neutral-500" style={{ maxWidth: "calc(100% - 6px)" }}>
-                            {j.liveMinutes != null ? `⏱ ${Math.floor(j.liveMinutes / 60)}h${String(j.liveMinutes % 60).padStart(2, "0")}` : ""}
+                            {j.liveMinutes != null ? `${j.durationDone ? "✓" : "⏱"} ${Math.floor(j.liveMinutes / 60)}h${String(j.liveMinutes % 60).padStart(2, "0")}` : ""}
                             {j.materials != null && j.materials > 0 ? ` · ${money(j.materials)} mat` : ""}
                             {j.laborEst != null && j.laborEst > 0 ? ` +${money(j.laborEst)} lbr` : ""}
                           </span>

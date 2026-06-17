@@ -735,8 +735,21 @@ export default async function SchedulePage({
       }
       const lastEv = evs[evs.length - 1];
       const startEv = evs.find((e) => e.trigger_number === 3);
-      const finished = evs.some((e) => e.trigger_number === 6 || e.trigger_number === 7);
-      const liveMinutes = startEv && isTodayDay && dayNowMin != null && !finished ? Math.max(0, dayNowMin - chiMinOfDay(startEv.fired_at)) : null;
+      const finishEv = evs.find((e) => e.trigger_number === 6 || e.trigger_number === 7);
+      const finished = !!finishEv;
+      const startMinOf = startEv ? chiMinOfDay(startEv.fired_at) : null;
+      // Job chip duration: final Start→Finish total once finished, else a live
+      // Start→now ticker while in progress (Danny 2026-06-17 — a completed job
+      // should show how long it actually took, not go blank).
+      const liveMinutes =
+        startMinOf == null
+          ? null
+          : finished
+            ? Math.max(0, chiMinOfDay(finishEv!.fired_at) - startMinOf)
+            : isTodayDay && dayNowMin != null
+              ? Math.max(0, dayNowMin - startMinOf)
+              : null;
+      const durationDone = finished && liveMinutes != null;
       const crewSize = Math.max(1, a.tech_all_names?.length ?? 1);
       const materials = a.hcp_job_id ? matByJob.get(a.hcp_job_id) ?? 0 : 0;
       const laborEst = liveMinutes != null ? (liveMinutes / 60) * BURDEN * crewSize : null;
@@ -747,7 +760,7 @@ export default async function SchedulePage({
         segs,
         curColor: lastEv ? STATE[lastEv.trigger_number]?.color ?? PLANNED : PLANNED,
         curState: lastEv ? STATE[lastEv.trigger_number]?.label ?? "Scheduled" : "Scheduled",
-        leadColor, liveMinutes, materials, laborEst,
+        leadColor, liveMinutes, durationDone, materials, laborEst,
       };
     };
 
