@@ -199,7 +199,6 @@ export default async function DispatchPage({
     adherenceFarRes,
     openArRes,
     agedHighImpRes,
-    agedHighImpCountRes,
     needsSchedulingRes,
     acksRes,
   ] = await Promise.all([
@@ -324,7 +323,10 @@ export default async function DispatchPage({
       .gte("invoice_date", new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0,10))
       .limit(500),
     // High-importance aged comms — variance audit V13 surfaced 62 imp≥7
-    // events unacked >24h. Top 6 here, link to full queue for the rest.
+    // events unacked >24h. Fetch the FULL aged set (capped at 200); we filter out
+    // items already dispositioned in dispatch_acks in JS, then show the top 6
+    // unaddressed + a real count — so the panel never shows a count over an empty
+    // body, and it repopulates as items are cleared. (Danny 2026-06-17)
     supa
       .from("communication_events")
       .select("id, occurred_at, channel, direction, customer_name, hcp_customer_id, importance, summary, flags, tech_short_name")
@@ -335,16 +337,7 @@ export default async function DispatchPage({
       .or("direction.is.null,direction.neq.internal")
       .order("importance", { ascending: false })
       .order("occurred_at", { ascending: false })
-      .limit(6),
-    // Total count for the aged-high-imp banner (so the badge reflects reality, not just top 6)
-    supa
-      .from("communication_events")
-      .select("id", { count: "exact", head: true })
-      .is("acked_at", null)
-      .gte("importance", 7)
-      .lt("occurred_at", new Date(Date.now() - 24 * 3600_000).toISOString())
-      .gte("occurred_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
-      .or("direction.is.null,direction.neq.internal"),
+      .limit(200),
     // Unscheduled backlog: HCP jobs with status='needs scheduling' and no scheduled_start.
     // Madisson's actionable queue. We pull from hcp_jobs_raw because these jobs never
     // make it into appointments_master (no schedule = no row). Excludes the 333 dead
@@ -551,12 +544,20 @@ export default async function DispatchPage({
   const openArDollars = openArRows.reduce((s, r) => s + (Number(r.due_amount ?? r.amount) || 0), 0) / 100;
   const openArCount = openArRows.length;
   // Aged high-importance comms — variance audit V13. List for the banner.
-  const agedHighImpRows = (agedHighImpRes.data ?? []) as Array<{
+  const agedHighImpAll = (agedHighImpRes.data ?? []) as Array<{
     id: number; occurred_at: string; channel: string | null; direction: string | null;
     customer_name: string | null; hcp_customer_id: string | null; importance: number; summary: string | null;
     flags: string[] | null; tech_short_name: string | null;
   }>;
-  const agedHighImpTotal = agedHighImpCountRes.count ?? agedHighImpRows.length;
+  // Exclude items already dispositioned in dispatch_acks (when hiding resolved) BEFORE
+  // capping to 6 — otherwise an all-resolved top-6 leaves the panel blank while real
+  // unaddressed work sits invisible behind the cap. The count reflects the unaddressed
+  // set, and clearing one repopulates the next (revalidatePath fires on every ack).
+  const agedHighImpVisible = hideResolved
+    ? agedHighImpAll.filter((c) => !isResolving(getAck("comm_event", String(c.id))?.status))
+    : agedHighImpAll;
+  const agedHighImpTotal = agedHighImpVisible.length;
+  const agedHighImpRows = agedHighImpVisible.slice(0, 6);
 
   // Group today's appts by lane (primary tech for now; tech_all_names listed in card)
   const laneByTech = new Map<string, Appt[]>();
