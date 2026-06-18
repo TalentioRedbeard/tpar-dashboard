@@ -30,6 +30,7 @@ export type UnlinkedReceipt = {
   tech_name: string | null;
   photo_url: string | null;
   notes: string | null;
+  raw_po: string | null;
   line_items: ReconcileLineItem[];
   has_tech: boolean;
 };
@@ -44,7 +45,7 @@ export async function getUnlinkedReceipts(opts?: { source?: string; limit?: numb
 
   let q = supa
     .from("receipts_master")
-    .select("id, vendor_description, amount, transaction_date, source, tech_name, photo_url, notes")
+    .select("id, vendor_description, amount, transaction_date, source, tech_name, photo_url, notes, raw_po")
     .or("invoice_number.is.null,invoice_number.eq.")
     .not("is_overhead", "is", true)
     .order("transaction_date", { ascending: false, nullsFirst: false })
@@ -72,6 +73,7 @@ export async function getUnlinkedReceipts(opts?: { source?: string; limit?: numb
     tech_name: (r.tech_name as string | null) ?? null,
     photo_url: (r.photo_url as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
+    raw_po: (r.raw_po as string | null) ?? null,
     line_items: (exMap.get(r.id as number) ?? []).slice(0, 8),
     has_tech: !!(r.tech_name as string | null),
   }));

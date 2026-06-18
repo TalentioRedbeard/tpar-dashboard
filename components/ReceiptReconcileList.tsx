@@ -64,7 +64,19 @@ function ReceiptCard({ r, onDone, selected, onToggle }: { r: UnlinkedReceipt; on
             <span className="font-semibold text-neutral-900">{r.vendor ?? "(unknown vendor)"}</span>
             <span className="font-mono text-neutral-900">{money(r.amount)}</span>
             <span className="text-xs text-neutral-500">{r.transaction_date ?? "no date"} · {r.source ?? "?"}{r.tech_name ? ` · ${r.tech_name}` : ""}</span>
+            <button
+              type="button"
+              onClick={() => window.open(`/reports/receipts/${r.id}/view`, `receipt_${r.id}`, "popup,width=560,height=760")}
+              className="rounded-md border border-neutral-300 px-2 py-0.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-50"
+            >
+              View receipt ↗
+            </button>
           </div>
+          {r.raw_po ? (
+            <p className="mt-0.5 text-xs text-neutral-600">
+              <span className="text-neutral-400">memo:</span> <span className="font-mono text-neutral-700">{r.raw_po}</span>
+            </p>
+          ) : null}
           {r.line_items.length ? (
             <ul className="mt-1 text-xs text-neutral-500">
               {r.line_items.slice(0, 5).map((li, i) => (
