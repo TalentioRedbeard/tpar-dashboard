@@ -18,7 +18,7 @@ import {
 
 const money = (n: number) => `$${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function ReceiptCard({ r, onDone }: { r: UnlinkedReceipt; onDone: (id: number) => void }) {
+function ReceiptCard({ r, onDone, selected, onToggle }: { r: UnlinkedReceipt; onDone: (id: number) => void; selected: boolean; onToggle: (id: number) => void }) {
   const [busy, setBusy] = useState(false);
   const [suggest, setSuggest] = useState<ReceiptJobSuggestion[] | null>(null);
   const [q, setQ] = useState("");
@@ -50,8 +50,16 @@ function ReceiptCard({ r, onDone }: { r: UnlinkedReceipt; onDone: (id: number) =
 
   return (
     <li className={`rounded-2xl border border-neutral-200 bg-white p-4 ${busy ? "opacity-50" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <div className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggle(r.id)}
+          disabled={busy}
+          aria-label="select for bulk action"
+          className="mt-1 h-4 w-4 shrink-0 accent-brand-600"
+        />
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="font-semibold text-neutral-900">{r.vendor ?? "(unknown vendor)"}</span>
             <span className="font-mono text-neutral-900">{money(r.amount)}</span>
@@ -138,7 +146,27 @@ export function ReceiptReconcileList({ initialRows, summary, sources, activeSour
 }) {
   const [rows, setRows] = useState(initialRows);
   const [cleared, setCleared] = useState(0);
-  const remove = (id: number) => { setRows((prev) => prev.filter((r) => r.id !== id)); setCleared((n) => n + 1); };
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const remove = (id: number) => {
+    setRows((prev) => prev.filter((r) => r.id !== id));
+    setSelected((prev) => { const n = new Set(prev); n.delete(id); return n; });
+    setCleared((n) => n + 1);
+  };
+  const toggle = (id: number) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  async function bulkOverhead() {
+    const ids = [...selected];
+    if (!ids.length) return;
+    setBulkBusy(true);
+    const res = await markReceiptsOverhead(ids);
+    if (res.ok) {
+      const removed = new Set(ids);
+      setRows((prev) => prev.filter((r) => !removed.has(r.id)));
+      setSelected(new Set());
+      setCleared((n) => n + res.n);
+    }
+    setBulkBusy(false);
+  }
 
   return (
     <div className="space-y-4">
@@ -156,11 +184,31 @@ export function ReceiptReconcileList({ initialRows, summary, sources, activeSour
         ))}
       </div>
 
+      {rows.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs">
+          <button type="button" onClick={() => setSelected(new Set(rows.map((r) => r.id)))} className="rounded-md border border-neutral-300 px-2.5 py-1 font-medium text-neutral-700 hover:bg-neutral-50">
+            Select all ({rows.length})
+          </button>
+          {selected.size > 0 ? (
+            <button type="button" onClick={() => setSelected(new Set())} className="rounded-md border border-neutral-300 px-2.5 py-1 text-neutral-600 hover:bg-neutral-50">Clear</button>
+          ) : null}
+          <span className="text-neutral-500">{selected.size} selected</span>
+          <button
+            type="button"
+            onClick={bulkOverhead}
+            disabled={selected.size === 0 || bulkBusy}
+            className="ml-auto rounded-md border border-amber-300 bg-amber-50 px-3 py-1 font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+          >
+            {bulkBusy ? "Marking…" : `Mark ${selected.size || ""} overhead`}
+          </button>
+        </div>
+      ) : null}
+
       {rows.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500">Nothing left to reconcile here. 🎉</p>
       ) : (
         <ul className="space-y-3">
-          {rows.map((r) => <ReceiptCard key={r.id} r={r} onDone={remove} />)}
+          {rows.map((r) => <ReceiptCard key={r.id} r={r} onDone={remove} selected={selected.has(r.id)} onToggle={toggle} />)}
         </ul>
       )}
     </div>
