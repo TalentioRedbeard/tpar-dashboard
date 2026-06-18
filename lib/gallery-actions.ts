@@ -123,6 +123,113 @@ export async function searchGalleryTargets(query: string): Promise<GalleryTarget
   return out.slice(0, 22);
 }
 
+// ── P4: cascading scoped filter (Danny 2026-06-18) ──────────────────────────────
+// The gallery landing is a row of cascading typeaheads: pick a Customer → the Job +
+// Estimate fields suggest ONLY that customer's jobs/estimates (no global number hunt);
+// pick a Job → it back-fills its customer. Each action is tech-scoped server-side, same
+// model as searchGalleryTargets / getGalleryPhotos: customer + estimate are office-only;
+// job suggestions are tech-scoped to the signed-in tech's own crew when not customer-fixed.
+
+export type GalleryCustomerSuggestion = { id: string; label: string; photoCount: number };
+export async function galleryCustomerSuggest(query: string): Promise<GalleryCustomerSuggestion[]> {
+  const me = await getCurrentTech().catch(() => null);
+  if (!me || !(me.isAdmin || me.isManager)) return []; // customer-wide is office-only
+  const safe = query.replace(/[,()*%]/g, " ").trim();
+  if (safe.length < 2) return [];
+  const { data } = await db().rpc("gallery_search_customers", { q: safe, lim: 12 });
+  const out: GalleryCustomerSuggestion[] = [];
+  for (const c of (data ?? []) as Array<Record<string, unknown>>) {
+    const id = c.hcp_customer_id as string | null;
+    if (!id) continue;
+    out.push({ id, label: (c.display_name as string | null) ?? id, photoCount: Number(c.photo_count) || 0 });
+  }
+  return out;
+}
+
+export type GalleryJobSuggestion = { hcpJobId: string; invoice: string | null; date: string | null; customerId: string | null; customerName: string | null };
+// Jobs for the Job field. If customerId is set (office), suggests ONLY that customer's jobs
+// (optionally refined by an invoice fragment; empty query = their recent jobs). Otherwise a
+// global search: office by invoice #, techs by invoice/customer-name then filtered to their
+// own crew (assigned_employees). Deduped to one row per invoice TRUNK (the part before the
+// "-"): photos are trunk-keyed, and big projects split into 10+ sub-invoice job rows
+// (27687721-1 … -10) would otherwise spam the list with rows that open the same photos
+// (Danny's "variety, not dup rows" rule, 6/17). `invoice` carries the display trunk; the
+// representative (newest) job id drives navigation. Newest first.
+export async function galleryJobSuggest(query: string, customerId?: string | null): Promise<GalleryJobSuggestion[]> {
+  const me = await getCurrentTech().catch(() => null);
+  if (!me) return [];
+  const isOffice = !!(me.isAdmin || me.isManager);
+  const myEmpId = me.tech?.hcp_employee_id ?? null;
+  const safe = query.replace(/[,()*%]/g, " ").trim();
+  const supa = db();
+  let qb = supa
+    .from("jobs_master")
+    .select("hcp_job_id, hcp_customer_id, hcp_invoice_number, customer_name, assigned_employees, job_scheduled_start_date")
+    .not("hcp_job_id", "is", null)
+    .order("job_scheduled_start_date", { ascending: false, nullsFirst: false })
+    .limit(60);
+
+  const scoped = !!(customerId && isOffice);
+  if (scoped) {
+    qb = qb.eq("hcp_customer_id", customerId);
+    if (safe.length >= 1) qb = qb.ilike("hcp_invoice_number", `%${safe}%`);
+  } else {
+    if (safe.length < 2) return [];
+    qb = qb.or(isOffice ? `hcp_invoice_number.ilike.%${safe}%` : `hcp_invoice_number.ilike.%${safe}%,customer_name.ilike.%${safe}%`);
+  }
+
+  const { data } = await qb;
+  const out: GalleryJobSuggestion[] = [];
+  const seenTrunk = new Set<string>();
+  for (const j of (data ?? []) as Array<Record<string, unknown>>) {
+    if (!isOffice && !assignedHasEmployee(j.assigned_employees as string | null, myEmpId)) continue; // techs: own crew only
+    const jid = j.hcp_job_id as string | null;
+    if (!jid) continue;
+    const inv = j.hcp_invoice_number as string | null;
+    const trunk = String(inv ?? "").split("-")[0].trim() || jid; // collapse sub-invoices; fall back to job id
+    if (seenTrunk.has(trunk)) continue;
+    seenTrunk.add(trunk);
+    out.push({
+      hcpJobId: jid,
+      invoice: trunk,
+      date: j.job_scheduled_start_date ? String(j.job_scheduled_start_date).slice(0, 10) : null,
+      customerId: (j.hcp_customer_id as string | null) ?? null,
+      customerName: (j.customer_name as string | null) ?? null,
+    });
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+export type GalleryEstimateSuggestion = { hcpEstimateId: string; number: string | null; status: string | null; date: string | null };
+// Estimates for the Estimate field — office-only, always scoped to a chosen customer (an
+// estimate resolves to that customer's photos via the P1 path). Optional number fragment.
+export async function galleryEstimateSuggest(customerId: string, query?: string): Promise<GalleryEstimateSuggestion[]> {
+  const me = await getCurrentTech().catch(() => null);
+  if (!me || !(me.isAdmin || me.isManager) || !customerId) return [];
+  const { data } = await db()
+    .from("hcp_estimates_raw")
+    .select("hcp_estimate_id, status, scheduled_start, raw")
+    .eq("hcp_customer_id", customerId)
+    .order("scheduled_start", { ascending: false, nullsFirst: false })
+    .limit(40);
+  const safe = (query ?? "").replace(/[,()*%]/g, " ").trim().toLowerCase();
+  const out: GalleryEstimateSuggestion[] = [];
+  for (const e of (data ?? []) as Array<Record<string, unknown>>) {
+    const raw = (e.raw as Record<string, unknown> | null) ?? {};
+    const number = raw.estimate_number != null ? String(raw.estimate_number) : null;
+    if (safe && !String(number ?? "").toLowerCase().includes(safe)) continue;
+    out.push({
+      hcpEstimateId: e.hcp_estimate_id as string,
+      number,
+      status: (e.status as string | null) ?? null,
+      date: e.scheduled_start ? String(e.scheduled_start).slice(0, 10) : null,
+    });
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
 // HMAC-signed drive-media URL (matches the edge fn: service key, `id:mode:exp`).
 function signProxy(id: string, mode: "thumb" | "download", opts: { name?: string; thumb?: string }): string | undefined {
   if (!PROXY_BASE || !PROXY_SECRET || !id) return undefined;

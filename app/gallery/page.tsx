@@ -6,7 +6,7 @@
 
 import { PageShell } from "../../components/PageShell";
 import { GalleryGrid } from "../../components/GalleryGrid";
-import { GalleryChooser } from "../../components/GalleryChooser";
+import { GalleryFilter } from "../../components/GalleryFilter";
 import { getCurrentTech } from "../../lib/current-tech";
 import { db } from "@/lib/supabase";
 import { assignedHasEmployee } from "@/lib/assigned-employees";
@@ -37,7 +37,7 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
         backHref="/"
         backLabel="Home"
       >
-        <GalleryChooser />
+        <GalleryFilter isOffice={isOffice} />
       </PageShell>
     );
   }
