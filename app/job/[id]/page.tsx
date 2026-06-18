@@ -211,7 +211,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     }
   }
 
-  const [{ data: comms }, similarRes, notesRes, jobNeeds, firedTriggers, voiceNotes, briefing, pinnedForJob, provJobRawRes] = await Promise.all([
+  const [{ data: comms }, notesRes, jobNeeds, firedTriggers, voiceNotes, briefing, pinnedForJob, provJobRawRes] = await Promise.all([
     customerId
       ? supabase
           .from("communication_events")
@@ -220,7 +220,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           .order("occurred_at", { ascending: false })
           .limit(20)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-    supabase.rpc("job_similar_to", { target_id: id, n: 6 }),
     supabase
       .from("job_notes")
       .select("id, hcp_job_id, author_email, body, created_at")
@@ -976,71 +975,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </ScrollPanel>
           )}
         </Section>
-
-        {Array.isArray(similarRes.data) && (similarRes.data as Array<Record<string, unknown>>).length > 0 && (() => {
-          // Cosine over job embeddings sits ~0.5 for unrelated same-domain jobs;
-          // a real match clears ~0.6. Hide weak ones and label strength so the
-          // compressed band reads clearly.
-          const FLOOR = 0.6;
-          const rows = (similarRes.data as Array<Record<string, unknown>>).filter((r) => Number(r.similarity) >= FLOOR).slice(0, 3); // cap at 3 for now (Danny 2026-06-15)
-          const revenues = rows
-            .map((r) => Number(r.revenue))
-            .filter((v) => Number.isFinite(v) && v > 0);
-          const avg = revenues.length > 0 ? revenues.reduce((a, b) => a + b, 0) / revenues.length : null;
-          const strengthOf = (s: number): { label: string; tone: "green" | "brand" | "slate" } =>
-            s >= 0.72 ? { label: "Strong", tone: "green" }
-            : s >= 0.66 ? { label: "Related", tone: "brand" }
-            : { label: "Loose", tone: "slate" };
-          return (
-            <Section
-              title="Similar past jobs"
-              description={
-                rows.length > 0 && avg !== null
-                  ? `Avg revenue ${fmtMoney(avg)} across ${revenues.length} priced job${revenues.length === 1 ? "" : "s"}.`
-                  : undefined
-              }
-            >
-              {rows.length === 0 ? (
-                <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-neutral-500">
-                  No closely similar past jobs yet — nothing in the history strongly matches this job&apos;s work.
-                </div>
-              ) : (
-                <ul className="space-y-2">
-                  {rows.map((s) => {
-                    const sim = Number(s.similarity);
-                    const st = strengthOf(sim);
-                    return (
-                      <li key={s.hcp_job_id as string} className="rounded-2xl border border-neutral-200 bg-white p-3 transition hover:border-neutral-300 hover:shadow-sm">
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <Link href={`/job/${s.hcp_job_id}`} className="font-medium text-neutral-900 hover:underline">
-                            {(s.customer_name as string) ?? "(no name)"}
-                          </Link>
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
-                            <Pill tone={st.tone} mono>{st.label} · {sim.toFixed(2)}</Pill>
-                            <span>{(s.job_date as string) ?? "no date"}</span>
-                            <span>·</span>
-                            <TechName name={s.tech_primary_name as string | null} formerSet={formerSet} />
-                            <span>·</span>
-                            <span className="font-medium text-neutral-700 tabular-nums">{fmtMoney(s.revenue)}</span>
-                            {s.gross_margin_pct != null ? (
-                              <>
-                                <span>·</span>
-                                <span>{Number(s.gross_margin_pct).toFixed(0)}% margin</span>
-                              </>
-                            ) : null}
-                          </div>
-                        </div>
-                        <p className="mt-1.5 max-w-3xl whitespace-pre-line text-xs italic text-neutral-600">
-                          {((s.text_preview as string) ?? "").slice(0, 250)}
-                        </p>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Section>
-          );
-        })()}
 
         {/* Lifecycle triggers — moved to the top of the page (Danny 2026-06-15) */}
 
