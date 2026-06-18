@@ -15,6 +15,7 @@ import { TriggerForms } from "./TriggerForms";
 import { JobBriefingCard } from "../../../components/JobBriefingCard";
 import { AddJobLineItem } from "../../../components/AddJobLineItem";
 import { RefreshFromHcpButton } from "../../../components/RefreshFromHcpButton";
+import { CostToDatePanel } from "../../../components/CostToDatePanel";
 import { PageShell } from "../../../components/PageShell";
 import { getJob360, resolveJobIdentifier, jobRevenueDollars, jobDueDollars } from "@/lib/typed-db/job-360";
 import { redirect } from "next/navigation";
@@ -838,11 +839,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               No receipts logged yet{j.invoice_number ? "" : " — this job has no invoice number to attach to"}.
             </p>
           )}
-          {canWrite && j.invoice_number ? (
+          {(canWrite || canEdit) && j.invoice_number ? (
             <div className="mt-3">
               <LogReceiptForm invoiceNumber={String(j.invoice_number)} jobId={id} />
             </div>
           ) : null}
+          {canEdit ? <CostToDatePanel hcpJobId={id} /> : null}
         </Section>
 
         {Array.isArray(j.topics_in_window) && (j.topics_in_window as string[]).length > 0 && (
