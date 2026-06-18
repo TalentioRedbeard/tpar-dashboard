@@ -58,6 +58,7 @@ const TOOL_ITEMS = [
   { href: "/voice-notes", label: "Voice" },
   { href: "/whiteboard", label: "Board" },
   { href: "/inbox", label: "Inbox" },
+  { href: "/settings", label: "Settings" },
   { href: "/how-to", label: "How to use the app" },
 ];
 
@@ -187,9 +188,13 @@ export function Nav({
         {/* Desktop email + sign-out */}
         {userEmail ? (
           <div className="hidden items-center gap-3 text-sm text-navy-900 md:flex">
-            <span className="hidden truncate md:inline" title={userEmail}>
+            <Link
+              href="/settings"
+              className="hidden truncate rounded-md px-1.5 py-0.5 transition hover:bg-white/60 md:inline"
+              title="Your settings"
+            >
               {userEmail.replace("@tulsapar.com", "")}
-            </span>
+            </Link>
             <form action="/auth/signout" method="POST">
               <button
                 type="submit"

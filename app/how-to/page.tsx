@@ -9,6 +9,7 @@
 
 import Link from "next/link";
 import { PageShell } from "../../components/PageShell";
+import { getCurrentTech } from "../../lib/current-tech";
 
 export const metadata = { title: "How to use the app · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -189,7 +190,10 @@ function AvenueIcons() {
   );
 }
 
-export default function HowToPage() {
+export default async function HowToPage() {
+  // Role-aware: the leadership money/cost cluster only renders for admin + manager.
+  const me = await getCurrentTech().catch(() => null);
+  const leadership = !!(me && (me.isAdmin || me.isManager));
   return (
     <PageShell
       kicker="Field guide"
@@ -252,6 +256,7 @@ export default function HowToPage() {
             <p className="mt-1.5">Tap <strong>Yes</strong> and it presses Start for you (and updates Housecall Pro). When you leave a job you started, it asks <strong>&ldquo;Finished here?&rdquo;</strong> the same way. Tap <strong>Not yet</strong> if you&rsquo;re just grabbing parts or lunch. Every one is logged with your GPS.</p>
           </div>
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-amber-900">⚠️ Pressing <strong>On My Way</strong> with a job still open asks if you meant to <strong>Finish</strong> the last one first. Pick Finish, Pause, or Other.</p>
+          <p className="mt-2 text-xs text-neutral-500">Some steps fill themselves in: if a job gets worked in Housecall Pro, the app reads the real times and marks On My Way / Start / Finish for you (tagged &ldquo;from HCP&rdquo;) — so a step can show as done even when nobody pressed a button here.</p>
 
           <TriggerFlow />
 
@@ -320,6 +325,58 @@ export default function HowToPage() {
             </li>
           </ul>
         </Step>
+
+        <Step n={7} title="Finding things — search that understands your customers">
+          <p>Search now thinks in <strong>whole customers and whole projects</strong>, not just text matches.</p>
+          <ul className="list-disc space-y-1.5 pl-5">
+            <li><strong>Customers</strong> — searching a name pulls together every record for that customer that Housecall Pro split apart (same company, phone, or email), so one person or property shows as <em>one</em> result with their full history.</li>
+            <li><strong>Jobs</strong> — results group into <strong>projects</strong>: a job, its follow-on invoices, and the estimate collapse into one line. Want the old job-by-job list? Add <span className="font-mono">?detail=1</span> to the page.</li>
+            <li><strong>Photos</strong> — a customer&rsquo;s gallery spans all of their tethered records, so nothing hides under a duplicate.</li>
+          </ul>
+          <More summary="Why a customer shows “25 records”">
+            <p>Big customers — a property manager, a builder — get entered into Housecall Pro many times over the years. The app stitches those back together so you see the real relationship (all the jobs, all the photos) in one place, instead of one slice of it.</p>
+          </More>
+        </Step>
+
+        <Step n={8} title="Photos & the gallery">
+          <ul className="list-disc space-y-1.5 pl-5">
+            <li>Open <strong>Gallery</strong> from the top menu, or tap <strong>Photos</strong> on any job or customer.</li>
+            <li>It now holds the <strong>full history</strong> — every photo and video from Housecall Pro, plus anything added in the app or Drive (about 19,700 in all).</li>
+            <li><strong>What you can see:</strong> on the road you see photos for the jobs you worked; the office sees a customer&rsquo;s entire photo history.</li>
+          </ul>
+          <p className="mt-2 rounded-lg bg-brand-50 px-3 py-2 text-brand-900">Same lesson as before: <strong>photos protect you.</strong> The arrival-condition shot you take today is the gallery record that settles a dispute later.</p>
+        </Step>
+
+        <Step n={9} title="Settings — make the app yours">
+          <p>Tap <strong>your name in the top-right</strong> (or <strong>Settings</strong> in the menu). Everything there changes the app for <em>you only</em>:</p>
+          <ul className="list-disc space-y-1.5 pl-5">
+            <li><strong>Notifications</strong> — turn the teammate-note text on or off, and mute the automated end-of-day Slack review.</li>
+            <li><strong>Field</strong> — turn the GPS arrival/finish prompts on or off, and show or hide the floating Record button.</li>
+            <li><strong>Display</strong> — pick your color on the schedule board, and choose which page you land on when you open the app.</li>
+          </ul>
+          <p className="mt-2 text-xs text-neutral-500">Your sign-in, your name, and your role aren&rsquo;t editable here — those stay with Danny.</p>
+        </Step>
+
+        {leadership ? (
+          <section className="rounded-2xl border border-indigo-300 bg-indigo-50/60 p-5">
+            <h2 className="text-base font-semibold text-indigo-900">For managers &amp; owner — money &amp; cost</h2>
+            <p className="mt-2 text-sm leading-relaxed text-neutral-700">These surfaces are leadership-only (the crew never sees them):</p>
+            <ul className="mt-3 space-y-2 text-sm leading-relaxed text-neutral-700">
+              <li className="rounded-xl border border-indigo-200 bg-white p-3">
+                <strong>Cost-to-date on a job</strong> — open any job for a live running cost (materials from Housecall Pro + reconciled receipts, GPS-derived labor at a burden rate, and on-site materials) against the estimate, with margin and an over-budget warning. Tap <strong>Refresh from HCP</strong> to pull the latest line items.
+              </li>
+              <li className="rounded-xl border border-indigo-200 bg-white p-3">
+                <strong>Reports → Receipt reconciliation</strong> — attach each unattributed receipt to a job (so its cost lands in that job&rsquo;s margin) or mark it overhead. It auto-suggests a job by who submitted it and when; bulk &ldquo;mark overhead&rdquo; clears the noise. The new <strong>View receipt</strong> button pops the receipt into its own window — read the PO/memo to decide where it belongs.
+              </li>
+              <li className="rounded-xl border border-indigo-200 bg-white p-3">
+                <strong>Shopping → price intel + the market</strong> — see what we&rsquo;ve actually paid per part at each supplier. The cross-vendor comparison becomes trustworthy as you work the <strong>Reconcile</strong> queue: confirm each vendor line&rsquo;s match to our in-house catalog, and confirming teaches it for next time.
+              </li>
+              <li className="rounded-xl border border-indigo-200 bg-white p-3">
+                <strong>Reports</strong> — managers now reach the whole Reports tree (margin, AR, spend), same as the owner.
+              </li>
+            </ul>
+          </section>
+        ) : null}
 
         {/* ── Kept verbatim: the protective old-system disclosure ── */}
         <section className="rounded-2xl border border-amber-300 bg-amber-50/60 p-5">

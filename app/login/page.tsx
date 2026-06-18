@@ -12,14 +12,17 @@ import { Suspense, useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { BrandMark } from "../../components/ui/Brand";
 import { lookupTechByPhone } from "./phone-actions";
+import { getPhoneLoginEnabled } from "../../lib/settings-actions";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
 // Phone-OTP login is gated OFF by default: SMS delivery requires an approved A2P
 // 10DLC campaign (currently rejected), so a "Text me a code" path would silently
-// dead-end and look broken. Flip NEXT_PUBLIC_ENABLE_PHONE_LOGIN=true once A2P is live.
-const PHONE_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_PHONE_LOGIN === "true";
+// dead-end and look broken. The owner flips it on from Settings (app_flags
+// 'phone_login_enabled', fetched below); NEXT_PUBLIC_ENABLE_PHONE_LOGIN=true is the
+// build-time fallback used for the initial paint before the flag resolves.
+const PHONE_LOGIN_ENV = process.env.NEXT_PUBLIC_ENABLE_PHONE_LOGIN === "true";
 
 export default function LoginPage() {
   return (
@@ -36,6 +39,11 @@ function LoginInner() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Phone-OTP availability: seed from the build-time env, then reconcile to the
+  // owner-controlled DB flag (no auth needed — read pre-sign-in).
+  const [phoneLogin, setPhoneLogin] = useState(PHONE_LOGIN_ENV);
+  useEffect(() => { getPhoneLoginEnabled().then(setPhoneLogin).catch(() => {}); }, []);
 
   // Which button is mid-request (so only that one spins), plus a resend cooldown
   // so the magic-link button physically can't be re-fired inside Supabase's
@@ -228,7 +236,7 @@ function LoginInner() {
 
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Sign in</h1>
           <p className="mt-2 text-sm text-neutral-600">
-            {PHONE_LOGIN_ENABLED
+            {phoneLogin
               ? "Use your TPAR Google account, a one-time link by email, or a code by text."
               : "Use your TPAR Google account, or a one-time link by email."}
           </p>
@@ -310,7 +318,7 @@ function LoginInner() {
             </div>
           )}
 
-          {PHONE_LOGIN_ENABLED && (
+          {phoneLogin && (
           <>
           <div className="my-5 flex items-center gap-2 text-xs text-neutral-400">
             <div className="h-px flex-1 bg-neutral-200" />

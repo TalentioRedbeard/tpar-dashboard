@@ -31,6 +31,10 @@ export type CurrentTech = {
     /** This tech's own directory email. Follows impersonation (= the
      *  viewed-as tech's email), so inbox/notes scope to the effective tech. */
     email: string | null;
+    /** Per-user settings (see /settings). Default to current behavior. */
+    gps_prompts_opt_out: boolean;
+    hide_quick_recorder: boolean;
+    default_landing: string | null;
   } | null;
 };
 
@@ -41,7 +45,7 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
   if (!user || (!user.email && !user.phone)) return null;
 
   const supa = db();
-  const COLS = "tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, secondary_emails, dashboard_role";
+  const COLS = "tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, secondary_emails, dashboard_role, gps_prompts_opt_out, hide_quick_recorder, default_landing";
 
   // Resolve the tech_directory row by EMAIL (Google / magic-link) or, for
   // phone-OTP logins (field techs who sign in with a texted code), by PHONE.
@@ -96,7 +100,7 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
     if (viewAsName && viewAsName.trim()) {
       const { data: targetTech } = await supa
         .from("tech_directory")
-        .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email")
+        .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, gps_prompts_opt_out, hide_quick_recorder, default_landing")
         .ilike("tech_short_name", viewAsName.trim())
         .eq("is_active", true)
         .maybeSingle();
@@ -123,6 +127,9 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
             slack_user_id: targetTech.slack_user_id as string | null,
             notes: targetTech.notes as string | null,
             email: (targetTech.email as string | null) ?? null,
+            gps_prompts_opt_out: !!(targetTech.gps_prompts_opt_out as boolean | null),
+            hide_quick_recorder: !!(targetTech.hide_quick_recorder as boolean | null),
+            default_landing: (targetTech.default_landing as string | null) ?? null,
           },
         };
       }
@@ -150,6 +157,9 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
       // Phone-only techs have no DB email; fall back to the synthetic identity
       // so per-tech reads (me.tech.email) match write authorship (me.email).
       email: (data.email as string | null) ?? (user.email ? null : identityEmail),
+      gps_prompts_opt_out: !!(data.gps_prompts_opt_out as boolean | null),
+      hide_quick_recorder: !!(data.hide_quick_recorder as boolean | null),
+      default_landing: (data.default_landing as string | null) ?? null,
     } : null,
   };
 });
@@ -206,6 +216,25 @@ export async function requireWriter(): Promise<
     return { ok: false, error: "This action is limited to the owner or a tech." };
   }
   return { ok: false, error: "Your account has no dashboard role assigned." };
+}
+
+/**
+ * Self gate — for a user editing THEIR OWN profile/settings (the /settings page).
+ * Distinct from requireWriter() (which blocks managers): every signed-in person
+ * with a tech_directory row may change their own preferences, including managers.
+ * Blocked while impersonating (view-as) so an admin can't accidentally rewrite the
+ * viewed tech's settings row. Returns the resolved CurrentTech so the caller can
+ * scope the write by me.tech.tech_id — the ONLY ownership boundary (no RLS).
+ */
+export async function requireSelf(): Promise<
+  | { ok: true; me: CurrentTech }
+  | { ok: false; error: string }
+> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  if (me.isImpersonating) return { ok: false, error: "Exit view-as to change your own settings." };
+  if (!me.tech) return { ok: false, error: "Your account isn't linked to a tech profile yet — ask Danny." };
+  return { ok: true, me };
 }
 
 /**

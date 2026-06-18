@@ -558,7 +558,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       Quoted: ${(Number(a.total_amount) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </div>
                   ) : null}
-                  {!viewingAs && me.tech && jobId ? (
+                  {!viewingAs && me.tech && jobId && !me.tech.gps_prompts_opt_out ? (
                     <GpsLifecyclePrompt
                       hcpJobId={jobId}
                       hcpAppointmentId={apptId}

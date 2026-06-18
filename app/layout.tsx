@@ -91,10 +91,13 @@ export default async function RootLayout({
         {user && <InstallPrompt />}
         {user ? (
           <>
-            <GlobalRecorder
-              isOwner={isOwner(user.email)}
-              clockedInJobId={clock?.state === "clocked-in" ? clock.hcp_job_id : null}
-            />
+            {/* Quick-Record button — hidden per-user via Settings (hide_quick_recorder). */}
+            {!me?.tech?.hide_quick_recorder && (
+              <GlobalRecorder
+                isOwner={isOwner(user.email)}
+                clockedInJobId={clock?.state === "clocked-in" ? clock.hcp_job_id : null}
+              />
+            )}
             <AmbientRecorder isOwner={isOwner(user.email)} />
           </>
         ) : null}

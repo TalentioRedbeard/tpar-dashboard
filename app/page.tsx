@@ -189,6 +189,18 @@ export default async function Today() {
   // buttons (On My Way / Start / Finish) + the GPS prompt. TechHome lacked them,
   // so a tech logging in didn't see the controls training points at. Reversible:
   // restore `return <TechHome me={me} />` to bring back the intent-first front door.
+  // Per-user default landing page (Settings → default_landing). Runs before the
+  // role defaults. Never "/" (excluded at save), so no redirect loop. Techs who
+  // somehow set a leadership-only route fall through to /me (that page bounces
+  // them back, but never to "/", so still no loop).
+  if (me?.tech?.default_landing && me.tech.default_landing !== "/") {
+    const leadershipOnly = new Set(["/dispatch", "/reports"]);
+    const isLeadership = me.isAdmin || me.isManager;
+    if (isLeadership || !leadershipOnly.has(me.tech.default_landing)) {
+      redirect(me.tech.default_landing);
+    }
+  }
+
   if (me && me.dashboardRole === "tech" && me.tech) {
     redirect("/me");
   }
