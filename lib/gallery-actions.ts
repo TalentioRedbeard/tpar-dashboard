@@ -79,11 +79,13 @@ export async function searchGalleryTargets(query: string): Promise<GalleryTarget
       const cid = c.hcp_customer_id as string | null;
       if (!cid) continue;
       const photos = Number(c.photo_count) || 0;
+      const members = Number(c.member_count) || 1;
+      const recs = members > 1 ? `${members} records · ` : "";
       out.push({
         kind: "customer",
         id: cid,
         label: (c.display_name as string | null) ?? cid,
-        sub: photos > 0 ? `customer · ${photos} photo${photos === 1 ? "" : "s"}` : "customer · all photos",
+        sub: photos > 0 ? `${recs}${photos} photo${photos === 1 ? "" : "s"}` : `${recs}all photos`,
       });
     }
   }
@@ -130,18 +132,22 @@ export async function searchGalleryTargets(query: string): Promise<GalleryTarget
 // model as searchGalleryTargets / getGalleryPhotos: customer + estimate are office-only;
 // job suggestions are tech-scoped to the signed-in tech's own crew when not customer-fixed.
 
-export type GalleryCustomerSuggestion = { id: string; label: string; photoCount: number };
+export type GalleryCustomerSuggestion = { id: string; label: string; photoCount: number; memberCount: number };
 export async function galleryCustomerSuggest(query: string): Promise<GalleryCustomerSuggestion[]> {
   const me = await getCurrentTech().catch(() => null);
   if (!me || !(me.isAdmin || me.isManager)) return []; // customer-wide is office-only
   const safe = query.replace(/[,()*%]/g, " ").trim();
   if (safe.length < 2) return [];
+  // gallery_search_customers now returns ENTITIES (tethered-record clusters): one row per
+  // real customer, with the cluster's total photos + member_count (how many HCP records the
+  // entity spans). The id is the entity's representative cid — opening it expands to the
+  // whole cluster (entityMemberIds).
   const { data } = await db().rpc("gallery_search_customers", { q: safe, lim: 12 });
   const out: GalleryCustomerSuggestion[] = [];
   for (const c of (data ?? []) as Array<Record<string, unknown>>) {
     const id = c.hcp_customer_id as string | null;
     if (!id) continue;
-    out.push({ id, label: (c.display_name as string | null) ?? id, photoCount: Number(c.photo_count) || 0 });
+    out.push({ id, label: (c.display_name as string | null) ?? id, photoCount: Number(c.photo_count) || 0, memberCount: Number(c.member_count) || 1 });
   }
   return out;
 }
@@ -270,6 +276,17 @@ async function customerForEstimate(estimateId: string): Promise<string | null> {
   return (data as { hcp_customer_id?: string | null } | null)?.hcp_customer_id ?? null;
 }
 
+// P4.1 entity tethering (2026-06-18): a customer scope resolves to the whole ENTITY —
+// every tethered HCP record for that customer (e.g. Brad Dunlap = 25 fragmented Dunlap
+// Properties records). customer_entity_members follows shared Company/phone/email with a
+// balanced trust model server-side. Falls back to just the seed id if the RPC returns
+// nothing. Used only for customer scope (office-only); estimate stays single-customer.
+async function entityMemberIds(seedId: string): Promise<string[]> {
+  const { data } = await db().rpc("customer_entity_members", { p_seed: seedId });
+  const ids = ((data ?? []) as Array<{ member_cid: string }>).map((r) => r.member_cid).filter(Boolean);
+  return ids.length ? ids : [seedId];
+}
+
 // P0 (2026-06-17): photo resolution reads jobs_master (full 8,222-job history),
 // NOT job_360 (a ~3-month / 366-job analytics view that hid ~93% of backfilled
 // photos). jobs_master uses hcp_invoice_number (not invoice_number). The
@@ -287,8 +304,8 @@ async function trunksForScope(scope: GalleryScope, id: string): Promise<string[]
     const { data: jobs } = await supa.from("jobs_master").select("hcp_invoice_number").eq("hcp_customer_id", custId).not("hcp_job_id", "is", null);
     return Array.from(new Set(((jobs ?? []) as Array<{ hcp_invoice_number: string | null }>).map((r) => trunkOf(r.hcp_invoice_number)).filter((x): x is string => !!x)));
   }
-  // customer — full job history (jobs_master), not the windowed job_360 view
-  const { data } = await supa.from("jobs_master").select("hcp_invoice_number").eq("hcp_customer_id", id).not("hcp_job_id", "is", null);
+  // customer — the full ENTITY's job history (all tethered records), not just the one id
+  const { data } = await supa.from("jobs_master").select("hcp_invoice_number").in("hcp_customer_id", await entityMemberIds(id)).not("hcp_job_id", "is", null);
   return Array.from(new Set(((data ?? []) as Array<{ hcp_invoice_number: string | null }>).map((r) => trunkOf(r.hcp_invoice_number)).filter((x): x is string => !!x)));
 }
 
@@ -303,8 +320,8 @@ async function jobIdsForScope(scope: GalleryScope, id: string): Promise<string[]
     const { data } = await supa.from("jobs_master").select("hcp_job_id").eq("hcp_customer_id", custId).not("hcp_job_id", "is", null);
     return ((data ?? []) as Array<{ hcp_job_id: string | null }>).map((r) => r.hcp_job_id).filter((x): x is string => !!x);
   }
-  // customer — full job history (jobs_master), not the windowed job_360 view
-  const { data } = await supa.from("jobs_master").select("hcp_job_id").eq("hcp_customer_id", id).not("hcp_job_id", "is", null);
+  // customer — the full ENTITY's job ids (all tethered records), not just the one id
+  const { data } = await supa.from("jobs_master").select("hcp_job_id").in("hcp_customer_id", await entityMemberIds(id)).not("hcp_job_id", "is", null);
   return ((data ?? []) as Array<{ hcp_job_id: string | null }>).map((r) => r.hcp_job_id).filter((x): x is string => !!x);
 }
 

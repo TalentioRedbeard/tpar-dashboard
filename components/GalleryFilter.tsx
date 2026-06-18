@@ -144,7 +144,7 @@ export function GalleryFilter({ isOffice }: { isOffice: boolean }) {
                             className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-neutral-50"
                           >
                             <span className="truncate text-sm text-neutral-900">{c.label}</span>
-                            <span className="shrink-0 text-xs text-neutral-500">{c.photoCount > 0 ? `${c.photoCount} photo${c.photoCount === 1 ? "" : "s"}` : "—"}</span>
+                            <span className="shrink-0 text-xs text-neutral-500">{c.memberCount > 1 ? `${c.memberCount} records · ` : ""}{c.photoCount > 0 ? `${c.photoCount} photo${c.photoCount === 1 ? "" : "s"}` : "—"}</span>
                           </button>
                         </li>
                       ))
@@ -246,7 +246,7 @@ export function GalleryFilter({ isOffice }: { isOffice: boolean }) {
           onClick={() => open("customer", customer.id)}
           className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
         >
-          📷 View all {customer.photoCount > 0 ? `${customer.photoCount} ` : ""}photos for {customer.label} →
+          📷 View all {customer.photoCount > 0 ? `${customer.photoCount} ` : ""}photos for {customer.label}{customer.memberCount > 1 ? ` (${customer.memberCount} records)` : ""} →
         </button>
       ) : null}
 

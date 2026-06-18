@@ -69,8 +69,20 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
   } else if (scope === "customer") {
     if (!isOffice) unauthorized = "Customer-wide photo history is office-only.";
     else {
-      const { data } = await db().from("customers_master").select("name").eq("hcp_customer_id", id).maybeSingle();
-      title = `Photos · ${(data as { name?: string } | null)?.name ?? "customer"}`;
+      // Entity-aware title: a customer scope spans the whole tethered entity (e.g. Brad
+      // Dunlap = 25 Dunlap Properties records), so name it from the entity, not the one id.
+      const { data: members } = await db().rpc("customer_entity_members", { p_seed: id });
+      const mrows = (members ?? []) as Array<{ member_cid: string; member_name: string | null }>;
+      const mnames = mrows.map((r) => r.member_name).filter((x): x is string => !!x);
+      let entLabel: string | null = mnames.filter((x) => !/^\d/.test(x)).sort((a, b) => a.length - b.length)[0]
+        ?? mnames.sort((a, b) => a.length - b.length)[0] ?? null;
+      if (!entLabel && mrows.length) {
+        const { data: jn } = await db().from("jobs_master").select("customer_name")
+          .in("hcp_customer_id", mrows.map((r) => r.member_cid).filter((x): x is string => !!x)).not("customer_name", "is", null).limit(1).maybeSingle();
+        entLabel = (jn as { customer_name?: string } | null)?.customer_name ?? null;
+      }
+      const memberCount = mrows.length || 1;
+      title = `Photos · ${entLabel ?? "customer"}${memberCount > 1 ? ` · ${memberCount} records` : ""}`;
       backHref = `/customer/${id}`;
     }
   } else if (scope === "estimate") {
