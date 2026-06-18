@@ -68,10 +68,22 @@ type JobRow = {
   gps_matched: boolean | null;
 };
 
+type ProjectRow = {
+  trunk: string;
+  hcp_customer_id: string | null;
+  customer_name: string | null;
+  job_count: number;
+  first_date: string | null;
+  last_date: string | null;
+  revenue: number | null;
+  latest_status: string | null;
+  rep_job_id: string | null;
+};
+
 export default async function JobsListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; include_internal?: string; mine?: string; as?: string; page?: string; full_history?: string }>;
+  searchParams: Promise<{ q?: string; tech?: string; status?: string; outstanding?: string; include_internal?: string; mine?: string; as?: string; page?: string; full_history?: string; detail?: string }>;
 }) {
   // Tech-tier shows only their own work via /me + scoped /job/[id]. The list
   // exposes company-wide revenue + gross margin, so gate to admin/manager
@@ -109,6 +121,75 @@ export default async function JobsListPage({
   const effectiveTechName = effective?.fullName ?? null;
 
   const supa = db();
+
+  // Entity/project-aware search (P5, 2026-06-18): a search resolves to PROJECTS, not loose
+  // jobs — full history, customer-ENTITY aware (so "Brad Dunlap" finds all his fragmented
+  // records), HCP estimate numbers resolve to the customer's projects, and sub-invoices
+  // (27687721-1..-10) collapse into one project row. The classic per-job list (with margin /
+  // AR / GPS / tech filters) stays one click away via ?detail=1.
+  const projectMode = q.length >= 2 && params.detail !== "1";
+  if (projectMode) {
+    const { data: projData } = await supa.rpc("search_work_projects", { q, lim: 80 });
+    const projects = (projData ?? []) as ProjectRow[];
+    // HCP estimate live-lookup fallback (same as the classic path): a numeric query that
+    // finds nothing in our DB -> resolve via HCP and jump straight to the job.
+    if (projects.length === 0 && /^\d{6,9}$/.test(q)) {
+      const live = await liveLookupHcpEstimate(q);
+      if (live?.hcp_job_id) redirect(`/job/${live.hcp_job_id}?from=hcp-estimate&estimate=${q}`);
+    }
+    const projRevenue = projects.reduce((s, p) => s + (Number(p.revenue) || 0), 0);
+    const projJobs = projects.reduce((s, p) => s + (Number(p.job_count) || 0), 0);
+    const projColumns: Column<ProjectRow>[] = [
+      { header: "Project", cell: (p) => <span className="font-mono text-xs">#{p.trunk}</span> },
+      { header: "Customer", cell: (p) => p.customer_name ?? "—", className: "font-medium text-neutral-900" },
+      { header: "Jobs", cell: (p) => p.job_count, align: "right" },
+      {
+        header: "Dates",
+        cell: (p) => (p.first_date && p.first_date === p.last_date ? fmtDateShort(p.last_date) : `${fmtDateShort(p.first_date)} – ${fmtDateShort(p.last_date)}`),
+        className: "text-xs text-neutral-600",
+      },
+      { header: "Revenue", cell: (p) => fmtMoney(p.revenue), align: "right" },
+      { header: "Status", cell: (p) => (p.latest_status ? <StatusPill status={p.latest_status} /> : <span className="text-neutral-400">—</span>) },
+    ];
+    const detailHref = `/jobs?${new URLSearchParams({ q, detail: "1" }).toString()}`;
+    return (
+      <PageShell
+        title="Jobs"
+        description={`Projects matching “${q}” — grouped across full history; a customer search folds in all their records (and HCP estimate numbers resolve to the customer’s projects). Click a project to open its latest job.`}
+        actions={
+          <a href="/dispatch/new-job" className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100">+ Create job</a>
+        }
+      >
+        <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatCard label="Projects" value={projects.length.toLocaleString()} hint="grouped by invoice trunk" />
+          <StatCard label="Jobs" value={projJobs.toLocaleString()} />
+          <StatCard label="Revenue" value={fmtMoney(projRevenue)} tone={projRevenue > 0 ? "brand" : "neutral"} />
+          <StatCard label="View" value="Projects" hint="entity · full history" />
+        </section>
+        <FilterBar>
+          <label className="block">
+            <span className="block text-xs font-medium text-neutral-600">Search</span>
+            <input
+              type="search"
+              name="q"
+              defaultValue={q}
+              placeholder="customer / invoice / estimate #"
+              className="mt-1 w-64 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+          </label>
+          <a href={detailHref} className="self-end pb-1.5 text-sm font-medium text-brand-700 underline hover:text-brand-900">Show individual jobs →</a>
+          <button type="submit" className="ml-auto rounded-md bg-brand-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-800">Apply</button>
+        </FilterBar>
+        <Table
+          columns={projColumns}
+          rows={projects}
+          rowHref={(p) => (p.rep_job_id ? `/job/${p.rep_job_id}` : null)}
+          emptyText={`No projects matched “${q}”. Try a customer name, invoice / estimate number, or address — or “Show individual jobs” for the classic per-job view.`}
+        />
+      </PageShell>
+    );
+  }
+
   let query = supa
     .from("job_360")
     .select(
@@ -356,11 +437,20 @@ export default async function JobsListPage({
   const baseHref = `/jobs?${new URLSearchParams(sharedFilters).toString()}`;
   const csvHref = `/jobs/export.csv?${new URLSearchParams(sharedFilters).toString()}`;
 
-  const description = effectiveTechName
+  const baseDescription = effectiveTechName
     ? `Jobs where ${effectiveTechName} is on the crew (lead or helper). Default view: recent ~90 days.`
     : fullHistory
       ? `Searching full history (all-time appointments matching "${q}"). Some columns blank — appointments_master doesn't carry revenue / margin / GPS.`
       : "Recent jobs (last ~90 days from job_360). Tick “Full history” in the filter bar to widen the search across all-time appointments.";
+  const description =
+    params.detail === "1" && q ? (
+      <span>
+        Individual jobs for “{q}”.{" "}
+        <a href={`/jobs?${new URLSearchParams({ q }).toString()}`} className="font-medium text-brand-700 underline hover:text-brand-900">← Back to grouped projects</a>
+      </span>
+    ) : (
+      baseDescription
+    );
 
   return (
     <PageShell
@@ -405,6 +495,9 @@ export default async function JobsListPage({
       <FilterBar>
         {effective ? <input type="hidden" name="mine" value="1" /> : null}
         {asOverride ? <input type="hidden" name="as" value={asOverride} /> : null}
+        {/* Keep the classic per-job view sticky on Apply ONLY when already in it (a search
+            from the default list should land in the grouped project view). */}
+        {params.detail === "1" ? <input type="hidden" name="detail" value="1" /> : null}
         <label className="block">
           <span className="block text-xs font-medium text-neutral-600">Search</span>
           <input
