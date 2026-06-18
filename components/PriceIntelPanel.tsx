@@ -94,7 +94,7 @@ export function PriceIntelPanel({ data }: { data: NonNullable<PriceIntel> }) {
           <h3 className="text-sm font-semibold text-neutral-700">Possible cross-vendor matches</h3>
           <p className="mb-2 text-xs text-amber-700">
             ⚠ The matcher grouped these as the same part. <strong>Confirm the descriptions actually match</strong> before trusting a price gap —
-            and check pack size + date. This improves as more SKUs get reviewed.
+            and check pack size + date. Pipe priced by the foot is normalized to <strong>per-ft</strong> using each item&apos;s curated length so vendors compare on the same basis; everything else compares per-each. Improves as more items get a curated sell-unit.
           </p>
           <ScrollPanel tier="primary">
             <ul className="space-y-2">
@@ -104,7 +104,7 @@ export function PriceIntelPanel({ data }: { data: NonNullable<PriceIntel> }) {
                   <li key={c.item_id} className="rounded-xl border border-neutral-200 bg-white p-3">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <span className="text-sm font-semibold text-neutral-900">{c.item_name}</span>
-                      <span className="text-xs text-neutral-500">spread {money(spread)}{c.savings_pct ? ` · ${c.savings_pct}%` : ""}</span>
+                      <span className="text-xs text-neutral-500">spread {money(spread)}{c.compare_uom === "per ft" ? " /ft" : ""}{c.savings_pct ? ` · ${c.savings_pct}%` : ""}{c.compare_uom === "per ft" ? ` · ${c.sell_unit}` : ""}</span>
                     </div>
                     <div className="mt-2 space-y-1.5">
                       {c.vendors.map((v, i) => {
@@ -114,7 +114,7 @@ export function PriceIntelPanel({ data }: { data: NonNullable<PriceIntel> }) {
                             <div className="flex items-baseline justify-between gap-2">
                               <span className="text-sm text-neutral-700">{v.vendor}</span>
                               <span className={`text-sm font-semibold ${isLowest ? "text-emerald-700" : "text-neutral-900"}`}>
-                                {money(v.unit_cents)}{isLowest ? " ◂ lowest" : ""}
+                                {money(v.unit_cents)}<span className="text-xs font-normal text-neutral-400">{c.compare_uom === "per ft" ? " /ft" : ""}</span>{isLowest ? " ◂ lowest" : ""}
                               </span>
                             </div>
                             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-neutral-500">

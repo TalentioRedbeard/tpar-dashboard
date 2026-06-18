@@ -7,6 +7,7 @@
 
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
+import { revalidatePath } from "next/cache";
 
 export type VendorPrice = {
   vendor: string;
@@ -21,6 +22,8 @@ export type PriceComparison = {
   item_id: number;
   item_name: string;
   category_name: string | null;
+  sell_unit: string;       // curated: '20 ft length' / 'each' / …
+  compare_uom: string;     // 'per ft' (normalized) or 'each' (raw)
   n_vendors: number;
   min_cents: number;
   max_cents: number;
@@ -67,6 +70,8 @@ export async function loadPriceIntel(): Promise<PriceIntel> {
     item_id: num(r.item_id),
     item_name: String(r.item_name ?? ""),
     category_name: (r.category_name as string | null) ?? null,
+    sell_unit: String(r.sell_unit ?? "each"),
+    compare_uom: String(r.compare_uom ?? "each"),
     n_vendors: num(r.n_vendors),
     min_cents: num(r.min_cents),
     max_cents: num(r.max_cents),
