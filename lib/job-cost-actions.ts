@@ -21,7 +21,10 @@ function weekBounds(now: Date): { label: string; start: string; end: string } {
 
 export async function logReceipt(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await getCurrentTech();
-  if (!me || !me.canWrite) return { ok: false, error: "not authorized" };
+  // Receipt logging is an operational reconciliation action — managers (read-only for note
+  // authorship) get this carve-out alongside admin+tech, like requireScheduler/requireResolver
+  // (Danny 2026-06-18). NOT a blanket canWrite change.
+  if (!me || (!me.canWrite && !me.isManager)) return { ok: false, error: "not authorized" };
 
   const invoice = String(formData.get("invoice_number") ?? "").trim();
   const jobId = String(formData.get("job_id") ?? "").trim();

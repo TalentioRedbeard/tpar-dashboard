@@ -28,7 +28,7 @@ export default async function ReceiptPage() {
         stuck: <>Picture rejected? Make sure the whole receipt is in the frame and not blurry. If it still won&apos;t go, text it to Danny.</>,
       }}
     >
-      <ReceiptForm techShortName={me.tech?.tech_short_name ?? me.email} canWrite={me.canWrite} />
+      <ReceiptForm techShortName={me.tech?.tech_short_name ?? me.email} canWrite={me.canWrite || me.isManager} />
     </PageShell>
   );
 }

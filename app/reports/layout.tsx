@@ -12,6 +12,9 @@ import { getCurrentTech } from "../../lib/current-tech";
 export default async function ReportsLayout({ children }: { children: ReactNode }) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/reports");
-  if (!me.isAdmin) redirect("/me");
+  // Leadership (admin + manager) — managers (Kelsey/Madisson) get the financial/cost
+  // reports too (Danny 2026-06-18: "Management and Admin should be able to access
+  // receipts and/or job cost"). Matches the /reports index page + /admin/ar gates.
+  if (!me.isAdmin && !me.isManager) redirect("/me");
   return <>{children}</>;
 }

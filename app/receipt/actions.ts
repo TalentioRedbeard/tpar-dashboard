@@ -31,7 +31,7 @@ export type UploadReceiptResult =
 
 export async function uploadReceipt(formData: FormData): Promise<UploadReceiptResult> {
   const me = await getCurrentTech();
-  if (!me?.canWrite) return { ok: false, error: "Not signed in or no write access." };
+  if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
 
   const photo = formData.get("photo") as File | null;
   const invoiceNumber = (formData.get("invoice_number") as string | null)?.trim() || null;
@@ -117,7 +117,7 @@ export type CreateReceiptUploadResult =
 
 export async function createReceiptUpload(input: { filename?: string }): Promise<CreateReceiptUploadResult> {
   const me = await getCurrentTech();
-  if (!me?.canWrite) return { ok: false, error: "Not signed in or no write access." };
+  if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
   const ext = (input.filename?.split(".").pop()?.toLowerCase() || "jpg").replace(/[^a-z0-9]/g, "") || "jpg";
   const submitter = (me.tech?.tech_short_name ?? me.email).replace(/[^a-z0-9]/gi, "_");
@@ -135,7 +135,7 @@ export async function finalizeReceipt(input: {
   notes?: string | null;
 }): Promise<UploadReceiptResult> {
   const me = await getCurrentTech();
-  if (!me?.canWrite) return { ok: false, error: "Not signed in or no write access." };
+  if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
   const path = String(input.path ?? "").trim();
   if (!path) return { ok: false, error: "Missing upload path." };
 
