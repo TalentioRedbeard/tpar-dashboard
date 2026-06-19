@@ -82,8 +82,13 @@ export function MarketLookup() {
     start(async () => setResults(await marketLookup(term)));
   }
 
-  const priced = results?.filter((r) => r.vendor_count > 0) ?? [];
-  const unpriced = results?.filter((r) => r.vendor_count === 0) ?? [];
+  // Bucket by match QUALITY first (a wrong-size/type item must never read as "the answer"):
+  // exact = size AND type match. Within exact: priced ones are the answer; unpriced are real
+  // catalog parts we just have no logged price for. Non-exact = "closest", shown faintly.
+  const exact = results?.filter((r) => r.size_ok && r.type_ok) ?? [];
+  const exactPriced = exact.filter((r) => r.vendor_count > 0);
+  const exactUnpriced = exact.filter((r) => r.vendor_count === 0);
+  const loose = results?.filter((r) => !(r.size_ok && r.type_ok)) ?? [];
 
   return (
     <div className="space-y-3">
@@ -107,13 +112,23 @@ export function MarketLookup() {
         <p className="rounded-2xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500">No catalog match. Try a size + material + part (e.g. &ldquo;3/4 brass tee&rdquo;).</p>
       ) : (
         <>
-          {priced.length > 0 ? <ul className="space-y-2">{priced.map((r) => <ResultCard key={r.canonical_item_id} r={r} />)}</ul> : (
-            <p className="text-sm text-neutral-500">No priced match yet — closest catalog items below (no receipt history linked).</p>
+          {exactPriced.length > 0 ? (
+            <ul className="space-y-2">{exactPriced.map((r) => <ResultCard key={r.canonical_item_id} r={r} />)}</ul>
+          ) : (
+            <p className="rounded-xl border border-dashed border-neutral-300 p-4 text-sm text-neutral-500">No <strong>priced</strong> exact match. {exactUnpriced.length > 0 ? "The part is in your catalog (below) but has no logged receipt price yet." : "Closest catalog items are below."}</p>
           )}
-          {unpriced.length > 0 ? (
-            <details className="mt-1">
-              <summary className="cursor-pointer text-xs font-medium text-neutral-500">{unpriced.length} more catalog match{unpriced.length === 1 ? "" : "es"} with no price history</summary>
-              <ul className="mt-2 space-y-2">{unpriced.map((r) => <ResultCard key={r.canonical_item_id} r={r} />)}</ul>
+
+          {exactUnpriced.length > 0 ? (
+            <div>
+              <p className="mb-1 mt-3 text-xs font-medium uppercase tracking-wide text-neutral-400">In your catalog · no logged price yet</p>
+              <ul className="space-y-2">{exactUnpriced.map((r) => <ResultCard key={r.canonical_item_id} r={r} />)}</ul>
+            </div>
+          ) : null}
+
+          {loose.length > 0 ? (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-medium text-neutral-500">{loose.length} closest match{loose.length === 1 ? "" : "es"} (not an exact size/type — check the badges)</summary>
+              <ul className="mt-2 space-y-2">{loose.map((r) => <ResultCard key={r.canonical_item_id} r={r} />)}</ul>
             </details>
           ) : null}
         </>
