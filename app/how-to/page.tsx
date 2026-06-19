@@ -369,7 +369,7 @@ export default async function HowToPage() {
                 <strong>Reports → Receipt reconciliation</strong> — attach each unattributed receipt to a job (so its cost lands in that job&rsquo;s margin) or mark it overhead. It auto-suggests a job by who submitted it and when; bulk &ldquo;mark overhead&rdquo; clears the noise. The new <strong>View receipt</strong> button pops the receipt into its own window — read the PO/memo to decide where it belongs.
               </li>
               <li className="rounded-xl border border-indigo-200 bg-white p-3">
-                <strong>Shopping → price intel + the market</strong> — see what we&rsquo;ve actually paid per part at each supplier. The cross-vendor comparison becomes trustworthy as you work the <strong>Reconcile</strong> queue: confirm each vendor line&rsquo;s match to our in-house catalog, and confirming teaches it for next time.
+                <strong>Shopping → the parts market</strong> — what we&rsquo;ve actually paid per part at each supplier, four ways: <strong>Catalog</strong> (browse by category, with prices + delivery), <strong>Part lookup</strong> (type &ldquo;3/4 brass tee&rdquo; → cheapest supplier + who to order from), <strong>Bids</strong> (email suppliers a parts order with urgency and award the best price/delivery), and <strong>Reconcile</strong> (confirm each vendor line&rsquo;s match to our in-house catalog — confirming teaches it for next time, which is what makes the comparison trustworthy).
               </li>
               <li className="rounded-xl border border-indigo-200 bg-white p-3">
                 <strong>Reports</strong> — managers now reach the whole Reports tree (margin, AR, spend), same as the owner.
