@@ -170,6 +170,12 @@ export default async function ShoppingPage({
               >
                 Quick part lookup →
               </a>
+              <a
+                href="/shopping/rfq"
+                className="inline-flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2 text-sm font-medium text-brand-800 transition hover:bg-brand-50"
+              >
+                Request bids from suppliers →
+              </a>
             </div>
           </Section>
           <div className="my-6" />
