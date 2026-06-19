@@ -154,15 +154,23 @@ export default async function ShoppingPage({
       {me.isAdmin || me.isManager ? (
         <>
           <Section
-            title="Market — part price lookup"
-            description="Type any part in plain language → what each supplier has charged (from real receipts), cheapest first, with who to order from."
+            title="Market — prices, catalog & delivery"
+            description="Real per-supplier prices from your receipts + confirmed quotes. Browse the catalog by category, or look up a single part fast."
           >
-            <a
-              href="/shopping/market"
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-800"
-            >
-              Open the part lookup →
-            </a>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href="/shopping/catalog"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-800"
+              >
+                Browse the parts catalog →
+              </a>
+              <a
+                href="/shopping/market"
+                className="inline-flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2 text-sm font-medium text-brand-800 transition hover:bg-brand-50"
+              >
+                Quick part lookup →
+              </a>
+            </div>
           </Section>
           <div className="my-6" />
         </>
