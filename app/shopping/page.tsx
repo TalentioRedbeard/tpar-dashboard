@@ -151,6 +151,23 @@ export default async function ShoppingPage({
         </span>
       }
     >
+      {me.isAdmin || me.isManager ? (
+        <>
+          <Section
+            title="Market — part price lookup"
+            description="Type any part in plain language → what each supplier has charged (from real receipts), cheapest first, with who to order from."
+          >
+            <a
+              href="/shopping/market"
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-800"
+            >
+              Open the part lookup →
+            </a>
+          </Section>
+          <div className="my-6" />
+        </>
+      ) : null}
+
       {vendorSpend && vendorSpend.vendors.length > 0 ? (
         <>
           <Section
