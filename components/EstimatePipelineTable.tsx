@@ -151,7 +151,7 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+      <div className="overflow-hidden rounded-2xl border border-neutral-300 bg-white">
         <table className="w-full table-fixed text-sm">
           <colgroup>
             {COLS.map((c) => (
@@ -182,7 +182,7 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
                   {query || stageFilter !== "all" ? "No estimates match." : "No estimates."}
                 </td>
               </tr>
-            ) : visible.map((r) => {
+            ) : visible.map((r, i) => {
               // AI-built rows deep-link to the builder review surface; everything
               // else opens directly in HCP (estimate doc + line items live there).
               const href = r.is_ai_built && r.bid_estimate_id ? `/estimate/${r.bid_estimate_id}` : (r.hcp_url ?? "#");
@@ -194,7 +194,7 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
                   <Link href={href} className={`block ${extra}`}>{children}</Link>
                 );
               return (
-                <tr key={r.hcp_estimate_id} className="cursor-pointer transition hover:bg-neutral-50">
+                <tr key={r.hcp_estimate_id} className={`cursor-pointer transition hover:bg-brand-50/40 ${i % 2 === 0 ? "bg-white" : "bg-neutral-100"}`}>
                   <td className="truncate px-3 py-2">
                     {cell(
                       <span className="flex items-center gap-1.5 font-mono text-xs">
