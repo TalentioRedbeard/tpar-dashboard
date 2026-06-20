@@ -39,6 +39,8 @@ import { WorklistCard } from "../../../components/WorklistCard";
 import { MaterialsUsedCard } from "../../../components/MaterialsUsedCard";
 import { getJobTasks } from "../../../lib/job-tasks";
 import { getMaterialsUsedForJob } from "../../../lib/materials-actions";
+import { EstimateBadge } from "../../../components/EstimateBadge";
+import { getEstimatesForCards, estimatesForCard } from "../../../lib/estimates-for-cards";
 
 export const dynamic = "force-dynamic";
 
@@ -242,6 +244,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const linkedEstimateRes = linkedEstimateId
     ? await supabase.from("hcp_estimates_raw").select("hcp_estimate_id, last_synced_at, hcp_notes").eq("hcp_estimate_id", linkedEstimateId).maybeSingle()
     : { data: null };
+
+  // Estimate badge — what was estimated/sent for this customer (job + customer
+  // threads). Single-customer call through the shared batched loader.
+  const jobEstMaps = await getEstimatesForCards([id], customerId ? [customerId] : [], 6);
+  const jobEstimates = estimatesForCard(jobEstMaps, id, customerId);
 
   const jobRaw = provJobRawRes.data as { last_synced_at?: string; hcp_notes?: string | null; original_estimate_id?: string | null; status?: string | null } | null;
   const estRaw = linkedEstimateRes.data as { hcp_estimate_id?: string; last_synced_at?: string; hcp_notes?: string | null } | null;
@@ -514,6 +521,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           <LinkButton href={`/gallery?scope=job&id=${id}`} variant="secondary">
             📷 Photos
           </LinkButton>
+          {jobEstimates.length > 0 ? (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-900">
+              Estimates <EstimateBadge estimates={jobEstimates} size="md" />
+            </span>
+          ) : null}
           {canWrite ? <RefreshFromHcpButton hcpJobId={id} /> : null}
           {canWrite ? (
             <>

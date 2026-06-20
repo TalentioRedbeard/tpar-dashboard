@@ -25,6 +25,8 @@ import { getCurrentTech } from "../../lib/current-tech";
 import { TechScheduleView } from "./TechScheduleView";
 import { TechAvatar } from "../../components/TechAvatar";
 import { CellAddMenu } from "../../components/CellAddMenu";
+import { EstimateBadge } from "../../components/EstimateBadge";
+import { getEstimatesForCards, estimatesForCard, type CardEstimate } from "../../lib/estimates-for-cards";
 import { RescheduleButton } from "../../components/RescheduleButton";
 import { PendingChangesBar } from "../../components/PendingChangesBar";
 import { listPendingChanges, type PendingChange } from "../../lib/schedule-changes";
@@ -49,6 +51,7 @@ type Appt = {
   appointment_id: string | null;
   hcp_job_id: string | null;
   hcp_customer_id: string | null;
+  hcp_estimate_id: string | null;
   scheduled_start: string;
   scheduled_end: string | null;
   status: string | null;
@@ -64,6 +67,8 @@ type Appt = {
   // and the lead's color for the card's left border.
   crew?: CrewMember[];
   leadColorHex?: string | null;
+  // Attached server-side: HCP estimates tied to this card (deduped, self-filtered).
+  estimates?: CardEstimate[];
 };
 
 type Tech = {
@@ -346,6 +351,7 @@ function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
         <div className="flex items-baseline gap-1">
           <span className="font-mono font-semibold">{chicagoTime(a.scheduled_start)}</span>
           <span className="truncate font-medium">{a.customer_name ?? "—"}</span>
+          {(a.estimates?.length ?? 0) > 0 && <span className="ml-auto"><EstimateBadge estimates={a.estimates!} size="sm" /></span>}
         </div>
       </div>
     );
@@ -355,7 +361,10 @@ function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
     <div className={`${containerClass} px-1.5 py-1 text-[11px] leading-tight`} style={borderStyle}>
       <div className="flex items-baseline justify-between gap-1">
         <span className="font-mono text-[10px] font-semibold">{chicagoTime(a.scheduled_start)}</span>
-        {dollars > 0 && <span className="text-[10px] font-medium">{fmtMoney(dollars)}</span>}
+        <span className="flex items-center gap-1">
+          {dollars > 0 && <span className="text-[10px] font-medium">{fmtMoney(dollars)}</span>}
+          {(a.estimates?.length ?? 0) > 0 && <EstimateBadge estimates={a.estimates!} size="sm" />}
+        </span>
       </div>
       <div className="mt-0.5 truncate font-medium">{a.customer_name ?? "—"}</div>
       {internal && (
@@ -407,6 +416,7 @@ function ApptDetail({ a, opts }: { a: Appt; opts: CellOpts }) {
             flag
           </span>
         )}
+        {(a.estimates?.length ?? 0) > 0 && <EstimateBadge estimates={a.estimates!} size="md" />}
         {dollars > 0 && <span className="ml-auto text-[11px] font-semibold">{fmtMoney(dollars)}</span>}
       </div>
     </div>
@@ -486,7 +496,7 @@ export default async function SchedulePage({
   let apptQuery = supa
     .from("appointments_master")
     .select(
-      "appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags",
+      "appointment_id, hcp_job_id, hcp_customer_id, hcp_estimate_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags",
     )
     .is("deleted_at", null)
     .gte("scheduled_start", windowStartUtc)
@@ -510,6 +520,19 @@ export default async function SchedulePage({
 
   // Apply filters
   const appts = applyFilters(rawAppts, filters, nowIso);
+
+  // Estimate badges: ONE batched RPC for the whole window's distinct job +
+  // customer ids, then attach per card (deduped + self-filtered). N+1 guard.
+  const estMaps = await getEstimatesForCards(
+    appts.map((a) => a.hcp_job_id),
+    appts.map((a) => a.hcp_customer_id),
+    6,
+  );
+  for (const a of appts) {
+    // On an estimate-type card, suppress its OWN estimate (don't badge itself).
+    const ownId = a.appointment_type === "estimate" ? a.hcp_estimate_id : null;
+    a.estimates = estimatesForCard(estMaps, a.hcp_job_id, a.hcp_customer_id, ownId);
+  }
 
   // Bucket by (tech, day)
   const cellKey = (tech: string, dayKey: string) => `${tech}|${dayKey}`;

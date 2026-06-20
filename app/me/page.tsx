@@ -26,6 +26,8 @@ import { ExpectationsPanel } from "../../components/ExpectationsPanel";
 import { getCurrentState as getClockState } from "../time/actions";
 import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
 import { getPendingSuggestions } from "../time/suggestions";
+import { EstimateBadge } from "../../components/EstimateBadge";
+import { getEstimatesForCards, estimatesForCard } from "../../lib/estimates-for-cards";
 
 export const metadata = { title: "My day · TPAR-DB" };
 
@@ -202,6 +204,14 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   };
   const activeAppts = appts.filter((a) => !isApptDismissed(a));
   const dismissedAppts = appts.filter(isApptDismissed);
+
+  // Estimate badges — one batched RPC over today's appts (customer-keyed; the
+  // /me view doesn't expose hcp_estimate_id, so no anti-self-reference needed).
+  const estMaps = await getEstimatesForCards(
+    appts.map((a) => a.hcp_job_id as string | null),
+    appts.map((a) => a.hcp_customer_id as string | null),
+    6,
+  );
 
   const comms = (commsRes.data ?? []) as Array<Record<string, unknown>>;
   const vehicle = vehicleRes.data as Record<string, unknown> | null;
@@ -529,6 +539,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                           📋 Briefing — review
                         </Link>
                       ) : null}
+                      {(() => {
+                        const es = estimatesForCard(estMaps, jobId, a.hcp_customer_id as string | null);
+                        return es.length ? <EstimateBadge estimates={es} size="md" /> : null;
+                      })()}
                     </div>
                     <span className="text-xs text-neutral-500">
                       {fmtTime(a.scheduled_start as string)} · {(a.status as string) ?? "?"}

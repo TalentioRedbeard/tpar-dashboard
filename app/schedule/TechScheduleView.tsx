@@ -17,12 +17,16 @@ import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { fmtMoney } from "../../components/Table";
+import { EstimateBadge } from "../../components/EstimateBadge";
+import { getEstimatesForCards, estimatesForCard } from "../../lib/estimates-for-cards";
 
 const CHI = "America/Chicago";
 
 type Appt = {
   appointment_id: string | null;
   hcp_job_id: string | null;
+  hcp_customer_id: string | null;
+  hcp_estimate_id: string | null;
   appointment_type: string | null;
   scheduled_start: string;
   scheduled_end: string | null;
@@ -93,7 +97,7 @@ export async function TechScheduleView({
     const { data } = await supa
       .from("appointments_master")
       .select(
-        "appointment_id, hcp_job_id, appointment_type, scheduled_start, scheduled_end, status, tech_primary_name, tech_all_names, customer_name, street, city, total_amount",
+        "appointment_id, hcp_job_id, hcp_customer_id, hcp_estimate_id, appointment_type, scheduled_start, scheduled_end, status, tech_primary_name, tech_all_names, customer_name, street, city, total_amount",
       )
       .is("deleted_at", null)
       .gte("scheduled_start", startUtc)
@@ -112,6 +116,13 @@ export async function TechScheduleView({
     byDay.get(k)!.push(a);
   }
   const dayKeys = [...byDay.keys()].sort();
+
+  // Estimate badges — one batched RPC for the whole agenda window.
+  const estMaps = await getEstimatesForCards(
+    appts.map((a) => a.hcp_job_id),
+    appts.map((a) => a.hcp_customer_id),
+    6,
+  );
 
   const navLink = (dateKey: string | null) => (dateKey ? `/schedule?date=${dateKey}` : "/schedule");
 
@@ -160,6 +171,12 @@ export async function TechScheduleView({
                     const pill = statusPill(a.status);
                     const dollars = (Number(a.total_amount) || 0) / 100;
                     const assisting = !!a.tech_primary_name && a.tech_primary_name !== fullName;
+                    const cardEstimates = estimatesForCard(
+                      estMaps,
+                      a.hcp_job_id,
+                      a.hcp_customer_id,
+                      a.appointment_type === "estimate" ? a.hcp_estimate_id : null,
+                    );
                     const body = (
                       <div className={`flex items-start justify-between gap-3 rounded-xl border bg-white px-3 py-2.5 ${isPast ? "border-neutral-200 opacity-70" : "border-neutral-200 hover:border-brand-300 hover:shadow-sm"}`}>
                         <div className="min-w-0">
@@ -173,6 +190,7 @@ export async function TechScheduleView({
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className={`rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${pill.cls}`}>{pill.label}</span>
                             {assisting ? <span className="text-[10px] text-neutral-400">assisting {a.tech_primary_name}</span> : null}
+                            {cardEstimates.length > 0 ? <EstimateBadge estimates={cardEstimates} size="sm" /> : null}
                           </div>
                         </div>
                         {dollars > 0 ? <span className="shrink-0 text-sm font-semibold text-neutral-700">{fmtMoney(dollars)}</span> : null}
