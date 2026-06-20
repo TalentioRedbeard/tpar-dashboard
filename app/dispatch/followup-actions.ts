@@ -10,7 +10,7 @@
 //      done only on a real send (or a no-longer-actionable soft-skip).
 
 import { db } from "@/lib/supabase";
-import { getCurrentTech, requireWriter } from "@/lib/current-tech";
+import { getCurrentTech, requireResolver } from "@/lib/current-tech";
 import { isOwner } from "@/lib/admin";
 import { revalidatePath } from "next/cache";
 
@@ -72,10 +72,11 @@ export async function updateFollowupConfig(
   return { ok: true };
 }
 
-// SEND — writer-gated (admin or tech; managers blocked, mirroring sendEstimateToCustomer).
+// SEND — resolver-gated (admin, tech, OR manager). Managers like Madisson are first-class
+// resolvers of operational work, so they can approve + send a follow-up nudge from /dispatch.
 export async function sendApprovedNudge(taskId: string): Promise<NudgeResult> {
-  const writer = await requireWriter();
-  if (!writer.ok) return { ok: false, error: writer.error };
+  const actor = await requireResolver();
+  if (!actor.ok) return { ok: false, error: actor.error };
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return { ok: false, error: "Server isn't configured to send yet (missing SUPABASE_URL / service-role key)." };
   const supa = db();
 
@@ -106,7 +107,7 @@ export async function sendApprovedNudge(taskId: string): Promise<NudgeResult> {
     r = await fetch(`${SUPABASE_URL}/functions/v1/send-estimate-followup`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_ROLE_KEY}`, "apikey": SERVICE_ROLE_KEY },
-      body: JSON.stringify({ hcp_estimate_id: hcpEstimateId, segment, created_by: writer.email }),
+      body: JSON.stringify({ hcp_estimate_id: hcpEstimateId, segment, created_by: actor.email }),
     });
   } catch (e) {
     return { ok: false, error: `Couldn't reach the send service: ${e instanceof Error ? e.message : String(e)}` };
