@@ -8,7 +8,9 @@ import { getCurrentTech, requireWriter } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const SEND_ESTIMATE_TRIGGER_SECRET = process.env.SEND_ESTIMATE_TRIGGER_SECRET ?? "";
+// Service-role lane: the dashboard already holds this key (lib/supabase.ts), so the
+// send-estimate call needs NO separate trigger secret — requireServiceCaller accepts it.
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 export type EstimateDetail = {
   id: string;
@@ -70,7 +72,7 @@ export async function updateEstimate(
 
 // ── Send to customer (tracked) ───────────────────────────────────────────────
 // Phase 2 v1: own the estimate SEND via Resend. Calls the send-estimate edge fn
-// (X-Trigger-Secret lane), which renders the branded email, sends via Resend, and
+// (service-role lane), which renders the branded email, sends via Resend, and
 // records an estimate_sends row whose token backs the /e/<token> hosted view +
 // open/click tracking. Writer-gated (admin or tech; managers blocked). Optionally
 // overrides the recipient email when the HCP record lacks one.
@@ -84,8 +86,8 @@ export async function sendEstimateToCustomer(
 ): Promise<SendEstimateResult> {
   const writer = await requireWriter();
   if (!writer.ok) return { ok: false, error: writer.error };
-  if (!SUPABASE_URL || !SEND_ESTIMATE_TRIGGER_SECRET) {
-    return { ok: false, error: "Server isn't configured to send yet (missing SEND_ESTIMATE_TRIGGER_SECRET / SUPABASE_URL)." };
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+    return { ok: false, error: "Server isn't configured to send yet (missing SUPABASE_URL / service-role key)." };
   }
 
   // The detail page is keyed by bid_estimates.id; the send fn needs the HCP id.
@@ -110,7 +112,11 @@ export async function sendEstimateToCustomer(
   try {
     r = await fetch(`${SUPABASE_URL}/functions/v1/send-estimate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Trigger-Secret": SEND_ESTIMATE_TRIGGER_SECRET },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "apikey": SERVICE_ROLE_KEY,
+      },
       body: JSON.stringify(body),
     });
   } catch (e) {
