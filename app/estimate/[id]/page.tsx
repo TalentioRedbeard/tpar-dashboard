@@ -11,6 +11,7 @@ import { Pill } from "@/components/ui/Pill";
 import { getCurrentTech } from "@/lib/current-tech";
 import { getEstimateDetail } from "./actions";
 import { EstimateEditForm } from "./EstimateEditForm";
+import { SendEstimateButton } from "./SendEstimateButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Estimate · TPAR-DB" };
@@ -75,6 +76,9 @@ export default async function EstimateDetailPage({
       backLabel="All estimates"
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          {me.canWrite && est.hcp_estimate_id ? (
+            <SendEstimateButton id={est.id} hasHcpEstimate={!!est.hcp_estimate_id} />
+          ) : null}
           {est.is_ai_built ? (
             <Link
               href={`/estimate/${est.id}/review`}

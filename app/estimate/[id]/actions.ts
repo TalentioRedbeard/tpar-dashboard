@@ -4,8 +4,11 @@
 // to any signed-in user (the estimates list is already org-visible).
 
 import { db } from "@/lib/supabase";
-import { getCurrentTech } from "@/lib/current-tech";
+import { getCurrentTech, requireWriter } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
+
+const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SEND_ESTIMATE_TRIGGER_SECRET = process.env.SEND_ESTIMATE_TRIGGER_SECRET ?? "";
 
 export type EstimateDetail = {
   id: string;
@@ -63,4 +66,69 @@ export async function updateEstimate(
   revalidatePath(`/estimate/${id}`);
   revalidatePath("/estimates");
   return { ok: true };
+}
+
+// ── Send to customer (tracked) ───────────────────────────────────────────────
+// Phase 2 v1: own the estimate SEND via Resend. Calls the send-estimate edge fn
+// (X-Trigger-Secret lane), which renders the branded email, sends via Resend, and
+// records an estimate_sends row whose token backs the /e/<token> hosted view +
+// open/click tracking. Writer-gated (admin or tech; managers blocked). Optionally
+// overrides the recipient email when the HCP record lacks one.
+export type SendEstimateResult =
+  | { ok: true; view_url: string | null }
+  | { ok: false; error: string };
+
+export async function sendEstimateToCustomer(
+  id: string,
+  input?: { message?: string; toEmail?: string }
+): Promise<SendEstimateResult> {
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
+  if (!SUPABASE_URL || !SEND_ESTIMATE_TRIGGER_SECRET) {
+    return { ok: false, error: "Server isn't configured to send yet (missing SEND_ESTIMATE_TRIGGER_SECRET / SUPABASE_URL)." };
+  }
+
+  // The detail page is keyed by bid_estimates.id; the send fn needs the HCP id.
+  const { data: est } = await db()
+    .from("bid_estimates")
+    .select("hcp_estimate_id")
+    .eq("id", id)
+    .maybeSingle();
+  const hcpEstimateId = (est?.hcp_estimate_id as string | null) ?? null;
+  if (!hcpEstimateId) {
+    return { ok: false, error: "This estimate isn't linked to an HCP estimate yet, so there's nothing to send." };
+  }
+
+  const body: Record<string, unknown> = {
+    hcp_estimate_id: hcpEstimateId,
+    created_by: writer.email,
+  };
+  if (input?.message && input.message.trim()) body.message = input.message.trim().slice(0, 8000);
+  if (input?.toEmail && input.toEmail.trim()) body.to_email = input.toEmail.trim();
+
+  let r: Response;
+  try {
+    r = await fetch(`${SUPABASE_URL}/functions/v1/send-estimate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Trigger-Secret": SEND_ESTIMATE_TRIGGER_SECRET },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { ok: false, error: `Couldn't reach the send service: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  const text = await r.text();
+  let parsed: { ok?: boolean; error?: string; view_url?: string | null };
+  try { parsed = JSON.parse(text); } catch { return { ok: false, error: `Send service returned an unexpected response (${r.status}).` }; }
+
+  if (!parsed.ok) {
+    if (parsed.error === "no_recipient_email") {
+      return { ok: false, error: "No email on file for this customer — add one in HCP or enter a recipient email and try again." };
+    }
+    return { ok: false, error: parsed.error ?? `Send failed (${r.status}).` };
+  }
+
+  revalidatePath(`/estimate/${id}`);
+  revalidatePath("/estimates");
+  return { ok: true, view_url: parsed.view_url ?? null };
 }

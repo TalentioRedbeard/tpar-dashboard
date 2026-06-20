@@ -44,6 +44,14 @@ const PUBLIC_PREFIXES = [
   // Public legal pages for the SMS (A2P 10DLC) messaging program — carrier
   // reviewers + customers must reach these without signing in.
   "/privacy", "/sms-terms",
+  // Public tokenized hosted estimate view (/e/<token>). Customers reach this
+  // from the Resend estimate email with no login. THE TOKEN IS THE ENTIRE AUTH —
+  // resolveEstimateByToken() in app/e/[token]/actions.ts enforces existence /
+  // expiry / revocation and returns a neutral page otherwise. WARNING: this is a
+  // short prefix that exempts EVERYTHING under /e — never add an internal route
+  // beginning with "/e" (e.g. /employees) or it becomes publicly reachable; give
+  // such a route a non-/e path or namespace the estimate view longer instead.
+  "/e",
 ];
 
 function isAllowed(email: string | null | undefined): boolean {
