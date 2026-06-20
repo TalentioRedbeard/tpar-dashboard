@@ -26,7 +26,7 @@ import {
 import { generateLineDescription } from "@/lib/estimate-actions";
 import { rateFor, linePriceDollars, materialsCostCents, applyOptionModifiers, type ModLine } from "@/lib/estimate-pricing";
 import { BasedOnPanel } from "./BasedOnPanel";
-import type { BasedOnDraftOption } from "@/lib/based-on-actions";
+import { generateBasedOnEstimate, type BasedOnDraftOption } from "@/lib/based-on-actions";
 
 const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
 const CUSTOM = "__custom__";
@@ -35,10 +35,14 @@ type Line = {
   q1: string; q2: string; q3: string; item: string; customName: string;
   hours: string; crew: string; materials: string; description: string;
   modifierKeys: string[];
+  // Value-based per-line sell price (from the estimate engine, or hand-entered).
+  // When set, it overrides the labor/materials cost-plus formula for the sell
+  // price. Empty string = revert to the formula (lineModified).
+  priceOverride: string;
 };
 type Opt = { name: string; lines: Line[] };
 
-const blankLine = (): Line => ({ q1: "", q2: "", q3: "", item: "", customName: "", hours: "4", crew: "2", materials: "0", description: "", modifierKeys: [] });
+const blankLine = (): Line => ({ q1: "", q2: "", q3: "", item: "", customName: "", hours: "4", crew: "2", materials: "0", description: "", modifierKeys: [], priceOverride: "" });
 const blankOpt = (i: number): Opt => ({ name: `Option ${i + 1}`, lines: [blankLine()] });
 
 function chosenName(l: Line): string { return l.item === CUSTOM ? l.customName.trim() : l.item; }
@@ -72,6 +76,7 @@ export function MultiOptionEstimateBuilder({
   initialCustomer,
   initialJob,
   backHref,
+  autoSeed,
 }: {
   initialCustomer?: { hcpCustomerId: string; name: string } | null;
   initialJob?: {
@@ -81,6 +86,10 @@ export function MultiOptionEstimateBuilder({
     techName: string | null;
   } | null;
   backHref?: string;
+  // When set (e.g. entering from an estimate appointment), the builder runs the
+  // estimate engine ONCE on mount from these visit notes/photos and pre-fills
+  // good/better/best for the operator to review before pushing.
+  autoSeed?: { freeform: string; imageUrls?: string[] } | null;
 }) {
   const router = useRouter();
 
@@ -142,6 +151,11 @@ export function MultiOptionEstimateBuilder({
   const [options, setOptions] = useState<Opt[]>([blankOpt(0)]);
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
+
+  // ── Auto-seed from an estimate appointment (one-shot) ────────────────────
+  const ranRef = useRef(false);
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState<string | null>(null);
 
   function updateLine(oi: number, li: number, patch: Partial<Line>) {
     setOptions((prev) => prev.map((o, i) => i !== oi ? o : { ...o, lines: o.lines.map((l, j) => j !== li ? l : { ...l, ...patch }) }));
@@ -225,14 +239,43 @@ export function MultiOptionEstimateBuilder({
     if (!draft || draft.length === 0) return;
     setOptions(draft.map((o) => ({
       name: o.name || "Option",
-      lines: (o.lines.length ? o.lines : [{ name: "", description: "", hours: "4", crew: "2", materials: "0" }]).map((l) => ({
+      lines: (o.lines.length ? o.lines : [{ name: "", description: "", hours: "4", crew: "2", materials: "0", price: "" }]).map((l) => ({
         q1: "", q2: "", q3: "", item: CUSTOM, customName: l.name,
         hours: l.hours || "0", crew: l.crew || "2", materials: l.materials || "0", description: l.description || "",
         modifierKeys: [],
+        // Carry the engine's value-based price as the sell-price override; the
+        // hours/crew/materials stay as the visible cost basis beneath it.
+        priceOverride: l.price || "",
       })),
     })));
     if (draftNote && !note.trim()) setNote(draftNote);
   }
+
+  // One-shot auto-seed: when entering from an estimate appointment, run the
+  // estimate engine ONCE on the visit notes/photos and pre-fill good/better/best.
+  // Guarded by ranRef so it fires exactly once even across re-renders. On
+  // failure, the empty manual builder is left intact with a soft notice.
+  useEffect(() => {
+    if (ranRef.current) return;
+    if (!customer || !autoSeed?.freeform?.trim()) return;
+    ranRef.current = true;
+    setSeeding(true);
+    setSeedMsg(null);
+    (async () => {
+      try {
+        const res = await generateBasedOnEstimate(customer.hcpCustomerId, {
+          freeform: autoSeed.freeform,
+          uploadedImageUrls: autoSeed.imageUrls,
+        });
+        if (res.ok) applyBasedOn(res.options, res.note);
+        else setSeedMsg(`Couldn't draft from the visit notes (${res.error}). Build manually below.`);
+      } catch (e) {
+        setSeedMsg(`Couldn't draft from the visit notes (${e instanceof Error ? e.message : String(e)}). Build manually below.`);
+      } finally {
+        setSeeding(false);
+      }
+    })();
+  }, [customer, autoSeed]);
 
   // A line item's pricebook-tagged modifier keys — floated up as "recommended"
   // in the picker (the same tags the old excavator auto-suggest used).
@@ -260,7 +303,20 @@ export function MultiOptionEstimateBuilder({
     return computeOption(o).lines[chosen.indexOf(l)]?.price ?? linePrice(l);
   };
 
-  const optTotal = (o: Opt) => computeOption(o).optionTotal;
+  // The SELL price for a chosen line: the value-based price override when set
+  // (the engine's suggested_price, or a hand-entered number), else the
+  // modifier-adjusted cost-plus formula price. This is what gets totaled, pushed
+  // to HCP, and shown bold per line.
+  const lineSellPrice = (o: Opt, l: Line): number => {
+    const ov = parseFloat(l.priceOverride);
+    return (l.priceOverride.trim() !== "" && Number.isFinite(ov) && ov >= 0) ? ov : lineModified(o, l);
+  };
+
+  // Base sum = chosen lines at their SELL price, PLUS modifier extra lines
+  // (equipment/permit) which the compute engine surfaces separately.
+  const optTotal = (o: Opt) =>
+    o.lines.filter(chosenName).reduce((s, l) => s + lineSellPrice(o, l), 0)
+    + computeOption(o).extraLines.reduce((s, e) => s + e.price, 0);
   const grandTotal = options.reduce((s, o) => s + optTotal(o), 0);
   const hasValid = options.some((o) => o.lines.some((l) => chosenName(l)));
 
@@ -298,11 +354,13 @@ export function MultiOptionEstimateBuilder({
       const chosen = o.lines.filter((l) => chosenName(l));
       const oc = computeOption(o);
       const line_items: Array<{ name: string; description?: string; quantity: number; unit_price_cents: number; unit_cost_cents: number }> =
-        chosen.map((l, i) => ({
+        chosen.map((l) => ({
           name: chosenName(l),
           description: l.description.trim() || undefined,
           quantity: 1,
-          unit_price_cents: Math.round((oc.lines[i]?.price ?? linePriceDollars(l.hours, l.crew, l.materials)) * 100),
+          // Sell price honors the value-based override (engine suggested_price /
+          // hand-entered); falls back to the modifier-adjusted cost-plus formula.
+          unit_price_cents: Math.round(lineSellPrice(o, l) * 100),
           unit_cost_cents: materialsCostCents(l.materials),
         }));
       // Equipment / permit modifiers → their own transparent line items so the
@@ -446,6 +504,16 @@ export function MultiOptionEstimateBuilder({
         <span className="text-xs text-neutral-400">…or build manually below</span>
       </div>
 
+      {/* Auto-seed status — drafting good/better/best from the visit notes */}
+      {seeding ? (
+        <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
+          ✨ Drafting good/better/best from the visit notes… (review everything before pushing)
+        </div>
+      ) : null}
+      {seedMsg ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{seedMsg}</div>
+      ) : null}
+
       {opts === null ? <div className="text-sm text-neutral-500">Loading pricebook…</div> : null}
 
       {/* Options */}
@@ -488,7 +556,7 @@ export function MultiOptionEstimateBuilder({
                   <input value={l.customName} onChange={(e) => updateLine(oi, li, { customName: e.target.value })} placeholder="Custom line item name" className={inputCls} />
                 ) : null}
 
-                <div className="mt-2 grid grid-cols-3 gap-2">
+                <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
                   <label className="block"><span className="text-xs font-medium text-neutral-600">Hours</span>
                     <input type="number" min="0" step="0.5" value={l.hours} onChange={(e) => updateLine(oi, li, { hours: e.target.value })} className={inputCls} /></label>
                   <label className="block"><span className="text-xs font-medium text-neutral-600">Crew</span>
@@ -497,6 +565,8 @@ export function MultiOptionEstimateBuilder({
                     </select></label>
                   <label className="block"><span className="text-xs font-medium text-neutral-600">Materials $ (cost)</span>
                     <input type="number" min="0" step="1" value={l.materials} onChange={(e) => updateLine(oi, li, { materials: e.target.value })} className={inputCls} /></label>
+                  <label className="block"><span className="text-xs font-medium text-neutral-600">Price $ (value-based — clear to use labor formula)</span>
+                    <input type="number" min="0" step="1" value={l.priceOverride} onChange={(e) => updateLine(oi, li, { priceOverride: e.target.value })} placeholder="(uses formula)" className={inputCls} /></label>
                 </div>
 
                 <label className="mt-2 block"><span className="text-xs font-medium text-neutral-600">Description / scope (customer-facing; include exclusions)</span>
@@ -548,14 +618,23 @@ export function MultiOptionEstimateBuilder({
                 })() : null}
 
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                  <span className="text-neutral-700">
-                    Labor {money((parseFloat(l.hours) || 0) * rateFor(Math.max(1, Math.min(7, parseInt(l.crew) || 1))))} + materials {money(Math.max(0, parseFloat(l.materials) || 0) * 1.3)} (×1.3) ={" "}
-                    {chosenName(l) && Math.round(lineModified(o, l)) !== Math.round(linePrice(l)) ? (
-                      <><span className="text-neutral-400 line-through">{money(linePrice(l))}</span> <span className="font-semibold text-brand-700">{money(lineModified(o, l))}</span> <span className="text-[11px] text-brand-500">w/ modifiers</span></>
-                    ) : (
-                      <span className="font-semibold text-neutral-900">{money(linePrice(l))}</span>
-                    )}
-                  </span>
+                  {l.priceOverride.trim() !== "" ? (
+                    // Value-based price set — it's the sell price; show the
+                    // cost-plus formula beneath it as the cost basis.
+                    <span className="text-neutral-700">
+                      <span className="font-semibold text-brand-700">{money(lineSellPrice(o, l))}</span> <span className="text-[11px] text-brand-500">value price</span>
+                      <span className="ml-2 text-[11px] text-neutral-400">cost basis {money(linePrice(l))}</span>
+                    </span>
+                  ) : (
+                    <span className="text-neutral-700">
+                      Labor {money((parseFloat(l.hours) || 0) * rateFor(Math.max(1, Math.min(7, parseInt(l.crew) || 1))))} + materials {money(Math.max(0, parseFloat(l.materials) || 0) * 1.3)} (×1.3) ={" "}
+                      {chosenName(l) && Math.round(lineModified(o, l)) !== Math.round(linePrice(l)) ? (
+                        <><span className="text-neutral-400 line-through">{money(linePrice(l))}</span> <span className="font-semibold text-brand-700">{money(lineModified(o, l))}</span> <span className="text-[11px] text-brand-500">w/ modifiers</span></>
+                      ) : (
+                        <span className="font-semibold text-neutral-900">{money(linePrice(l))}</span>
+                      )}
+                    </span>
+                  )}
                   {o.lines.length > 1 ? <button type="button" onClick={() => removeLine(oi, li)} className="ml-auto text-xs text-red-700 hover:text-red-900">× remove line</button> : null}
                 </div>
               </div>

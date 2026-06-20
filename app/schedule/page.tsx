@@ -1106,6 +1106,10 @@ function DayView({
                         ) : null}
                         {a.hcp_job_id ? (
                           <Link href={`/job/${a.hcp_job_id}`} className="block"><ApptDetail a={a} opts={{ color }} /></Link>
+                        ) : a.appointment_type === "estimate" && a.appointment_id ? (
+                          // Estimate appointment (no job yet) → draft a multi-option
+                          // estimate from the visit notes instead of dead-ending.
+                          <Link href={`/estimate/new?appointment=${a.appointment_id}`} className="block"><ApptDetail a={a} opts={{ color }} /></Link>
                         ) : (
                           <ApptDetail a={a} opts={{ color }} />
                         )}
@@ -1230,6 +1234,10 @@ function WeekView({
                                     <Link href={`/job/${a.hcp_job_id}`} title={`${a.customer_name ?? "—"} · ${a.street ?? ""}${a.city ? ", " + a.city : ""} · ${a.status ?? ""}`} className="block">
                                       <ApptBlock a={a} opts={{ color }} />
                                     </Link>
+                                  ) : a.appointment_type === "estimate" && a.appointment_id ? (
+                                    <Link href={`/estimate/new?appointment=${a.appointment_id}`} title={`${a.customer_name ?? "—"} · draft estimate from visit`} className="block">
+                                      <ApptBlock a={a} opts={{ color }} />
+                                    </Link>
                                   ) : (
                                     <div title={`${a.customer_name ?? "—"} · ${a.status ?? ""}`}>
                                       <ApptBlock a={a} opts={{ color }} />
@@ -1349,6 +1357,10 @@ function MonthView({
                         {visible.map((a) => (
                           a.hcp_job_id ? (
                             <Link key={a.appointment_id ?? a.hcp_job_id} href={`/job/${a.hcp_job_id}`} className="block">
+                              <ApptBlock a={a} opts={{ color, compact: true }} />
+                            </Link>
+                          ) : a.appointment_type === "estimate" && a.appointment_id ? (
+                            <Link key={a.appointment_id} href={`/estimate/new?appointment=${a.appointment_id}`} className="block">
                               <ApptBlock a={a} opts={{ color, compact: true }} />
                             </Link>
                           ) : (

@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function NewMultiOptionEstimatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ customer?: string; job?: string }>;
+  searchParams: Promise<{ customer?: string; job?: string; appointment?: string }>;
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/login?from=/estimate/new");
@@ -30,6 +30,7 @@ export default async function NewMultiOptionEstimatePage({
   const sp = await searchParams;
   const customerParam = (sp.customer ?? "").trim();
   const jobParam = (sp.job ?? "").trim();
+  const appointmentParam = (sp.appointment ?? "").trim();
 
   const supa = db();
   let initialCustomer: { hcpCustomerId: string; name: string } | null = null;
@@ -40,8 +41,36 @@ export default async function NewMultiOptionEstimatePage({
     techName: string | null;
   } | null = null;
   let backHref = "/estimates";
+  // When entering from an estimate appointment, seed the builder from the visit
+  // notes so it auto-drafts good/better/best on mount (the SalesAsk-killer flow).
+  let autoSeed: { freeform: string; imageUrls?: string[] } | null = null;
 
-  if (jobParam) {
+  if (appointmentParam) {
+    // Resolve the customer DIRECTLY from the appointment row — estimate customers
+    // are routinely absent from customer_360 (the known blocker), so we never
+    // route through it here.
+    const { data: appt } = await supa
+      .from("appointments_master")
+      .select("hcp_customer_id, customer_name, hcp_notes, notes, tech_primary_id, tech_primary_name, raw")
+      .eq("appointment_id", appointmentParam)
+      .maybeSingle();
+    if (appt?.hcp_customer_id) {
+      initialCustomer = {
+        hcpCustomerId: appt.hcp_customer_id as string,
+        name: (appt.customer_name as string | null) ?? "(customer)",
+      };
+      const raw = (appt.raw ?? {}) as Record<string, unknown>;
+      const addr = (raw.address ?? {}) as Record<string, unknown>;
+      initialJob = {
+        hcpJobId: "",
+        addressId: typeof addr.id === "string" ? (addr.id as string) : null,
+        techEmployeeId: (appt.tech_primary_id as string | null) ?? null,
+        techName: (appt.tech_primary_name as string | null) ?? null,
+      };
+      autoSeed = { freeform: (appt.hcp_notes as string | null) ?? (appt.notes as string | null) ?? "" };
+      backHref = "/me";
+    }
+  } else if (jobParam) {
     const [{ data: job }, { data: jr }] = await Promise.all([
       supa.from("job_360").select("hcp_customer_id, customer_name").eq("hcp_job_id", jobParam).maybeSingle(),
       supa.from("hcp_jobs_raw").select("raw").eq("hcp_job_id", jobParam).maybeSingle(),
@@ -88,7 +117,7 @@ export default async function NewMultiOptionEstimatePage({
       backLabel="Back"
     >
       {canWrite ? (
-        <MultiOptionEstimateBuilder initialCustomer={initialCustomer} initialJob={initialJob} backHref={backHref} />
+        <MultiOptionEstimateBuilder initialCustomer={initialCustomer} initialJob={initialJob} backHref={backHref} autoSeed={autoSeed} />
       ) : (
         <EmptyState
           title="Manager view — read-only."

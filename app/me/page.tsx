@@ -549,6 +549,16 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       Estimate-only — job not created yet in HCP
                     </div>
                   ) : null}
+                  {/* Estimate appointment → draft a multi-option estimate from the
+                      visit notes (auto-seeds good/better/best). Techs only. */}
+                  {!viewingAs && me.tech && !jobId && apptId ? (
+                    <Link
+                      href={`/estimate/new?appointment=${apptId}`}
+                      className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100"
+                    >
+                      ✨ Draft estimate from this visit
+                    </Link>
+                  ) : null}
                   <div className="mt-1 text-xs text-neutral-600">
                     {[a.street, a.city, a.zip].filter(Boolean).join(", ")}
                   </div>

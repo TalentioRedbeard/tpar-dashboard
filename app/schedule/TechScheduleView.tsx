@@ -23,6 +23,7 @@ const CHI = "America/Chicago";
 type Appt = {
   appointment_id: string | null;
   hcp_job_id: string | null;
+  appointment_type: string | null;
   scheduled_start: string;
   scheduled_end: string | null;
   status: string | null;
@@ -92,7 +93,7 @@ export async function TechScheduleView({
     const { data } = await supa
       .from("appointments_master")
       .select(
-        "appointment_id, hcp_job_id, scheduled_start, scheduled_end, status, tech_primary_name, tech_all_names, customer_name, street, city, total_amount",
+        "appointment_id, hcp_job_id, appointment_type, scheduled_start, scheduled_end, status, tech_primary_name, tech_all_names, customer_name, street, city, total_amount",
       )
       .is("deleted_at", null)
       .gte("scheduled_start", startUtc)
@@ -179,6 +180,9 @@ export async function TechScheduleView({
                     );
                     return a.hcp_job_id ? (
                       <Link key={a.appointment_id ?? i} href={`/job/${a.hcp_job_id}`} className="block">{body}</Link>
+                    ) : a.appointment_type === "estimate" && a.appointment_id ? (
+                      // Estimate appointment → draft a multi-option estimate from the visit.
+                      <Link key={a.appointment_id} href={`/estimate/new?appointment=${a.appointment_id}`} className="block">{body}</Link>
                     ) : (
                       <div key={a.appointment_id ?? i}>{body}</div>
                     );

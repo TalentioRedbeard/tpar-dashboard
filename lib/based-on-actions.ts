@@ -160,7 +160,7 @@ export type BasedOnSelection = {
 };
 
 // Builder-shaped draft (maps onto MultiOptionEstimateBuilder's Opt/Line state).
-export type BasedOnDraftLine = { name: string; description: string; hours: string; crew: string; materials: string };
+export type BasedOnDraftLine = { name: string; description: string; hours: string; crew: string; materials: string; price: string };
 export type BasedOnDraftOption = { name: string; lines: BasedOnDraftLine[] };
 export type BasedOnResult =
   | { ok: true; options: BasedOnDraftOption[]; note: string; sourceSummary: string }
@@ -298,6 +298,10 @@ export async function generateBasedOnEstimate(hcpCustomerId: string, sel: BasedO
         hours: String(hoursTotal || 0),
         crew: String(num(li["crew_size"], 2) || 2),
         materials: String(Math.round(num(li["materials_cost"], 0))),
+        // The engine's value-based per-line sell price (above bare cost-plus;
+        // correct pass-through for fee lines like permits). The builder honors
+        // this as a price override instead of recomputing from hours/crew/materials.
+        price: String(Math.round(num(li["suggested_price"], 0))),
       };
     }).filter((l) => l.name);
     return { name: rank ? `${baseName} (${rank})` : baseName, lines };
