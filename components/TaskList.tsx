@@ -8,6 +8,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createTask, setTaskStatus, assignTask, addRequirement, sendNoteToDanny, type Task } from "../lib/tasks";
 import { ScrollPanel } from "./ui/ScrollPanel";
+import { SendNudgeButton } from "./SendNudgeButton";
 
 type Res = { ok: boolean; error?: string };
 
@@ -72,6 +73,7 @@ function TaskRow({ task, techNames, run, pending }: { task: Task; techNames: str
         {task.tech_response === "accepted" ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800">✓ accepted</span> : null}
         {task.tech_response === "declined" ? <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] text-rose-800">✕ can&apos;t do</span> : null}
         <span className="ml-auto flex items-center gap-1">
+          {task.ref_kind === "estimate_nudge_approval" ? <SendNudgeButton taskId={task.id} /> : null}
           {task.status !== "in_progress" ? <button type="button" disabled={pending} onClick={() => run(() => setTaskStatus(task.id, "in_progress"))} className="rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] text-amber-800 hover:bg-amber-50">Start</button> : null}
           <button type="button" disabled={pending} onClick={() => run(() => setTaskStatus(task.id, "done"))} className="rounded border border-emerald-300 bg-white px-1.5 py-0.5 text-[10px] text-emerald-800 hover:bg-emerald-50">✓ Done</button>
         </span>

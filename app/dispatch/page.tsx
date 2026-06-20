@@ -34,6 +34,8 @@ import { LaneDropZone } from "../../components/LaneDropZone";
 import { NoteToDanny } from "../../components/NoteToDanny";
 import { GpsQueryWindow } from "../../components/GpsQueryWindow";
 import { listTasks } from "../../lib/tasks";
+import { getFollowupConfig } from "./followup-actions";
+import { FollowupConfigPanel } from "../../components/FollowupConfigPanel";
 import { isResolving, dispositionEntityKey, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
@@ -430,6 +432,8 @@ export default async function DispatchPage({
   const assignTechOptions = activeTechs.map((t) => ({ full: t.hcp_full_name, short: t.tech_short_name }));
   const dispatchTasks = await listTasks();
   const taskTechNames = activeTechs.map((t) => t.tech_short_name);
+  // Phase 3 follow-up engine control — owner only (kill-switch + auto-send + cadence).
+  const followupConfig = isOwner(me.realEmail ?? me.email ?? "") ? await getFollowupConfig() : null;
   const gpsByAppt = new Map<string, GpsArrival>(
     ((gpsRes.data ?? []) as GpsArrival[]).map((g) => [g.appointment_id, g]),
   );
@@ -1080,6 +1084,13 @@ export default async function DispatchPage({
           })}
         </div>
       </details>
+
+      {/* ESTIMATE FOLLOW-UP ENGINE — owner-only control (Phase 3) */}
+      {followupConfig ? (
+        <div className="mb-6">
+          <FollowupConfigPanel config={followupConfig} />
+        </div>
+      ) : null}
 
       {/* TASK LIST + NOTE TO DANNY (Danny 2026-05-31) */}
       {canWriteAck ? (

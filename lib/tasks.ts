@@ -26,6 +26,11 @@ export type Task = {
   tech_response: "accepted" | "declined" | null;
   tech_response_note: string | null;
   tech_response_at: string | null;
+  // Phase 3 follow-up engine linkage (migration 20260620000000). listTasks select('*')
+  // already returns these; typed here so TaskRow can branch on ref_kind.
+  ref_kind: string | null;
+  ref_id: string | null;
+  due_at: string | null;
 };
 export type TaskResult = { ok: true } | { ok: false; error: string };
 
