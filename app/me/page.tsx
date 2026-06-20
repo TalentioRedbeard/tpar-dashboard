@@ -255,6 +255,20 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   // Which of today's jobs have a briefing this tech hasn't reviewed yet?
   const unreviewedBriefingJobs = new Set(await getUnreviewedBriefingJobs(apptJobIds));
 
+  // Photo accountability (Phase 1b): which of today's jobs have ZERO photos on
+  // file? One batched query over photo_labels (the live registry) — no N+1. Jobs
+  // NOT in this set have at least one photo. Drives the "add some" nudge below.
+  const jobsWithPhotos = new Set<string>();
+  if (apptJobIds.length > 0) {
+    const { data: photoRows } = await supa
+      .from("photo_labels")
+      .select("hcp_job_id")
+      .in("hcp_job_id", apptJobIds);
+    for (const r of (photoRows ?? []) as Array<{ hcp_job_id: string | null }>) {
+      if (r.hcp_job_id) jobsWithPhotos.add(r.hcp_job_id);
+    }
+  }
+
   // Build map: hcp_job_id → list of trigger_numbers fired today
   const lifecycleByJob = new Map<string, number[]>();
   // Also track fired_at per (job, trigger) so we can correlate with mirror logs.
@@ -621,6 +635,16 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       eojSubmitted={eojSubmittedJobs.has(jobId)}
                     />
                   )}
+                  {/* Photo nudge (Phase 1b): no photos on this job yet — prompt the
+                      tech to add some. Links to the job's photo surface. */}
+                  {!viewingAs && me.tech && jobId && !jobsWithPhotos.has(jobId) ? (
+                    <Link
+                      href={`/gallery?scope=job&id=${jobId}`}
+                      className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                    >
+                      📸 No photos yet — add some
+                    </Link>
+                  ) : null}
                   {!viewingAs && (apptId || jobId) ? (
                     <div className="mt-2 flex justify-end">
                       <DismissJobButton appointmentId={apptId} hcpJobId={jobId} />

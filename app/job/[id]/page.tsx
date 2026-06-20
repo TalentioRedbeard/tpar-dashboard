@@ -421,6 +421,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   ]);
   const siteLat = (siteRes.data?.geo_lat as number | null) ?? null;
   const siteLng = (siteRes.data?.geo_lng as number | null) ?? null;
+
+  // Photo accountability (Phase 1b): does this job have ANY photos on file?
+  // Count photo_labels (the live registry) directly — j.photo_count from job_360
+  // can be stale. Drives the "add some" nudge near the Photos control.
+  const { count: photoLabelCount } = await db()
+    .from("photo_labels")
+    .select("id", { count: "exact", head: true })
+    .eq("hcp_job_id", id);
+  const hasPhotos = (photoLabelCount ?? 0) > 0;
   const clientPhone10 = phoneRes.data?.phone10 != null ? String(phoneRes.data.phone10) : null;
   // Job work description (the "contract" the tech needs to see) — shown atop Line items.
   const workDescription = ((phoneRes.data?.job_description as string | null | undefined) ?? "").trim() || null;
@@ -588,6 +597,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </div>
           )}
         </Section>
+
+        {/* Photo nudge (Phase 1b): this job has no photos on file yet. Prompt the
+            crew to add some near the Finish/lifecycle controls. */}
+        {canWrite && !hasPhotos ? (
+          <Link
+            href={`/gallery?scope=job&id=${id}`}
+            className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 hover:bg-amber-100"
+          >
+            📸 No photos yet — add some
+          </Link>
+        ) : null}
 
         {/* Work order / HCP job note — for FM accounts (Vasa/Nfr FM etc.) the
             booking arrives via the vendor's portal and the scope is logged into

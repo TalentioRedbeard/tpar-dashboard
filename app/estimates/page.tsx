@@ -1,22 +1,30 @@
-// Estimates pipeline. Sources from bid_estimates (Tool 3 table). Pipeline
-// view grouped by status with counts, plus a searchable / sortable detail
-// table where every row links to /estimate/[id] for inline edit.
+// Sent-estimate pipeline. Reads estimate_pipeline_v (the 3,040 REAL HCP estimates
+// over hcp_estimates_raw), NOT bid_estimates (the 47-row internal builder, only 13
+// HCP-linked). Pipeline stages = awaiting / won / declined / expired, derived from
+// HCP work_status + per-option approval_status (see the view's migration). Rows link
+// to HCP, except AI-built ones (also in bid_estimates) which link to /estimate/[id].
 
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { StatCard } from "../../components/ui/StatCard";
-import { EstimatesTable, type EstimateRow } from "../../components/EstimatesTable";
+import { EstimatePipelineTable, type PipelineRow } from "../../components/EstimatePipelineTable";
 import { getCurrentTech } from "../../lib/current-tech";
 import { TechEstimatesView } from "./TechEstimatesView";
 
 export const metadata = { title: "Estimates · TPAR-DB" };
 
-const STATUSES = ["draft", "preview", "approved", "pushed", "archived"] as const;
+// Pipeline stages, in the order they're surfaced. Counts shown as StatCards.
+const STAGES = ["awaiting", "won", "declined", "expired"] as const;
+const STAGE_LABEL: Record<string, string> = {
+  awaiting: "Awaiting",
+  won: "Won",
+  declined: "Declined",
+  expired: "Expired",
+};
 
 export default async function EstimatesPage() {
-  // Pipeline shows pricing + margins across all customers. Gate to admin/manager.
+  // Pipeline shows pricing + win/loss across all customers. Gate to admin/manager.
   const me = await getCurrentTech().catch(() => null);
   // Techs get estimates on their own scheduled customers instead of the company
   // pipeline; office users (no tech row) still go to /me.
@@ -27,69 +35,39 @@ export default async function EstimatesPage() {
     redirect("/me");
   }
   const supa = db();
+  // Newest activity first. Limit generously — the awaiting/recent sets are what
+  // matter; the won/declined/expired history runs into the thousands.
   const { data } = await supa
-    .from("bid_estimates")
-    .select("id, project_name, customer_name, hcp_customer_id, hcp_job_id, hcp_estimate_id, hcp_estimate_number, status, source, created_at, hcp_pushed_at, customer_approved_at, tech_authorized_at, created_by")
-    .order("created_at", { ascending: false })
-    .limit(200);
-  const rows = (data ?? []) as EstimateRow[];
+    .from("estimate_pipeline_v")
+    .select("hcp_estimate_id, hcp_customer_id, customer_name, estimate_number, stage, total_dollars, min_dollars, option_count, created_at, last_activity, age_days, is_ai_built, bid_estimate_id, hcp_url")
+    .order("last_activity", { ascending: false, nullsFirst: false })
+    .limit(500);
+  const rows = (data ?? []) as PipelineRow[];
 
-  // AI-built badge: which of these estimates have a line written by the
-  // build-mode AI (intake.source = 'ai_conversation')? One query over the
-  // visible ids keeps it cheap. AI rows get a badge + deep-link to the review
-  // surface in the table.
-  let aiIds: string[] = [];
-  if (rows.length) {
-    const { data: aiLines } = await supa
-      .from("bid_estimate_lines")
-      .select("estimate_id")
-      .in("estimate_id", rows.map((r) => r.id))
-      .eq("intake->>source", "ai_conversation");
-    aiIds = Array.from(new Set(((aiLines ?? []) as Array<{ estimate_id: string }>).map((l) => l.estimate_id)));
-  }
-
-  const canCreate = !!(me?.isAdmin || me?.isManager);
-
-  const byStatus = new Map<string, number>();
+  const byStage = new Map<string, number>();
   for (const r of rows) {
-    const s = (r.status ?? "draft").toLowerCase();
-    byStatus.set(s, (byStatus.get(s) ?? 0) + 1);
+    const s = (r.stage ?? "awaiting").toLowerCase();
+    byStage.set(s, (byStage.get(s) ?? 0) + 1);
   }
 
   return (
     <PageShell
       title="Estimates"
-      description="Drafts, previewed, approved, pushed-to-HCP, and archived estimates. Click any row to view + edit."
-      actions={canCreate ? (
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/estimate/new"
-            className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
-          >
-            + Build multi-option estimate
-          </Link>
-          <Link
-            href="/dispatch/new-estimate"
-            className="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            Schedule estimate visit
-          </Link>
-        </div>
-      ) : undefined}
+      description="Sent HCP estimates by pipeline stage — awaiting a decision, won, declined, or expired. Click a row to open it in HCP (AI-built estimates open in the builder)."
     >
-      <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-        {STATUSES.map((s) => {
-          const count = byStatus.get(s) ?? 0;
+      <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {STAGES.map((s) => {
+          const count = byStage.get(s) ?? 0;
           const tone =
-            s === "approved" || s === "pushed" ? "green" :
-            s === "preview" ? "brand" :
-            s === "archived" ? "neutral" :
+            s === "won" ? "green" :
+            s === "awaiting" ? "brand" :
+            s === "declined" ? "amber" :
             "neutral";
-          return <StatCard key={s} label={s} value={count} tone={tone as "green" | "brand" | "neutral"} />;
+          return <StatCard key={s} label={STAGE_LABEL[s]} value={count} tone={tone as "green" | "brand" | "amber" | "neutral"} />;
         })}
       </section>
 
-      <EstimatesTable rows={rows} aiIds={aiIds} />
+      <EstimatePipelineTable rows={rows} />
     </PageShell>
   );
 }

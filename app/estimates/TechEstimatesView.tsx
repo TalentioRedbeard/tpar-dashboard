@@ -1,13 +1,10 @@
-// /estimates tech-scoped view — estimates on the jobs/customers this tech is
-// scheduled with ("what pertains to me"). The leadership pipeline shows pricing
-// across ALL customers; this scopes to the tech's scheduled customers.
+// /estimates tech-scoped view — sent HCP estimates on the customers this tech is
+// scheduled with ("what pertains to me"). The leadership pipeline shows the whole
+// company; this scopes to the tech's scheduled customers (same mechanism as before).
 //
-// NOTE: bid_estimates.created_by is currently all "Danny" (no tech-created rows
-// yet, tech_authorized_at all null), so scoping by creator would be empty for
-// every tech. We scope by the tech's scheduled customers instead — it shows
-// estimate drafts on their jobs and fills in as techs start building estimates
-// (the multi-option builder is reachable from any job). Rendered from /estimates
-// when the viewer is a tech.
+// Re-sourced 2026-06-19 from bid_estimates (the 47-row internal builder) to
+// estimate_pipeline_v (the 3,040 real sent HCP estimates). Stage = HCP-derived
+// (won/declined/expired/awaiting). Rows link to HCP, AI-built ones to /estimate/[id].
 
 import Link from "next/link";
 import { db } from "../../lib/supabase";
@@ -22,25 +19,38 @@ type ApptLite = {
   tech_all_names: string[] | null;
 };
 type Est = {
-  id: string;
-  project_name: string | null;
-  customer_name: string | null;
+  hcp_estimate_id: string;
   hcp_customer_id: string | null;
-  hcp_job_id: string | null;
-  status: string | null;
-  created_at: string | null;
+  customer_name: string | null;
+  estimate_number: string | null;
+  stage: string | null;
+  total_dollars: number | string | null;
+  min_dollars: number | string | null;
+  option_count: number | null;
+  last_activity: string | null;
+  is_ai_built: boolean | null;
+  bid_estimate_id: string | null;
+  hcp_url: string | null;
 };
 
 function fmtDay(s: string | null): string {
   if (!s) return "—";
   return new Date(s).toLocaleDateString("en-US", { timeZone: CHI, month: "short", day: "numeric" });
 }
-function statusPill(st: string | null): { cls: string; label: string } {
-  const s = (st ?? "draft").toLowerCase();
-  if (s === "approved" || s === "pushed") return { cls: "bg-emerald-100 text-emerald-800", label: s };
-  if (s === "preview") return { cls: "bg-brand-100 text-brand-800", label: s };
-  if (s === "archived") return { cls: "bg-neutral-100 text-neutral-500", label: s };
-  return { cls: "bg-amber-100 text-amber-800", label: s };
+function stagePill(st: string | null): { cls: string; label: string } {
+  const s = (st ?? "awaiting").toLowerCase();
+  if (s === "won") return { cls: "bg-emerald-100 text-emerald-800", label: s };
+  if (s === "awaiting") return { cls: "bg-brand-100 text-brand-800", label: s };
+  if (s === "declined") return { cls: "bg-amber-100 text-amber-800", label: s };
+  return { cls: "bg-neutral-100 text-neutral-500", label: s };
+}
+function fmtAmount(e: Est): string {
+  const max = e.total_dollars == null ? null : Number(e.total_dollars);
+  const min = e.min_dollars == null ? null : Number(e.min_dollars);
+  if (max == null || !Number.isFinite(max)) return "—";
+  const fmt = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  if ((e.option_count ?? 0) > 1 && min != null && Number.isFinite(min) && min !== max) return `${fmt(min)}–${fmt(max)}`;
+  return fmt(max);
 }
 
 export async function TechEstimatesView({ fullName, shortName }: { fullName: string | null; shortName: string }) {
@@ -66,10 +76,10 @@ export async function TechEstimatesView({ fullName, shortName }: { fullName: str
   let estimates: Est[] = [];
   if (ids.length) {
     const { data } = await supa
-      .from("bid_estimates")
-      .select("id, project_name, customer_name, hcp_customer_id, hcp_job_id, status, created_at")
+      .from("estimate_pipeline_v")
+      .select("hcp_estimate_id, hcp_customer_id, customer_name, estimate_number, stage, total_dollars, min_dollars, option_count, last_activity, is_ai_built, bid_estimate_id, hcp_url")
       .in("hcp_customer_id", ids)
-      .order("created_at", { ascending: false })
+      .order("last_activity", { ascending: false, nullsFirst: false })
       .limit(60);
     estimates = (data ?? []) as Est[];
   }
@@ -77,12 +87,12 @@ export async function TechEstimatesView({ fullName, shortName }: { fullName: str
   return (
     <PageShell
       title="My estimates"
-      description={`Estimates on your scheduled customers · ${shortName}`}
+      description={`Sent estimates on your scheduled customers · ${shortName}`}
       help={{
-        intent: "Estimate drafts on the customers you're scheduled with. Tap one to view or keep building it. To start a new one, open the job and tap Estimate.",
+        intent: "Sent HCP estimates on the customers you're scheduled with, with their pipeline stage (awaiting / won / declined / expired). Tap one to open it.",
         actions: [
           "Scoped to your scheduled customers (last 3 months + upcoming).",
-          "Tap an estimate to open it (good/better/best options).",
+          "Tap an estimate to open it in HCP (AI-built ones open in the builder).",
           "New estimate: open the job → Estimate, or My day → Estimate.",
         ],
       }}
@@ -98,18 +108,27 @@ export async function TechEstimatesView({ fullName, shortName }: { fullName: str
       ) : (
         <ul className="space-y-2">
           {estimates.map((e) => {
-            const pill = statusPill(e.status);
-            return (
-              <li key={e.id}>
-                <Link href={`/estimate/${e.id}`} className="block">
-                  <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 hover:border-brand-300 hover:shadow-sm">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-neutral-900">{e.project_name || e.customer_name || "Estimate"}</div>
-                      <div className="mt-0.5 truncate text-xs text-neutral-500">{e.customer_name ?? "—"} · {fmtDay(e.created_at)}</div>
-                    </div>
-                    <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${pill.cls}`}>{pill.label}</span>
+            const pill = stagePill(e.stage);
+            const href = e.is_ai_built && e.bid_estimate_id ? `/estimate/${e.bid_estimate_id}` : (e.hcp_url ?? "#");
+            const external = !(e.is_ai_built && e.bid_estimate_id);
+            const inner = (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 hover:border-brand-300 hover:shadow-sm">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-neutral-900">
+                    {e.estimate_number ? `#${e.estimate_number}` : "Estimate"} · {e.customer_name ?? "—"}
                   </div>
-                </Link>
+                  <div className="mt-0.5 truncate text-xs text-neutral-500">{fmtAmount(e)} · {fmtDay(e.last_activity)}</div>
+                </div>
+                <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${pill.cls}`}>{pill.label}</span>
+              </div>
+            );
+            return (
+              <li key={e.hcp_estimate_id}>
+                {external ? (
+                  <a href={href} target="_blank" rel="noreferrer" className="block">{inner}</a>
+                ) : (
+                  <Link href={href} className="block">{inner}</Link>
+                )}
               </li>
             );
           })}

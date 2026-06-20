@@ -518,6 +518,19 @@ export default async function SchedulePage({
   const rawAppts = (apptRes.data ?? []) as Appt[];
   const techs = (techRes.data ?? []) as Tech[];
 
+  // Photo accountability (Phase 1b): owner-only list of recently-completed jobs
+  // with ZERO photos on file (jobs_zero_photos_v applies the >24h harvest-lag
+  // grace window). Compact header section, admin-gated.
+  type ZeroPhotoJob = { hcp_job_id: string; customer_name: string | null; tech_primary_name: string | null; job_date: string | null };
+  let zeroPhotoJobs: ZeroPhotoJob[] = [];
+  if (me.isAdmin) {
+    const { data: zpData } = await supa
+      .from("jobs_zero_photos_v")
+      .select("hcp_job_id, customer_name, tech_primary_name, job_date")
+      .limit(50);
+    zeroPhotoJobs = (zpData ?? []) as ZeroPhotoJob[];
+  }
+
   // Apply filters
   const appts = applyFilters(rawAppts, filters, nowIso);
 
@@ -870,6 +883,32 @@ export default async function SchedulePage({
           <Link href={linkFor({ date: null })} className="ml-2 rounded-md border border-brand-300 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800 hover:bg-brand-100">Today</Link>
         )}
       </div>
+
+      {/* Photo accountability (Phase 1b) — owner-only. Recently-completed jobs
+          with zero photos on file. Collapsed by default; expands to the list. */}
+      {me.isAdmin && zeroPhotoJobs.length > 0 ? (
+        <details className="mb-3 rounded-2xl border border-amber-200 bg-amber-50">
+          <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm font-medium text-amber-900 hover:bg-amber-100/60">
+            <span aria-hidden>📸</span>
+            <span><strong>{zeroPhotoJobs.length}</strong> recently-completed job{zeroPhotoJobs.length === 1 ? "" : "s"} with no photos</span>
+            <span className="ml-auto text-xs font-normal text-amber-700">click to view</span>
+          </summary>
+          <ul className="divide-y divide-amber-100 border-t border-amber-200">
+            {zeroPhotoJobs.map((z) => (
+              <li key={z.hcp_job_id}>
+                <Link href={`/job/${z.hcp_job_id}`} className="flex flex-wrap items-center gap-2 px-4 py-2 text-sm hover:bg-amber-100/50">
+                  <span className="font-medium text-neutral-900">{z.customer_name ?? "—"}</span>
+                  <span className="text-xs text-neutral-500">
+                    {z.tech_primary_name ? `${z.tech_primary_name} · ` : ""}
+                    {z.job_date ? new Date(z.job_date).toLocaleDateString("en-US", { timeZone: CHI, month: "short", day: "numeric" }) : ""}
+                  </span>
+                  <span className="ml-auto text-xs text-brand-700">open job →</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       {/* CONTROLS: VIEW + COLOR (button groups) */}
       <div className="mb-3 flex flex-wrap items-center gap-3">
