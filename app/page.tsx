@@ -278,7 +278,7 @@ export default async function Today() {
           timeZone: "America/Chicago", weekday: "short", hour: "numeric", minute: "2-digit", hour12: true,
         });
         return (
-          <Link href="/alarms" className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/50 px-4 py-3 text-sm transition hover:bg-amber-50">
+          <Link href="/alarms" className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm transition hover:bg-amber-50">
             <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-amber-500" aria-hidden />
             <span className="font-medium text-amber-900">Next wake-up alarm</span>
             <span className="text-amber-800">{nextAlarm.name}</span>

@@ -471,7 +471,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
         <Section title="Membership">
           {currentMembership && currentMembership.status === "active" ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <div>
                 <div className="font-semibold text-emerald-900">{currentMembership.customer_facing_name}</div>
                 <div className="mt-0.5 text-xs text-emerald-800">
@@ -485,7 +485,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
               <Pill tone="green">active</Pill>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-neutral-50/60 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-4">
               <div>
                 <div className="font-medium text-neutral-700">Not a member yet</div>
                 <div className="mt-0.5 text-xs text-neutral-500">

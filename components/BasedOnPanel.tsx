@@ -121,7 +121,7 @@ export function BasedOnPanel({
   const ckbox = "h-3.5 w-3.5 rounded border-neutral-300";
 
   return (
-    <div className="rounded-2xl border border-brand-200 bg-brand-50/60 p-4">
+    <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm font-semibold text-brand-900">✨ Based on… <span className="font-normal text-brand-700">— pick any context; Claude drafts the options</span></div>
         <button type="button" onClick={() => setOpen(false)} className="text-xs text-neutral-500 hover:text-neutral-800">close</button>

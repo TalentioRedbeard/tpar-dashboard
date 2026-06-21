@@ -246,11 +246,11 @@ export default async function CoachingPage() {
           </div>
           <p className="mt-2 text-sm text-brand-900/90">{teachingTape.summary ?? "—"}</p>
           <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-5">
-            <div className="rounded-xl bg-white/60 p-2"><strong className="block text-xs uppercase text-brand-700">1. Apologize</strong>before grievance</div>
-            <div className="rounded-xl bg-white/60 p-2"><strong className="block text-xs uppercase text-brand-700">2. Frame the why</strong>set up the structure</div>
-            <div className="rounded-xl bg-white/60 p-2"><strong className="block text-xs uppercase text-brand-700">3. Count out loud</strong>&quot;three options&quot;</div>
-            <div className="rounded-xl bg-white/60 p-2"><strong className="block text-xs uppercase text-brand-700">4. Name recommendation</strong>which one to pick</div>
-            <div className="rounded-xl bg-white/60 p-2"><strong className="block text-xs uppercase text-brand-700">5. Show the math</strong>labor vs contingency</div>
+            <div className="rounded-xl bg-white p-2"><strong className="block text-xs uppercase text-brand-700">1. Apologize</strong>before grievance</div>
+            <div className="rounded-xl bg-white p-2"><strong className="block text-xs uppercase text-brand-700">2. Frame the why</strong>set up the structure</div>
+            <div className="rounded-xl bg-white p-2"><strong className="block text-xs uppercase text-brand-700">3. Count out loud</strong>&quot;three options&quot;</div>
+            <div className="rounded-xl bg-white p-2"><strong className="block text-xs uppercase text-brand-700">4. Name recommendation</strong>which one to pick</div>
+            <div className="rounded-xl bg-white p-2"><strong className="block text-xs uppercase text-brand-700">5. Show the math</strong>labor vs contingency</div>
           </div>
           <p className="mt-3 text-xs text-brand-900/70">
             Listen to the full call: <Link href={`/comms/${teachingTape.id}`} className="font-medium underline">/comms/{teachingTape.id}</Link>
@@ -267,7 +267,7 @@ export default async function CoachingPage() {
           </summary>
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {rates.map((r) => (
-              <div key={r.rate_key} className="rounded-xl border border-neutral-200 bg-neutral-50/40 p-3">
+              <div key={r.rate_key} className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-sm font-medium text-neutral-900">{r.display_name}</span>
                   <span className="font-mono tabular-nums text-base font-semibold text-neutral-900">{fmtRate(r.unit, r.amount_cents)}</span>

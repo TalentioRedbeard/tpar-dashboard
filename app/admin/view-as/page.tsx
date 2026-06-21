@@ -82,7 +82,7 @@ export default async function ViewAsPage() {
         </div>
       </Section>
 
-      <div className="mt-8 rounded-2xl border border-neutral-200 bg-neutral-50/60 p-4 text-xs text-neutral-600">
+      <div className="mt-8 rounded-2xl border border-neutral-200 bg-white p-4 text-xs text-neutral-600">
         <div className="font-medium text-neutral-700">How this works</div>
         <ul className="mt-1 list-disc pl-5 leading-relaxed">
           <li>Click a tech → cookie set, you're rendered as them throughout the app</li>

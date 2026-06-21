@@ -73,7 +73,7 @@ export function ExpectationsAdmin({ items, techNames }: { items: Expectation[]; 
       </div>
 
       {form ? (
-        <div className="rounded-2xl border border-brand-300 bg-brand-50/40 p-4">
+        <div className="rounded-2xl border border-brand-300 bg-brand-50 p-4">
           <h3 className="mb-3 text-sm font-semibold text-neutral-800">{form.id ? "Edit" : "New"} expectation</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs font-medium text-neutral-600 sm:col-span-2">

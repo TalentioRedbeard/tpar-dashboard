@@ -572,7 +572,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             hcpWorkStatus={jobRaw?.status ?? null}
           />
           {firedTriggers.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50/50 p-3">
+            <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-3">
               <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">Fired so far</div>
               <ScrollPanel tier="standard">
               <ul className="space-y-1 text-xs text-neutral-700">

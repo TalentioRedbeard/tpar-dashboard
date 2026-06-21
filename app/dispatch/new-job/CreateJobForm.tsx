@@ -286,7 +286,7 @@ export function CreateJobForm({
       </div>
 
       {/* Scheduling advisor — recommend, don't decide. Apply pre-fills tech + time. */}
-      <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-3">
+      <div className="rounded-lg border border-brand-200 bg-brand-50 p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-brand-800">✨ Scheduling advisor</span>
           <button

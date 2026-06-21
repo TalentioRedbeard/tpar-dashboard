@@ -97,7 +97,7 @@ export default async function NewVoiceNotePage({
        *  URL already includes ?intent=, this section auto-confirms and the
        *  recorder is shown below. */}
       {!preselectedIntent ? (
-        <div className="mb-5 rounded-2xl border border-brand-200 bg-brand-50/50 p-4">
+        <div className="mb-5 rounded-2xl border border-brand-200 bg-brand-50 p-4">
           <div className="mb-2 text-sm font-semibold text-brand-900">What kind of voice note?</div>
           <div className="mb-3 text-xs text-brand-900/80">Pick one — this tags the recording so it lands in the right review queue.</div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

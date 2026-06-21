@@ -69,7 +69,7 @@ export function ContactEditor({ initial }: { initial?: ContactInitial | null }) 
   }
 
   return (
-    <form action={formAction} className="mb-5 space-y-3 rounded-2xl border border-brand-200 bg-brand-50/40 p-4">
+    <form action={formAction} className="mb-5 space-y-3 rounded-2xl border border-brand-200 bg-brand-50 p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-neutral-900">{i ? `Edit ${i.name}` : "Add a contact"}</h2>
         <button

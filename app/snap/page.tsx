@@ -93,7 +93,7 @@ export default async function SnapPage() {
 
       <Section title="Recent screenshots (10)">
         {recent.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 p-6 text-center text-sm text-neutral-500">
+          <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-6 text-center text-sm text-neutral-500">
             No screenshot requests yet.
           </div>
         ) : (
@@ -130,7 +130,7 @@ export default async function SnapPage() {
         )}
       </Section>
 
-      <div className="mt-10 rounded-2xl border border-neutral-200 bg-neutral-50/60 p-4 text-xs text-neutral-600">
+      <div className="mt-10 rounded-2xl border border-neutral-200 bg-white p-4 text-xs text-neutral-600">
         <div className="font-medium text-neutral-700">How this works</div>
         <ol className="mt-1 list-decimal pl-5 leading-relaxed">
           <li>You tap the button → server action inserts a row into <code>screenshot_requests</code></li>

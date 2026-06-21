@@ -246,7 +246,7 @@ export function AppGuide({
 
       {/* Ambient strip */}
       {showAmbient && !compact && ambient ? (
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50/60 p-3 text-xs text-neutral-700">
+        <div className="rounded-xl border border-neutral-200 bg-white p-3 text-xs text-neutral-700">
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {ambient.van ? (
               <span>
@@ -312,7 +312,7 @@ function TopCandidateCard({
   onSelect?: (cand: FinderCandidate, action: ActionTarget) => void;
 }) {
   return (
-    <div className="rounded-2xl border-2 border-brand-300 bg-brand-50/30 p-4 shadow-sm">
+    <div className="rounded-2xl border-2 border-brand-300 bg-brand-50 p-4 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-lg font-semibold text-neutral-900">
           ★ {cand.customer_name ?? "—"}

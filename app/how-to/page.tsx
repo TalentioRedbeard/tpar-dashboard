@@ -48,7 +48,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 // A "more detail" collapsible — keeps the page skimmable while holding depth.
 function More({ summary, children }: { summary: string; children: React.ReactNode }) {
   return (
-    <details className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50/60 p-3 text-sm leading-relaxed text-neutral-700">
+    <details className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-sm leading-relaxed text-neutral-700">
       <summary className="cursor-pointer font-semibold text-neutral-800">{summary}</summary>
       <div className="mt-2 space-y-2">{children}</div>
     </details>
@@ -250,7 +250,7 @@ export default async function HowToPage() {
             </table>
           </div>
 
-          <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
+          <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 p-3">
             <p><strong>You don&rsquo;t have to remember.</strong> When your GPS shows you pulled up to a job, the app pops a one-tap:</p>
             <p className="mt-1.5 italic text-neutral-600">📍 &ldquo;Looks like you&rsquo;re at [customer] — Start the job? <strong>Yes</strong> / Not yet&rdquo;</p>
             <p className="mt-1.5">Tap <strong>Yes</strong> and it presses Start for you (and updates Housecall Pro). When you leave a job you started, it asks <strong>&ldquo;Finished here?&rdquo;</strong> the same way. Tap <strong>Not yet</strong> if you&rsquo;re just grabbing parts or lunch. Every one is logged with your GPS.</p>
@@ -288,7 +288,7 @@ export default async function HowToPage() {
         </Step>
 
         <Step n={4} title="Clocking & money — where they actually live">
-          <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-3">
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
             <p className="font-semibold text-amber-900">Read this once and the rest of the app makes sense:</p>
             <ul className="mt-1.5 list-disc space-y-1.5 pl-5">
               <li><strong>Your time is clocked in Housecall Pro.</strong> That&rsquo;s the official timecard — same as always.</li>
@@ -358,7 +358,7 @@ export default async function HowToPage() {
         </Step>
 
         {leadership ? (
-          <section className="rounded-2xl border border-indigo-300 bg-indigo-50/60 p-5">
+          <section className="rounded-2xl border border-indigo-300 bg-indigo-50 p-5">
             <h2 className="text-base font-semibold text-indigo-900">For managers &amp; owner — money &amp; cost</h2>
             <p className="mt-2 text-sm leading-relaxed text-neutral-700">These surfaces are leadership-only (the crew never sees them):</p>
             <ul className="mt-3 space-y-2 text-sm leading-relaxed text-neutral-700">
@@ -379,7 +379,7 @@ export default async function HowToPage() {
         ) : null}
 
         {/* ── Kept verbatim: the protective old-system disclosure ── */}
-        <section className="rounded-2xl border border-amber-300 bg-amber-50/60 p-5">
+        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5">
           <h2 className="text-base font-semibold text-amber-900">Before you work on an old system</h2>
           <p className="mt-2 text-sm leading-relaxed text-neutral-700">
             Most damage disputes start the same way: you work on an older system, something nearby fails, and the customer blames the repair. A fair share of that risk belongs to the <strong>old system</strong> — not you — but you have to set that up front, or it becomes a fight you can&rsquo;t win after the fact.
@@ -396,7 +396,7 @@ export default async function HowToPage() {
         </section>
 
         {/* ── NEW: errors-are-flags (the founding-vision principle, for the crew) ── */}
-        <section className="rounded-2xl border border-emerald-300 bg-emerald-50/60 p-5">
+        <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-5">
           <h2 className="text-base font-semibold text-emerald-900">When something breaks — or just feels dumb</h2>
           <p className="mt-2 text-sm leading-relaxed text-neutral-700">
             This app isn&rsquo;t finished, and that&rsquo;s on purpose. If a button is broken, a screen is confusing, or something is just a pain in the butt — <strong>that&rsquo;s the most useful thing you can tell us.</strong> It&rsquo;s a <strong>flag, not a failure</strong>.

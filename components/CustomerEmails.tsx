@@ -99,7 +99,7 @@ function InboxPanel({ hcpCustomerId, pinnedEmailIds, onChange }: { hcpCustomerId
   }
 
   return (
-    <div className="rounded-xl border border-dashed border-brand-300 bg-brand-50/30 p-3">
+    <div className="rounded-xl border border-dashed border-brand-300 bg-brand-50 p-3">
       <button type="button" onClick={() => { const next = !open; setOpen(next); if (next && matches === null) load(); }} className="flex w-full items-center justify-between text-sm font-semibold text-brand-900">
         <span>📥 From your inbox {open ? "" : "(owner only)"}</span>
         <span className="text-xs text-brand-700">{open ? "hide" : "show"}</span>

@@ -439,7 +439,7 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
         <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{genError}</div>
       ) : null}
       {draft ? (
-        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
+        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-emerald-900">Draft from {selCount} capture{selCount === 1 ? "" : "s"}</h3>
             <div className="flex items-center gap-2">
@@ -476,7 +476,7 @@ export function StudioStation({ initial }: { initial: Capture[] }) {
             <p className="mt-1 text-[12px] text-emerald-800/80">{draft.sourceSummary}</p>
           ) : null}
           {draft.note ? (
-            <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white/70 px-3 py-2 text-[13px] text-neutral-700">{draft.note}</p>
+            <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-[13px] text-neutral-700">{draft.note}</p>
           ) : null}
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {draft.options.map((opt, i) => (

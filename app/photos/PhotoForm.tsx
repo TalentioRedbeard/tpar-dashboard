@@ -35,7 +35,7 @@ export function PhotoForm({
   if (success) {
     return (
       <div className="space-y-4">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-6">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
           <div className="text-lg font-semibold text-emerald-900">Photo added.</div>
           <div className="mt-2 text-sm text-emerald-900">
             Saved as photo #{success.photo_id} on job <code className="font-mono text-xs">{success.job_id.slice(0, 16)}…</code>
