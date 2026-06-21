@@ -8,7 +8,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Wordmark } from "./ui/Brand";
 
-type MenuItem = { href: string; label: string };
+type MenuItem = { href: string; label: string; icon?: string };
 type MenuSection = { title: string; items: MenuItem[] };
 
 export function LogoMenu({ sections }: { sections: MenuSection[] }) {
@@ -62,8 +62,9 @@ export function LogoMenu({ sections }: { sections: MenuSection[] }) {
           <div className="max-h-[72vh] overflow-y-auto p-1.5">
             {sections.map((s) => (
               <div key={s.title} className="px-1 py-1">
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/55">
-                  {s.title}
+                <div className="mt-1 flex items-center gap-2 px-2 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-gold-300">
+                  <span>{s.title}</span>
+                  <span className="h-px flex-1 bg-white/15" />
                 </div>
                 <ul>
                   {s.items.map((it) => (
@@ -71,9 +72,10 @@ export function LogoMenu({ sections }: { sections: MenuSection[] }) {
                       <Link
                         href={it.href}
                         onClick={() => setOpen(false)}
-                        className="block rounded-md px-2 py-1.5 text-sm text-white/95 transition hover:bg-flagred-700"
+                        className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-white/95 transition hover:bg-flagred-700"
                       >
-                        {it.label}
+                        {it.icon ? <span aria-hidden className="w-5 shrink-0 text-center text-[13px] leading-none">{it.icon}</span> : null}
+                        <span>{it.label}</span>
                       </Link>
                     </li>
                   ))}

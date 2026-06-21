@@ -19,7 +19,7 @@ import { createPortal } from "react-dom";
 
 interface NavSection {
   title: string;
-  items: Array<{ href: string; label: string; tone?: "default" | "tech" | "admin" | "manager"; badge?: number }>;
+  items: Array<{ href: string; label: string; icon?: string; tone?: "default" | "tech" | "admin" | "manager"; badge?: number }>;
 }
 
 export function MobileNavMenu({
@@ -71,7 +71,7 @@ export function MobileNavMenu({
         <div className="flex-1 space-y-5 px-3 py-4">
           {sections.map((section) => (
             <section key={section.title}>
-              <h3 className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-500">
+              <h3 className="mb-2 flex items-center gap-2 border-b border-neutral-200 px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-flagred-600">
                 {section.title}
               </h3>
               <ul className="space-y-1">
@@ -91,7 +91,10 @@ export function MobileNavMenu({
                         onClick={() => setOpen(false)}
                         className={`flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium ${toneCls}`}
                       >
-                        <span>{item.label}</span>
+                        <span className="flex items-center gap-2.5">
+                          {item.icon ? <span aria-hidden className="w-5 shrink-0 text-center text-[13px] leading-none">{item.icon}</span> : null}
+                          <span>{item.label}</span>
+                        </span>
                         {item.badge && item.badge > 0 ? (
                           <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                             {item.badge > 99 ? "99+" : item.badge}

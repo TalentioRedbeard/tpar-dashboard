@@ -8,21 +8,24 @@ import { LogoMenu } from "./LogoMenu";
 import { MobileNavMenu } from "./MobileNavMenu";
 import { NavLinks } from "./NavLinks";
 import { FlagRibbon } from "./FlagRibbon";
+import { CenterBrand } from "./ui/CenterBrand";
 
 // Full nav set — used by the logo dropdown + mobile drawer (not the banner row).
+// Each item carries an emoji icon shown in the dropdown (Danny 2026-06-20). Swap
+// the emoji map for an inline-SVG icon set later if a crisper look is wanted.
 const NAV_ITEMS = [
-  { href: "/",          label: "Home" },
-  { href: "/time",      label: "Time" },
-  { href: "/customers", label: "Customers" },
-  { href: "/jobs",      label: "Jobs" },
-  { href: "/estimates", label: "Estimates" },
-  { href: "/comms",     label: "Comms" },
-  { href: "/contacts",  label: "Contacts" },
-  { href: "/dispatch",  label: "Dispatch" },
-  { href: "/schedule",  label: "Schedule" },
-  { href: "/gallery",   label: "Gallery" },
-  { href: "/shopping",  label: "Shopping" },
-  { href: "/reports",   label: "Reports" },
+  { href: "/",          label: "Home",      icon: "🏠" },
+  { href: "/time",      label: "Time",      icon: "⏱️" },
+  { href: "/customers", label: "Customers", icon: "👥" },
+  { href: "/jobs",      label: "Jobs",      icon: "🔧" },
+  { href: "/estimates", label: "Estimates", icon: "📄" },
+  { href: "/comms",     label: "Comms",     icon: "💬" },
+  { href: "/contacts",  label: "Contacts",  icon: "📇" },
+  { href: "/dispatch",  label: "Dispatch",  icon: "🗺️" },
+  { href: "/schedule",  label: "Schedule",  icon: "📅" },
+  { href: "/gallery",   label: "Gallery",   icon: "🖼️" },
+  { href: "/shopping",  label: "Shopping",  icon: "🛒" },
+  { href: "/reports",   label: "Reports",   icon: "📊" },
 ];
 
 // The few daily-driver links shown directly on the desktop banner. Everything
@@ -53,33 +56,33 @@ const TECH_PRIMARY_ITEMS = [
 ];
 
 const TOOL_ITEMS = [
-  { href: "/price", label: "Price" },
-  { href: "/ask",   label: "Ask" },
-  { href: "/voice-notes", label: "Voice" },
-  { href: "/whiteboard", label: "Board" },
-  { href: "/inbox", label: "Inbox" },
-  { href: "/settings", label: "Settings" },
-  { href: "/how-to", label: "How to use the app" },
+  { href: "/price", label: "Price", icon: "🏷️" },
+  { href: "/ask",   label: "Ask", icon: "✨" },
+  { href: "/voice-notes", label: "Voice", icon: "🎙️" },
+  { href: "/whiteboard", label: "Board", icon: "📝" },
+  { href: "/inbox", label: "Inbox", icon: "📥" },
+  { href: "/settings", label: "Settings", icon: "⚙️" },
+  { href: "/how-to", label: "How to use the app", icon: "❔" },
 ];
 
 // Visible to admin + manager + production_manager — leadership review surfaces.
+// (SalesAsk removed 2026-06-20 — integration retired; route left in place.)
 const LEADERSHIP_ITEMS = [
-  { href: "/studio",          label: "Studio" },
-  { href: "/attach",          label: "Attach" },
-  { href: "/admin/leads",     label: "Leads" },
-  { href: "/admin/view-as",   label: "View as" },
-  { href: "/admin/concerns",  label: "Concerns" },
-  { href: "/admin/salesask",  label: "SalesAsk" },
-  { href: "/admin/catalog",   label: "Catalog" },
+  { href: "/studio",          label: "Studio", icon: "🎬" },
+  { href: "/attach",          label: "Attach", icon: "📧" },
+  { href: "/admin/leads",     label: "Leads", icon: "🎯" },
+  { href: "/admin/view-as",   label: "View as", icon: "🕵️" },
+  { href: "/admin/concerns",  label: "Concerns", icon: "⚠️" },
+  { href: "/admin/catalog",   label: "Catalog", icon: "🧭" },
 ];
 
 // Admin-only — Danny tools (alarms / laptop snap / admin index page).
 const ADMIN_ITEMS = [
-  { href: "/admin/expectations", label: "Expectations" },
-  { href: "/admin/integrations", label: "Integrations" },
-  { href: "/alarms",          label: "Alarms" },
-  { href: "/snap",            label: "Snap" },
-  { href: "/admin",           label: "Admin home" },
+  { href: "/admin/expectations", label: "Expectations", icon: "✅" },
+  { href: "/admin/integrations", label: "Integrations", icon: "🔌" },
+  { href: "/alarms",          label: "Alarms", icon: "⏰" },
+  { href: "/snap",            label: "Snap", icon: "📸" },
+  { href: "/admin",           label: "Admin home", icon: "🛡️" },
 ];
 
 export function Nav({
@@ -118,7 +121,7 @@ export function Nav({
     {
       title: "Main",
       items: [
-        ...(showMyDay ? [{ href: "/me", label: "My day", tone: "tech" as const }] : []),
+        ...(showMyDay ? [{ href: "/me", label: "My day", icon: "☀️", tone: "tech" as const }] : []),
         ...navItems.map((i) => ({ ...i, tone: "default" as const })),
       ],
     },
@@ -133,19 +136,23 @@ export function Nav({
       ? [{ title: "Admin", items: ADMIN_ITEMS.map((i) => ({ ...i, tone: "admin" as const })) }]
       : []),
     ...(isManager
-      ? [{ title: "Role", items: [{ href: "/me", label: "Manager · read-only", tone: "manager" as const }] }]
+      ? [{ title: "Role", items: [{ href: "/me", label: "Manager · read-only", icon: "👁️", tone: "manager" as const }] }]
       : []),
     ...(leadershipView
       ? [{
           title: "Other",
-          items: [{ href: "/search", label: "Search", tone: "default" as const }],
+          items: [{ href: "/search", label: "Search", icon: "🔎", tone: "default" as const }],
         }]
       : []),
   ];
 
   return (
     <nav className="sticky top-0 z-50 bg-gold-500 shadow-sm">
-      <div className="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2.5 md:gap-4 md:px-6 md:py-3">
+      <div className="relative mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2.5 md:gap-4 md:px-6 md:py-3">
+        {/* Centered company identity — fills the empty middle of the gold bar on
+            wide screens; pointer-events-none so it never blocks the links. */}
+        <CenterBrand />
+
         {/* Logo doubles as the full-app menu (red dropdown). */}
         <LogoMenu sections={mobileSections} />
 

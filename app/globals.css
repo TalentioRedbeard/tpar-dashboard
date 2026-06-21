@@ -52,7 +52,16 @@ html {
 }
 
 body {
-  background: var(--color-background);
+  /* Cream base + a faint woven wave texture echoing the FlagRibbon trim — navy
+   * threads with a warm gold thread between, very low opacity. Tiles + fixed so
+   * it only warms the cream gutters; opaque white cards sit on top of it.
+   * Tune: bump the stroke-opacity values (~0.10/0.08) up for more presence,
+   * down toward 0.05 for barely-there. Swap to a diagonal twill by replacing the
+   * two wave path sets — see the design proposal. */
+  background-color: var(--color-background);
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='48'><g fill='none' stroke-width='1.1'><path d='M0 12 Q35 4 70 12 T140 12' stroke='%2316335c' stroke-opacity='0.10'/><path d='M0 24 Q35 32 70 24 T140 24' stroke='%23c98a00' stroke-opacity='0.08'/><path d='M0 36 Q35 28 70 36 T140 36' stroke='%2316335c' stroke-opacity='0.10'/></g></svg>");
+  background-repeat: repeat;
+  background-attachment: fixed;
   color: var(--color-foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
