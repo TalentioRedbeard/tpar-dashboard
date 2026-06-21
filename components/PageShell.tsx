@@ -16,6 +16,7 @@ import { isOwner } from "../lib/admin";
 
 export async function PageShell({
   title,
+  icon,
   titleClassName,
   description,
   kicker,
@@ -28,6 +29,8 @@ export async function PageShell({
   hideAskBar = false,
 }: {
   title: string;
+  /** Optional section emoji/icon shown before the title in the header band. */
+  icon?: string;
   /** Override the default title classes (e.g. larger/bolder per page). */
   titleClassName?: string;
   description?: ReactNode;
@@ -54,31 +57,34 @@ export async function PageShell({
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6 md:py-8">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          {backHref ? (
-            <Link
-              href={backHref}
-              className="mb-2 inline-flex items-center text-xs font-medium text-neutral-500 hover:text-brand-700"
-            >
-              ← {backLabel}
-            </Link>
-          ) : (
-            <BackButton />
-          )}
-          {kicker ? (
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-700">
-              {kicker}
-            </div>
-          ) : null}
-          <h1 className={titleClassName || "text-2xl font-semibold tracking-tight text-neutral-900 md:text-3xl"}>
-            {title}
-          </h1>
-          {description ? (
-            <p className="mt-1.5 max-w-2xl text-sm text-neutral-600">{description}</p>
-          ) : null}
+      <header className="mb-6 rounded-2xl border border-neutral-400 border-t-[3px] border-t-navy-700 bg-gradient-to-br from-white to-neutral-50/70 px-5 py-4 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            {backHref ? (
+              <Link
+                href={backHref}
+                className="mb-2 inline-flex items-center text-xs font-medium text-neutral-500 hover:text-brand-700"
+              >
+                ← {backLabel}
+              </Link>
+            ) : (
+              <BackButton />
+            )}
+            {kicker ? (
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-700">
+                {kicker}
+              </div>
+            ) : null}
+            <h1 className={titleClassName || "text-2xl font-semibold tracking-tight text-neutral-900 md:text-3xl"}>
+              {icon ? <span className="mr-2" aria-hidden>{icon}</span> : null}
+              {title}
+            </h1>
+            {description ? (
+              <p className="mt-1.5 max-w-2xl text-sm text-neutral-600">{description}</p>
+            ) : null}
+          </div>
+          {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
-        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </header>
       {hideAskBar ? null : <AskBar pageTitle={title} />}
       <main className={contentClassName}>{children}</main>

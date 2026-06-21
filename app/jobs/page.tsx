@@ -154,6 +154,7 @@ export default async function JobsListPage({
     const detailHref = `/jobs?${new URLSearchParams({ q, detail: "1" }).toString()}`;
     return (
       <PageShell
+        icon="🔧"
         title="Jobs"
         description={`Projects matching “${q}” — grouped across full history; a customer search folds in all their records (and HCP estimate numbers resolve to the customer’s projects). Click a project to open its latest job.`}
         actions={
@@ -454,6 +455,7 @@ export default async function JobsListPage({
 
   return (
     <PageShell
+      icon="🔧"
       title="Jobs"
       description={description}
       actions={

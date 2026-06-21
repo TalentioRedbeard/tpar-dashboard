@@ -177,6 +177,7 @@ export default async function CustomersListPage({
 
   return (
     <PageShell
+      icon="👥"
       title="Customers"
       description="Search, filter, and pivot the full customer roster."
     >

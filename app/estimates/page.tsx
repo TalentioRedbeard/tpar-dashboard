@@ -52,6 +52,7 @@ export default async function EstimatesPage() {
 
   return (
     <PageShell
+      icon="📄"
       title="Estimates"
       description="Sent HCP estimates by pipeline stage — awaiting a decision, won, declined, or expired. Click a row to open it in HCP (AI-built estimates open in the builder)."
     >

@@ -253,6 +253,7 @@ export default async function CommsPage({
 
   return (
     <PageShell
+      icon="💬"
       title="Comms"
       description={effectiveTechName ? `Comms attributed to ${effectiveTechName}.` : "Unified inbox of every call, text, email across all channels."}
       actions={
