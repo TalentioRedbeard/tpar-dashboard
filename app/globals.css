@@ -52,16 +52,17 @@ html {
 }
 
 body {
-  /* Cream base + a REAL yarn/knit texture (generated from Danny's reference photo,
-   * recolored to the flag palette navy/red/gold/cream, mirror-tiled seamless, with
-   * ~0.19 alpha baked into the PNG so it warms the cream like fabric without
-   * competing with the white cards. Regenerate via the PIL script in the chat log.
-   * Tune: background-size scales the weave; to change presence, re-export the PNG
-   * with a different baked alpha (currently 48/255). */
+  /* Cream base + a SOFT brand-color wash — gentle, very-low-opacity color blooms in the
+   * flag palette (brand blue / gold / navy / a whisper of red) over the cream. No pattern,
+   * just a warm ambient tint that keeps the app from feeling flat. Fixed so it doesn't
+   * scroll. Tune the rgba alphas (~0.05–0.09) up/down for more/less presence. */
   background-color: var(--color-background);
-  background-image: url("/yarn-texture.png");
-  background-repeat: repeat;
-  background-size: 320px 320px;
+  background-image:
+    radial-gradient(60% 50% at 12% -8%, rgba(30,64,175,0.07), transparent 70%),
+    radial-gradient(55% 45% at 92% 0%, rgba(232,162,0,0.09), transparent 70%),
+    radial-gradient(70% 55% at 72% 108%, rgba(22,51,92,0.06), transparent 70%),
+    radial-gradient(55% 45% at 22% 116%, rgba(200,16,46,0.05), transparent 70%);
+  background-attachment: fixed;
   color: var(--color-foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
