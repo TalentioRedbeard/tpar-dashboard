@@ -22,7 +22,7 @@ const MYDAY_IDLE = "bg-navy-800/10 text-navy-900 ring-1 ring-inset ring-navy-900
 export function NavLinks({ showMyDay, items }: { showMyDay: boolean; items: Item[] }) {
   const pathname = usePathname() || "/";
   return (
-    <ul className="ml-2 hidden flex-1 items-center gap-1.5 text-sm md:flex">
+    <ul className="ml-2 hidden items-center gap-1.5 text-sm md:flex">
       {showMyDay ? (
         <li>
           <Link

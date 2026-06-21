@@ -148,11 +148,7 @@ export function Nav({
 
   return (
     <nav className="sticky top-0 z-50 bg-gold-500 shadow-sm">
-      <div className="relative mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2.5 md:gap-4 md:px-6 md:py-3">
-        {/* Centered company identity — fills the empty middle of the gold bar on
-            wide screens; pointer-events-none so it never blocks the links. */}
-        <CenterBrand />
-
+      <div className="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2.5 md:gap-4 md:px-6 md:py-3">
         {/* Logo doubles as the full-app menu (red dropdown). */}
         <LogoMenu sections={mobileSections} />
 
@@ -160,6 +156,12 @@ export function Nav({
             the logo dropdown (left), so the banner stays clean. Active-page
             highlight is computed client-side in NavLinks (usePathname). */}
         <NavLinks showMyDay={showMyDay} items={primaryItems} />
+
+        {/* Centered company identity — sits in the empty gap between the links
+            and the right-side actions (md+ acts as the flex spacer; the wordmark
+            shows on lg+). Replaces the old dead-center overlay that collided
+            with the nav links. */}
+        <CenterBrand />
 
         {/* Mobile spacer pushes hamburger + email to the right */}
         <div className="ml-auto md:hidden" />
