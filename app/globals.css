@@ -52,16 +52,18 @@ html {
 }
 
 body {
-  /* Cream base + a faint KNIT/YARN texture (per Danny's reference): rows of
-   * stitch-loops in the flag colors — navy / flag-red / gold — brick-offset like
-   * stockinette, at low opacity so it warms the cream gutters like woven fabric
-   * without competing with the white cards on top.
-   * Tune: bump the stroke-opacity (~0.14) up for a richer knit, down toward 0.07
-   * for barely-there; background-size scales the stitch gauge. */
+  /* Cream base + a faint YARN-STRAND COLLAGE (per Danny's reference): thick,
+   * round-capped strands in the flag colors — navy / flag-red / gold — crossing
+   * at angles with a white sheen line on each for fiber depth, at low opacity so
+   * it warms the cream like loose yarn without competing with the white cards.
+   * Tune: bump the strand stroke-opacity (~0.13) up for richer yarn / down for
+   * barely-there; background-size scales how chunky the strands read.
+   * NOTE: a truly photoreal yarn look ultimately wants a seamless raster image
+   * tinted to our palette — this SVG collage is the lightweight vector version. */
   background-color: var(--color-background);
-  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='28'><g fill='none' stroke-width='2' stroke-linecap='round'><path d='M0 4 Q6 14 12 4' stroke='%2316335c' stroke-opacity='0.14'/><path d='M12 4 Q18 14 24 4' stroke='%23c8102e' stroke-opacity='0.13'/><path d='M24 4 Q30 14 36 4' stroke='%23e8a200' stroke-opacity='0.14'/><path d='M36 4 Q42 14 48 4' stroke='%2316335c' stroke-opacity='0.14'/><path d='M-6 18 Q0 28 6 18' stroke='%23c8102e' stroke-opacity='0.13'/><path d='M6 18 Q12 28 18 18' stroke='%23e8a200' stroke-opacity='0.14'/><path d='M18 18 Q24 28 30 18' stroke='%2316335c' stroke-opacity='0.14'/><path d='M30 18 Q36 28 42 18' stroke='%23c8102e' stroke-opacity='0.13'/><path d='M42 18 Q48 28 54 18' stroke='%23e8a200' stroke-opacity='0.14'/></g></svg>");
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='none' stroke-linecap='round'><path d='M-8 22 Q40 6 88 22' stroke='%2316335c' stroke-opacity='0.14' stroke-width='6'/><path d='M-8 58 Q40 74 88 58' stroke='%23c8102e' stroke-opacity='0.13' stroke-width='6'/><path d='M22 -8 Q12 40 22 88' stroke='%23e8a200' stroke-opacity='0.14' stroke-width='6'/><path d='M58 -8 Q68 40 58 88' stroke='%2316335c' stroke-opacity='0.13' stroke-width='6'/><path d='M-8 44 Q40 34 88 48' stroke='%23e8a200' stroke-opacity='0.12' stroke-width='5'/><path d='M-8 70 Q40 82 88 66' stroke='%23c8102e' stroke-opacity='0.12' stroke-width='5'/><path d='M-8 20 Q40 4 88 20' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.4'/><path d='M-8 56 Q40 72 88 56' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.4'/><path d='M20 -8 Q10 40 20 88' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.4'/><path d='M56 -8 Q66 40 56 88' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.4'/></g></svg>");
   background-repeat: repeat;
-  background-size: 54px 31px;
+  background-size: 92px 92px;
   color: var(--color-foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
