@@ -22,7 +22,7 @@ export function NotesToDannyInbox({ notes }: { notes: DannyNote[] }) {
   const clear = (id: string) => start(async () => { await markDannyNoteRead(id); router.refresh(); });
 
   return (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-4">
+    <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
       <h3 className="mb-2 text-sm font-semibold text-amber-900">📨 Notes to me{unread.length ? ` · ${unread.length} new` : ""}</h3>
       {notes.length === 0 ? (
         <div className="text-sm text-neutral-500">No notes yet.</div>
