@@ -57,7 +57,7 @@ export async function PageShell({
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6 md:py-8">
-      <header className="mb-6 rounded-2xl border border-neutral-400 border-t-[3px] border-t-navy-700 bg-gradient-to-br from-white to-neutral-50/70 px-5 py-4 shadow-sm">
+      <header className="mb-6 rounded-2xl border-2 border-neutral-400 border-t-[4px] border-t-navy-700 bg-gradient-to-br from-white to-neutral-50/70 px-5 py-4 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             {backHref ? (

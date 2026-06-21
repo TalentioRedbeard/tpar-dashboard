@@ -44,7 +44,7 @@ export function Table<T>({
     a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left";
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-neutral-400 bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-2xl border-2 border-neutral-400 bg-white shadow-sm">
       <table className="w-full text-sm">
         <thead className="sticky top-0 z-10 border-b border-neutral-200 bg-neutral-50/95 backdrop-blur supports-[backdrop-filter]:bg-neutral-50/85">
           <tr>
@@ -158,7 +158,7 @@ export function Pagination({
 export function FilterBar({ children }: { children: ReactNode }) {
   return (
     <form
-      className="mb-5 rounded-2xl border border-neutral-400 bg-gradient-to-br from-neutral-50/80 to-white px-4 py-3 shadow-sm"
+      className="mb-5 rounded-2xl border-2 border-neutral-400 bg-gradient-to-br from-neutral-50/80 to-white px-4 py-3 shadow-sm"
       role="search"
     >
       <div className="flex flex-wrap items-end gap-3">{children}</div>

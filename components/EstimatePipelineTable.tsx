@@ -151,7 +151,7 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-neutral-400 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border-2 border-neutral-400 bg-white shadow-sm">
         <table className="w-full table-fixed text-sm">
           <colgroup>
             {COLS.map((c) => (

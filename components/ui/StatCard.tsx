@@ -30,7 +30,7 @@ export function StatCard({
   const ring = emphasis ? "ring-1 ring-inset ring-brand-200" : "";
   return (
     <div
-      className={`rounded-2xl border border-neutral-400 bg-white px-4 py-3.5 shadow-sm transition-all duration-150 hover:border-neutral-500 hover:shadow ${ring}`}
+      className={`rounded-2xl border-2 border-neutral-400 bg-white px-4 py-3.5 shadow-sm transition-all duration-150 hover:border-neutral-500 hover:shadow ${ring}`}
     >
       <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
         {label}

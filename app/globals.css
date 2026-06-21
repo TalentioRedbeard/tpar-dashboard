@@ -52,18 +52,16 @@ html {
 }
 
 body {
-  /* Cream base + a faint YARN-STRAND COLLAGE (per Danny's reference): thick,
-   * round-capped strands in the flag colors — navy / flag-red / gold — crossing
-   * at angles with a white sheen line on each for fiber depth, at low opacity so
-   * it warms the cream like loose yarn without competing with the white cards.
-   * Tune: bump the strand stroke-opacity (~0.13) up for richer yarn / down for
-   * barely-there; background-size scales how chunky the strands read.
-   * NOTE: a truly photoreal yarn look ultimately wants a seamless raster image
-   * tinted to our palette — this SVG collage is the lightweight vector version. */
+  /* Cream base + a REAL yarn/knit texture (generated from Danny's reference photo,
+   * recolored to the flag palette navy/red/gold/cream, mirror-tiled seamless, with
+   * ~0.19 alpha baked into the PNG so it warms the cream like fabric without
+   * competing with the white cards. Regenerate via the PIL script in the chat log.
+   * Tune: background-size scales the weave; to change presence, re-export the PNG
+   * with a different baked alpha (currently 48/255). */
   background-color: var(--color-background);
-  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='none' stroke-linecap='round'><path d='M-8 22 Q40 6 88 22' stroke='%2316335c' stroke-opacity='0.14' stroke-width='6'/><path d='M-8 58 Q40 74 88 58' stroke='%23c8102e' stroke-opacity='0.13' stroke-width='6'/><path d='M22 -8 Q12 40 22 88' stroke='%23e8a200' stroke-opacity='0.14' stroke-width='6'/><path d='M58 -8 Q68 40 58 88' stroke='%2316335c' stroke-opacity='0.13' stroke-width='6'/><path d='M-8 44 Q40 34 88 48' stroke='%23e8a200' stroke-opacity='0.12' stroke-width='5'/><path d='M-8 70 Q40 82 88 66' stroke='%23c8102e' stroke-opacity='0.12' stroke-width='5'/><path d='M-8 20 Q40 4 88 20' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.4'/><path d='M-8 56 Q40 72 88 56' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.4'/><path d='M20 -8 Q10 40 20 88' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.4'/><path d='M56 -8 Q66 40 56 88' stroke='%23ffffff' stroke-opacity='0.16' stroke-width='1.4'/></g></svg>");
+  background-image: url("/yarn-texture.png");
   background-repeat: repeat;
-  background-size: 92px 92px;
+  background-size: 260px 260px;
   color: var(--color-foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
