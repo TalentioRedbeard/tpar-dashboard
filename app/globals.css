@@ -61,7 +61,7 @@ body {
   background-color: var(--color-background);
   background-image: url("/yarn-texture.png");
   background-repeat: repeat;
-  background-size: 260px 260px;
+  background-size: 320px 320px;
   color: var(--color-foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
