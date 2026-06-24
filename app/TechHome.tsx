@@ -17,8 +17,8 @@ import { Section } from "../components/ui/Section";
 import { ScrollPanel } from "../components/ui/ScrollPanel";
 import { Pill } from "../components/ui/Pill";
 import { EmptyState } from "../components/ui/EmptyState";
-import { MyTasks } from "../components/MyTasks";
-import { listMyTasks } from "@/lib/tasks";
+import { MyTasks, type MyTaskChildren } from "../components/MyTasks";
+import { listMyTasks, listMyTaskChildren } from "@/lib/tasks";
 import { listMySkills } from "@/lib/skills";
 
 function fmtTime(s: string | null): string {
@@ -367,6 +367,14 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
   });
 
   const myTasks = await listMyTasks();
+  const myTaskChildrenRaw = await listMyTaskChildren();
+  // Narrow to the fields MyTasks renders for the "Waiting on" panel.
+  const myTaskChildren: MyTaskChildren = Object.fromEntries(
+    Object.entries(myTaskChildrenRaw).map(([pid, kids]) => [
+      pid,
+      kids.map((c) => ({ id: c.id, title: c.title, status: c.status, assigned_to: c.assigned_to, assigned_role: c.assigned_role })),
+    ]),
+  );
   const mySkills = await listMySkills();
 
   return (
@@ -410,7 +418,7 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       {/* Tasks assigned to this tech (#18) */}
       {myTasks.length > 0 ? (
         <section className="mb-5">
-          <MyTasks tasks={myTasks} />
+          <MyTasks tasks={myTasks} childrenByParent={myTaskChildren} />
         </section>
       ) : null}
 

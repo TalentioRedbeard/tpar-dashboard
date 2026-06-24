@@ -28,12 +28,13 @@ import { TechAvatar } from "../../components/TechAvatar";
 import { ReassignTech } from "../../components/ReassignTech";
 import { DownloadCsvButton } from "../../components/DownloadCsvButton";
 import { TaskList } from "../../components/TaskList";
+import { TaskBank } from "../../components/TaskBank";
 import { AssignmentBar } from "../../components/AssignmentBar";
 import { VehicleStrip } from "../../components/VehicleStrip";
 import { LaneDropZone } from "../../components/LaneDropZone";
 import { NoteToDanny } from "../../components/NoteToDanny";
 import { GpsQueryWindow } from "../../components/GpsQueryWindow";
-import { listTasks } from "../../lib/tasks";
+import { listTasks, listTaskTemplates } from "../../lib/tasks";
 import { getFollowupConfig } from "./followup-actions";
 import { FollowupConfigPanel } from "../../components/FollowupConfigPanel";
 import { isResolving, dispositionEntityKey, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
@@ -431,6 +432,7 @@ export default async function DispatchPage({
   const canAssign = me.isAdmin || me.isManager;
   const assignTechOptions = activeTechs.map((t) => ({ full: t.hcp_full_name, short: t.tech_short_name }));
   const dispatchTasks = await listTasks();
+  const taskTemplates = await listTaskTemplates();
   const taskTechNames = activeTechs.map((t) => t.tech_short_name);
   // Phase 3 follow-up engine control — owner only (kill-switch + auto-send + cadence).
   const followupConfig = isOwner(me.realEmail ?? me.email ?? "") ? await getFollowupConfig() : null;
@@ -1097,6 +1099,13 @@ export default async function DispatchPage({
         <div className="mb-6 grid items-start gap-4 lg:grid-cols-2">
           <TaskList tasks={dispatchTasks} techNames={taskTechNames} />
           <NoteToDanny />
+        </div>
+      ) : null}
+
+      {/* DOWNTIME TASK BANK (Task System v1, item b — 2026-06-24) */}
+      {canWriteAck ? (
+        <div className="mb-6">
+          <TaskBank templates={taskTemplates} techNames={taskTechNames} />
         </div>
       ) : null}
 
