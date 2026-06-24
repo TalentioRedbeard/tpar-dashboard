@@ -44,6 +44,11 @@ const PUBLIC_PREFIXES = [
   // Public legal pages for the SMS (A2P 10DLC) messaging program — carrier
   // reviewers + customers must reach these without signing in.
   "/privacy", "/sms-terms",
+  // Public, no-login unsubscribe confirmation. A Supabase edge function processes
+  // the marketing-email unsubscribe token, then 302-redirects the browser here
+  // (?ok=1 success / ?ok=0 failure). Customer-facing from a marketing footer, so
+  // it must render without a session.
+  "/unsubscribed",
   // Public tokenized hosted estimate view (/e/<token>). Customers reach this
   // from the Resend estimate email with no login. THE TOKEN IS THE ENTIRE AUTH —
   // resolveEstimateByToken() in app/e/[token]/actions.ts enforces existence /
