@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { getPricebookOptions, type PriceItem } from "@/lib/job-line-actions";
 import {
   createMultiOptionEstimate,
+  sendBuilderEstimateTracked,
   generateEstimateWriteup,
   searchEstimateCustomers,
   loadEstimateModifiers,
@@ -323,8 +324,29 @@ export function MultiOptionEstimateBuilder({
   // ── Submit ──────────────────────────────────────────────────────────────
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const [result, setResult] = useState<{ estimate_id: string; estimate_number: string; hcp_url: string | null } | null>(null);
+  const [result, setResult] = useState<{ estimate_id: string; estimate_number: string; hcp_url: string | null; bid_estimate_id: string | null } | null>(null);
   const inFlight = useRef(false);
+
+  // ── Tracked send (from the success screen) ───────────────────────────────
+  const [sendPending, startSend] = useTransition();
+  const [sendDone, setSendDone] = useState(false);
+  const [sendViewUrl, setSendViewUrl] = useState<string | null>(null);
+  const [sendErr, setSendErr] = useState<string | null>(null);
+  const [showSendEmail, setShowSendEmail] = useState(false);
+  const [sendToEmail, setSendToEmail] = useState("");
+
+  function sendTracked() {
+    if (!result?.estimate_id || sendPending) return;
+    setSendErr(null);
+    startSend(async () => {
+      const res = await sendBuilderEstimateTracked(
+        result.estimate_id,
+        showSendEmail && sendToEmail.trim() ? { toEmail: sendToEmail.trim() } : undefined,
+      );
+      if (res.ok) { setSendDone(true); setSendViewUrl(res.view_url); setShowSendEmail(false); }
+      else { setSendErr(res.error); if (/email/i.test(res.error)) setShowSendEmail(true); }
+    });
+  }
 
   function submit() {
     if (inFlight.current || pending) return;
@@ -353,7 +375,7 @@ export function MultiOptionEstimateBuilder({
       // unit_cost stays the raw materials cost. (matches /estimate-draft.)
       const chosen = o.lines.filter((l) => chosenName(l));
       const oc = computeOption(o);
-      const line_items: Array<{ name: string; description?: string; quantity: number; unit_price_cents: number; unit_cost_cents: number }> =
+      const line_items: Array<{ name: string; description?: string; quantity: number; unit_price_cents: number; unit_cost_cents: number; labor_hours: number }> =
         chosen.map((l) => ({
           name: chosenName(l),
           description: l.description.trim() || undefined,
@@ -362,6 +384,8 @@ export function MultiOptionEstimateBuilder({
           // hand-entered); falls back to the modifier-adjusted cost-plus formula.
           unit_price_cents: Math.round(lineSellPrice(o, l) * 100),
           unit_cost_cents: materialsCostCents(l.materials),
+          // Carried only for the first-class bid_estimate_lines record (not HCP).
+          labor_hours: Math.max(0, parseFloat(l.hours) || 0),
         }));
       // Equipment / permit modifiers → their own transparent line items so the
       // customer sees the charge and margin reporting treats it as cost.
@@ -372,6 +396,7 @@ export function MultiOptionEstimateBuilder({
           quantity: 1,
           unit_price_cents: Math.round(e.price * 100),
           unit_cost_cents: Math.round(e.price * 100),
+          labor_hours: 0,
         });
       }
       return { name: o.name.trim() || "Option", line_items };
@@ -380,6 +405,7 @@ export function MultiOptionEstimateBuilder({
     start(async () => {
       const r = await createMultiOptionEstimate({
         hcpCustomerId: customer.hcpCustomerId,
+        customerName: customer.name,
         addressId: addressId || undefined,
         assignedEmployeeIds: techId ? [techId] : undefined,
         hcpJobId: initialJob?.hcpJobId,
@@ -387,7 +413,7 @@ export function MultiOptionEstimateBuilder({
         message: message.trim() || undefined,
         options: payloadOptions,
       }).finally(() => { inFlight.current = false; });
-      if (r.ok) setResult({ estimate_id: r.estimate_id, estimate_number: r.estimate_number, hcp_url: r.hcp_url });
+      if (r.ok) setResult({ estimate_id: r.estimate_id, estimate_number: r.estimate_number, hcp_url: r.hcp_url, bid_estimate_id: r.bid_estimate_id });
       else setErr(r.error);
     });
   }
@@ -412,8 +438,59 @@ export function MultiOptionEstimateBuilder({
           {customer ? (
             <button type="button" onClick={() => router.push(`/customer/${customer.hcpCustomerId}`)} className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-100">Back to customer</button>
           ) : null}
-          <button type="button" onClick={() => { setResult(null); setOptions([blankOpt(0)]); setNote(""); setMessage(""); setErr(null); }} className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">Build another</button>
+          <button type="button" onClick={() => { setResult(null); setOptions([blankOpt(0)]); setNote(""); setMessage(""); setErr(null); setSendDone(false); setSendViewUrl(null); setSendErr(null); setShowSendEmail(false); setSendToEmail(""); }} className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">Build another</button>
         </div>
+
+        {/* Tracked send — Phase 1 spine reconnect. Sends the branded, tracked
+            Resend estimate email (the /e hosted page + delivered/viewed/clicked
+            tracking + the follow-up engine all key off the estimate_sends row
+            this creates). Reachable here in one click; also available later on
+            the estimate page. */}
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-4">
+          {!sendDone ? (
+            <>
+              <div className="text-sm font-medium text-neutral-900">Send it to the customer (tracked)</div>
+              <p className="mt-0.5 text-xs text-neutral-500">
+                Emails a branded estimate page via Resend and tracks delivered / viewed / clicked. You can also send it later from the estimate page.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={sendTracked} disabled={sendPending}
+                  className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">
+                  {sendPending ? "Sending…" : "Send to customer (tracked) →"}
+                </button>
+                {result.bid_estimate_id ? (
+                  <button type="button" onClick={() => router.push(`/estimate/${result.bid_estimate_id}`)}
+                    className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">
+                    Open estimate →
+                  </button>
+                ) : null}
+              </div>
+              {showSendEmail ? (
+                <div className="mt-2 flex items-center gap-2">
+                  <input type="email" value={sendToEmail} onChange={(e) => setSendToEmail(e.target.value)}
+                    placeholder="recipient@email.com"
+                    className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none" />
+                  <button type="button" onClick={sendTracked} disabled={sendPending || !sendToEmail.trim()}
+                    className="rounded-md bg-navy-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-900 disabled:opacity-50">
+                    Send
+                  </button>
+                </div>
+              ) : null}
+              {sendErr ? <div className="mt-2 text-xs text-red-600">{sendErr}</div> : null}
+            </>
+          ) : (
+            <div className="text-sm">
+              <span className="font-medium text-emerald-700">Sent ✓</span>
+              <span className="text-neutral-600"> — we&rsquo;ll track delivery + opens.</span>
+              {sendViewUrl ? (
+                <a href={sendViewUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-brand-700 hover:underline">
+                  View the customer&rsquo;s page ↗
+                </a>
+              ) : null}
+            </div>
+          )}
+        </div>
+
         <p className="mt-3 text-xs text-emerald-700">It&apos;ll appear on the customer&apos;s page after the next HCP sync.</p>
       </div>
     );

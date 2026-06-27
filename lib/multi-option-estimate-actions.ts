@@ -54,11 +54,16 @@ export type EstLineInput = {
   quantity: number;
   unit_price_cents: number;
   unit_cost_cents?: number;
+  // Labor hours for this line (carried for the first-class bid_estimate_lines
+  // record only — NOT sent to HCP). create-estimate-direct ignores it.
+  labor_hours?: number;
 };
 export type EstOptionInput = { name: string; line_items: EstLineInput[] };
 
 export type CreateMultiOptionInput = {
   hcpCustomerId: string;
+  // Customer display name (optional; the persist RPC falls back to customers_master).
+  customerName?: string;
   addressId?: string;
   // HCP employee ids of the assigned tech(s). Without this HCP creates the
   // estimate with no technician. Inherited from the job when the builder is
@@ -73,7 +78,18 @@ export type CreateMultiOptionInput = {
 };
 
 export type EstimateResult =
-  | { ok: true; estimate_id: string; estimate_number: string; hcp_url: string | null }
+  | {
+      ok: true;
+      // estimate_id is the HCP estimate id (cus_/est_…) returned by HCP.
+      estimate_id: string;
+      estimate_number: string;
+      hcp_url: string | null;
+      // The first-class TPAR estimate id (bid_estimates.id), persisted via
+      // persist_builder_estimate. Null only if that best-effort persist failed
+      // (the HCP push still succeeded). Drives the tracked-send + /estimate/[id]
+      // deep link on the success screen.
+      bid_estimate_id: string | null;
+    }
   | { ok: false; error: string };
 
 export async function createMultiOptionEstimate(input: CreateMultiOptionInput): Promise<EstimateResult> {
@@ -101,6 +117,7 @@ export async function createMultiOptionEstimate(input: CreateMultiOptionInput): 
         };
         if (li.description && li.description.trim()) out.description = li.description.trim().slice(0, 1000);
         if (Number.isInteger(li.unit_cost_cents)) out.unit_cost_cents = Number(li.unit_cost_cents);
+        if (typeof li.labor_hours === "number" && Number.isFinite(li.labor_hours)) out.labor_hours = li.labor_hours;
         return out;
       }),
   }));
@@ -180,6 +197,56 @@ export async function createMultiOptionEstimate(input: CreateMultiOptionInput): 
     revalidatePath(`/job/${input.hcpJobId}`);
   }
 
+  // ── Phase 1 spine reconnect: persist a FIRST-CLASS estimate ──────────────
+  // Persist the builder's options/lines as bid_estimates + bid_estimate_lines
+  // keyed to the freshly-created HCP estimate, so the estimate immediately shows
+  // in estimate_pipeline_v WITH bid_estimate_id set → /e itemizes from the bid
+  // lines and the tracked Resend send is reachable (ends estimate_sends=0).
+  // Best-effort + non-fatal: if it fails, the HCP push still succeeded, so we
+  // return ok with bid_estimate_id=null (the tracked send by hcp_estimate_id
+  // still works once the estimate is in hcp_estimates_raw). Money: pass DOLLARS
+  // (sell_price_dollars/materials_dollars) — the RPC stores dollars; the HCP push
+  // above used cents on its own path.
+  let bidEstimateId: string | null = null;
+  if (parsed.estimate_id) {
+    const persistOptions = options.map((o) => ({
+      name: o.name,
+      line_items: o.line_items.map((li) => ({
+        name: li.name,
+        description: li.description ?? null,
+        quantity: li.quantity,
+        sell_price_dollars: li.unit_price_cents / 100,
+        materials_dollars: typeof li.unit_cost_cents === "number" ? li.unit_cost_cents / 100 : 0,
+        labor_hours: typeof li.labor_hours === "number" ? li.labor_hours : 0,
+      })),
+    }));
+    const { data: persisted, error: persistErr } = await supa.rpc("persist_builder_estimate", {
+      p_payload: {
+        hcp_estimate_id: parsed.estimate_id,
+        hcp_estimate_number: parsed.estimate_number ?? null,
+        hcp_customer_id: hcpCustomerId,
+        hcp_address_id: input.addressId ?? null,
+        hcp_job_id: input.hcpJobId ?? null,
+        customer_name: input.customerName?.trim() || null,
+        work_description: input.message?.trim() || null,
+        scope_text: input.note?.trim() || null,
+        created_by: writer.email,
+        source: "dashboard_multi_option",
+        options: persistOptions,
+      },
+    });
+    if (persistErr) {
+      await supa.from("maintenance_logs").insert({
+        source: "dashboard-multi-option-estimate",
+        level: "warn",
+        message: "persist_builder_estimate failed (estimate still pushed to HCP)",
+        context: { hcp_estimate_id: parsed.estimate_id, err: persistErr.message },
+      });
+    } else {
+      bidEstimateId = (persisted as string | null) ?? null;
+    }
+  }
+
   // The estimate attaches to the customer — refresh the customer page so its
   // "Open estimates" card picks it up (after the next HCP sync).
   revalidatePath(`/customer/${hcpCustomerId}`);
@@ -190,7 +257,68 @@ export async function createMultiOptionEstimate(input: CreateMultiOptionInput): 
     estimate_id: parsed.estimate_id ?? "",
     estimate_number: parsed.estimate_number ?? "",
     hcp_url: parsed.hcp_url ?? null,
+    bid_estimate_id: bidEstimateId,
   };
+}
+
+// ── Tracked send straight from the builder success screen ───────────────────
+// Phase 1 spine reconnect: after the builder pushes + persists, the operator can
+// send the branded, tracked Resend email in ONE more click — no detour through
+// /estimate/[id]. Calls the proven send-estimate edge fn keyed by the HCP
+// estimate id (service-role lane; the fn does its own service-role auth). The /e
+// hosted view + open/click tracking + the follow-up engine all key off the
+// estimate_sends row this creates. Writer-gated (admin/tech; managers blocked).
+export type TrackedSendResult =
+  | { ok: true; view_url: string | null }
+  | { ok: false; error: string };
+
+export async function sendBuilderEstimateTracked(
+  hcpEstimateId: string,
+  input?: { toEmail?: string; message?: string }
+): Promise<TrackedSendResult> {
+  const writer = await requireWriter();
+  if (!writer.ok) return { ok: false, error: writer.error };
+  if (!SUPABASE_URL || !SERVICE_KEY) {
+    return { ok: false, error: "Server isn't configured to send yet (missing SUPABASE_URL / service-role key)." };
+  }
+  const id = String(hcpEstimateId ?? "").trim();
+  if (!id) return { ok: false, error: "No HCP estimate id to send." };
+
+  const body: Record<string, unknown> = { hcp_estimate_id: id, created_by: writer.email };
+  if (input?.message && input.message.trim()) body.message = input.message.trim().slice(0, 8000);
+  if (input?.toEmail && input.toEmail.trim()) body.to_email = input.toEmail.trim();
+
+  let r: Response;
+  try {
+    r = await fetch(`${SUPABASE_URL}/functions/v1/send-estimate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SERVICE_KEY}`,
+        "apikey": SERVICE_KEY,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { ok: false, error: `Couldn't reach the send service: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  const text = await r.text();
+  let parsed: { ok?: boolean; error?: string; view_url?: string | null };
+  try { parsed = JSON.parse(text); } catch { return { ok: false, error: `Send service returned an unexpected response (${r.status}).` }; }
+
+  if (!parsed.ok) {
+    if (parsed.error === "no_recipient_email") {
+      return { ok: false, error: "No email on file for this customer — enter a recipient email and try again." };
+    }
+    if (parsed.error === "estimate_not_found") {
+      return { ok: false, error: "This estimate isn't ready to send yet — give HCP a few seconds to finish creating it, then try again." };
+    }
+    return { ok: false, error: parsed.error ?? `Send failed (${r.status}).` };
+  }
+
+  revalidatePath("/estimates");
+  return { ok: true, view_url: parsed.view_url ?? null };
 }
 
 // Customer search for the standalone builder (estimates page / dashboard, where
