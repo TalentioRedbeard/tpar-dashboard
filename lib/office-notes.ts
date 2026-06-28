@@ -125,6 +125,22 @@ export async function transcribeOfficeNote(id: string): Promise<{ ok: true; kept
   }
 }
 
+// P1 (record-conversations): route this chunk to the ON-PREM transcription lane instead of cloud
+// Whisper. The VM pull-worker (tpar-transcribe-worker) polls office_notes for transcript_status=
+// 'pending_local', transcribes locally on GPU1, and writes the transcript back — fail-closed, the
+// audio never leaves the building. transcribeOfficeNote (above) stays as a cloud fallback, NOT used
+// by default. sensitivity='private' since ambient office capture can include non-participants.
+export async function markOfficeNotePendingLocal(id: string): Promise<{ ok: boolean }> {
+  const gate = await requireOwner();
+  if (!gate.ok) return { ok: false };
+  const supa = db();
+  await supa
+    .from("office_notes")
+    .update({ transcript_status: "pending_local", transcribe_lane: "local", sensitivity: "private" })
+    .eq("id", id);
+  return { ok: true };
+}
+
 // Client-detected pure silence: record the 5-min slot as blank without paying
 // Whisper (the voice-activated cost-saver). No audio kept.
 export async function saveSilentOfficeNote(input: {
@@ -164,7 +180,7 @@ export async function retranscribePendingOfficeNotes(): Promise<{ retried: numbe
     .limit(5);
   const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
   for (const id of ids) {
-    try { await transcribeOfficeNote(id); } catch { /* best-effort */ }
+    try { await markOfficeNotePendingLocal(id); } catch { /* best-effort */ }
   }
   return { retried: ids.length };
 }

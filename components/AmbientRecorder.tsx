@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browserClient } from "../lib/supabase-browser";
-import { createOfficeNoteUpload, transcribeOfficeNote, saveSilentOfficeNote, retranscribePendingOfficeNotes } from "../lib/office-notes";
+import { createOfficeNoteUpload, markOfficeNotePendingLocal, saveSilentOfficeNote, retranscribePendingOfficeNotes } from "../lib/office-notes";
 
 const CHUNK_MS = 5 * 60 * 1000;  // 5-minute segments (Danny's spec)
 const SILENCE_RMS = 0.012;       // peak below this across the chunk = silent (tune on test)
@@ -45,7 +45,7 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
           contentType: blob.type || "audio/webm",
         });
         if (error) { setStatus("audio upload failed"); return; }
-        void transcribeOfficeNote(slot.id); // decoupled; nulls blank/music
+        void markOfficeNotePendingLocal(slot.id); // route to the on-prem local lane (VM worker transcribes)
       } catch (e) {
         setStatus(e instanceof Error ? e.message : String(e));
       }
