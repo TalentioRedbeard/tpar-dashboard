@@ -44,6 +44,8 @@ export async function createOfficeNoteUpload(input: {
   startedAt?: string;
   endedAt?: string;
   durationMs?: number;
+  conversationId?: string;   // P2: when set, this chunk belongs to a Start/Stop conversation
+  seq?: number;              // chunk order within the conversation
 }): Promise<{ ok: true; id: string; path: string; token: string } | { ok: false; error: string }> {
   const gate = await requireOwner();
   if (!gate.ok) return gate;
@@ -63,11 +65,15 @@ export async function createOfficeNoteUpload(input: {
     .from("office_notes")
     .insert({
       created_by: me.realEmail ?? me.email,
-      source: "office-ambient",
+      source: input.conversationId ? "office-conversation" : "office-ambient",
       started_at: input.startedAt ?? null,
       ended_at: input.endedAt ?? null,
       duration_ms: Number(input.durationMs ?? 0) || null,
-      transcript_status: "uploading",
+      // conversation chunks wait for the finalize worker (stitches + diarizes the whole conversation
+      // on Stop); ambient chunks go straight to the per-chunk local lane.
+      transcript_status: input.conversationId ? "in_conversation" : "uploading",
+      conversation_id: input.conversationId ?? null,
+      seq: input.conversationId ? (input.seq ?? 0) : null,
       audio_path: path,
     })
     .select("id")
@@ -138,6 +144,27 @@ export async function markOfficeNotePendingLocal(id: string): Promise<{ ok: bool
     .from("office_notes")
     .update({ transcript_status: "pending_local", transcribe_lane: "local", sensitivity: "private" })
     .eq("id", id);
+  return { ok: true };
+}
+
+// P2 conversation mode: Start creates a conversation; Stop flips it to 'finalizing' so the VM
+// finalize worker stitches its chunks -> transcribe + diarize + merge -> conversation_segments.
+export async function startConversation(): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const gate = await requireOwner();
+  if (!gate.ok) return gate;
+  const { data, error } = await db()
+    .from("conversations")
+    .insert({ created_by: gate.me.realEmail ?? gate.me.email, source: "office-conversation", status: "recording", started_at: new Date().toISOString(), sensitivity: "private" })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? "could not start conversation" };
+  return { ok: true, id: String(data.id) };
+}
+
+export async function stopConversation(id: string): Promise<{ ok: boolean }> {
+  const gate = await requireOwner();
+  if (!gate.ok) return { ok: false };
+  await db().from("conversations").update({ status: "finalizing", ended_at: new Date().toISOString() }).eq("id", id).eq("status", "recording");
   return { ok: true };
 }
 
