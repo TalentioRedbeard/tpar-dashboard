@@ -183,6 +183,32 @@ export async function requestTranscription(
   }
 }
 
+// ── 4b. On-prem transcription lane (P5 record-conversations) ─────────────────
+// Route this recording to the VM instead of cloud Whisper: flip it to 'pending_local'
+// and the on-prem pull-worker (tpar-transcribe-worker) transcribes it on GPU1 and writes
+// the transcript back — fail-closed, the audio never leaves the building. requestTranscription
+// (above) stays as a non-default cloud fallback. The worker no-clobbers a user-typed transcript.
+export async function markRecordingPendingLocal(id: string): Promise<{ ok: boolean }> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false };
+  const supa = db();
+  await supa
+    .from("recordings")
+    .update({ transcript_status: "pending_local", transcribe_lane: "local", sensitivity: "private" })
+    .eq("id", id);
+  return { ok: true };
+}
+
+// Poll helper: the recorder uses this to show the on-prem transcript inline if it lands
+// while the user is still in the review card (best-effort — saving early is fine, the
+// worker fills it afterward). Returns the current status + transcript.
+export async function getRecordingTranscript(id: string): Promise<{ status: string | null; transcript: string | null }> {
+  const me = await getCurrentTech();
+  if (!me) return { status: null, transcript: null };
+  const { data } = await db().from("recordings").select("transcript_status, transcript").eq("id", id).maybeSingle();
+  return { status: (data?.transcript_status as string) ?? null, transcript: (data?.transcript as string) ?? null };
+}
+
 // ── 5. Finalize: attach metadata + run targets' side-effects ─────────────────
 export async function finalizeRecording(input: {
   id: string;

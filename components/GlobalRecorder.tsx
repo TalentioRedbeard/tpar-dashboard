@@ -14,7 +14,8 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   createRecordingUpload,
   markRecordingStored,
-  requestTranscription,
+  markRecordingPendingLocal,
+  getRecordingTranscript,
   finalizeRecording,
   discardRecording,
   resolveJobRef,
@@ -101,12 +102,22 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
     }
   }
 
+  // Transcription is on-prem now (P5): mark the recording for the VM worker, which
+  // transcribes it locally and writes it back — the audio never leaves the building.
+  // Best-effort: poll for the transcript while the user is still in the review card so
+  // it can appear inline; if they save first, the worker fills it (no-clobber). Saving
+  // never waits on this.
   async function transcribeNow(id: string) {
     setTranscribing(true);
     try {
-      const r = await requestTranscription(id);
-      if (r.ok && r.transcript) setTranscript((cur) => cur || r.transcript);
-      else if (!r.ok && r.tooLong) setMsg("Too long to auto-transcribe — audio saved; add a note if you like.");
+      const m = await markRecordingPendingLocal(id);
+      if (!m.ok) { setTranscribing(false); return; }
+      for (let i = 0; i < 12; i++) {
+        await sleep(4000);
+        const r = await getRecordingTranscript(id);
+        if (r.transcript && r.transcript.trim()) { setTranscript((cur) => cur || r.transcript!); break; }
+        if (["blank", "music", "failed", "too_large"].includes(r.status ?? "")) break;
+      }
     } catch { /* leave transcript empty; user can type */ }
     setTranscribing(false);
   }
@@ -243,7 +254,7 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
           <textarea
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
-            placeholder={transcribing ? "Transcribing…" : "Transcript (editable)"}
+            placeholder={transcribing ? "Transcribing on-prem… (or type one — saving won't wait)" : "Transcript (editable)"}
             rows={3}
             className="mb-2 w-full resize-y rounded-md border border-neutral-300 px-2 py-1 text-sm"
           />
