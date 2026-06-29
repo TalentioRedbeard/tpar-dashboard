@@ -10,6 +10,7 @@ import { db } from "../../../lib/supabase";
 import { getSessionUser } from "../../../lib/supabase-server";
 import { isAdmin } from "../../../lib/admin";
 import { PageShell } from "../../../components/PageShell";
+import { AskBox } from "./AskBox";
 
 export const metadata = { title: "Drift · Admin · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -83,6 +84,8 @@ export default async function DriftPage() {
       backLabel="Admin home"
     >
       <div>
+        <AskBox />
+
         {advisorsBlocked ? (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             <div className="font-semibold">⚠ Advisor + edge-fn-parity checks are blocked — the Supabase Management PAT is invalid (HTTP 401).</div>
