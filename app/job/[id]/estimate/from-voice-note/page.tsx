@@ -167,7 +167,11 @@ export default async function FromVoiceNotePage({
                         // Transcription is on-prem + async — don't offer Generate until the
                         // transcript exists, or the generator returns "no transcript yet".
                         <span className="rounded-md bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700">
-                          {n.transcription_status === "failed" ? "Transcription failed" : "Transcribing on-prem… (refresh shortly)"}
+                          {n.transcription_status === "failed"
+                            ? "Transcription failed"
+                            : n.transcription_status === "blank"
+                              ? "No speech detected"
+                              : "Transcribing on-prem… (refresh shortly)"}
                         </span>
                       )}
                       <Link
@@ -189,6 +193,35 @@ export default async function FromVoiceNotePage({
 
   // Generate mode — note + scope selected; run generator, render EstimateBuilder
   const scope = (sp.scope as "single_line_item" | "full_option_set" | "add_to_option") ?? "full_option_set";
+
+  // Async-transcription guard: a stale bookmark / back-button can land here on a note that hasn't
+  // finished transcribing on-prem. Don't fire the generator (it 400s "no transcript yet") — show
+  // the same friendly state the picker uses.
+  const { data: noteRow } = await supa
+    .from("tech_voice_notes")
+    .select("transcription_status, transcript")
+    .eq("id", sp.note)
+    .maybeSingle();
+  const vnStatus = (noteRow?.transcription_status as string | null) ?? null;
+  if (vnStatus !== "transcribed" || !noteRow?.transcript) {
+    return (
+      <PageShell
+        kicker="New estimate · Based on a voice note"
+        title={vnStatus === "blank" ? "No speech in that note" : vnStatus === "failed" ? "Transcription failed" : "Still transcribing"}
+        description={
+          vnStatus === "blank"
+            ? "That recording had no speech to build from — pick another note."
+            : vnStatus === "failed"
+              ? "That note's transcription failed — re-record or pick another note."
+              : "That note is still transcribing on-prem. Give it a moment, then try again."
+        }
+      >
+        <Link href={`/job/${id}/estimate/from-voice-note`} className="text-sm text-brand-700 hover:underline">
+          ← Pick a different note
+        </Link>
+      </PageShell>
+    );
+  }
 
   const result = await generateFromReference({
     reference_type: "voice_note",
