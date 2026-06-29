@@ -362,7 +362,8 @@ export function VoiceNoteRecorder({ hcpJobId, hcpCustomerId, defaultIntentTag, i
         {isPending ? "Uploading + transcribing…" : "Upload & transcribe"}
       </button>
       <p className="text-xs text-neutral-500">
-        Audio goes to private Supabase storage. Whisper transcription typically takes 5-15 seconds.
+        Audio goes to private storage and is transcribed on-prem (it never leaves the building) — usually
+        ready in a few seconds. If it&apos;s still working when you land on the note, refresh in a moment.
       </p>
     </div>
   );

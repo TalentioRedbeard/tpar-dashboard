@@ -102,9 +102,15 @@ export default async function VoiceNotePage({ params }: { params: Promise<{ id: 
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             Transcription failed: {note.transcription_error ?? "(unknown error)"}
           </div>
+        ) : note.transcription_status === "blank" ? (
+          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
+            No speech detected in this recording.
+          </div>
         ) : (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            Transcription status: {note.transcription_status}.
+            {note.transcription_status === "pending_local" || note.transcription_status === "transcribing_local"
+              ? "Transcribing on-prem — refresh in a moment."
+              : `Transcription status: ${note.transcription_status}.`}
           </div>
         )}
       </Section>

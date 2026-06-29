@@ -147,19 +147,29 @@ export default async function FromVoiceNotePage({
                     {n.transcript ? (
                       <p className="mt-1.5 line-clamp-3 text-xs text-neutral-700">{(n.transcript as string).slice(0, 360)}{(n.transcript as string).length > 360 ? "…" : ""}</p>
                     ) : null}
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Link
-                        href={`/job/${id}/estimate/from-voice-note?note=${n.id}&scope=full_option_set`}
-                        className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-800"
-                      >
-                        Generate full option set →
-                      </Link>
-                      <Link
-                        href={`/job/${id}/estimate/from-voice-note?note=${n.id}&scope=single_line_item`}
-                        className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
-                      >
-                        Single line item
-                      </Link>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {n.transcription_status === "transcribed" ? (
+                        <>
+                          <Link
+                            href={`/job/${id}/estimate/from-voice-note?note=${n.id}&scope=full_option_set`}
+                            className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-800"
+                          >
+                            Generate full option set →
+                          </Link>
+                          <Link
+                            href={`/job/${id}/estimate/from-voice-note?note=${n.id}&scope=single_line_item`}
+                            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                          >
+                            Single line item
+                          </Link>
+                        </>
+                      ) : (
+                        // Transcription is on-prem + async — don't offer Generate until the
+                        // transcript exists, or the generator returns "no transcript yet".
+                        <span className="rounded-md bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700">
+                          {n.transcription_status === "failed" ? "Transcription failed" : "Transcribing on-prem… (refresh shortly)"}
+                        </span>
+                      )}
                       <Link
                         href={`/voice-notes/${n.id}`}
                         className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-50"

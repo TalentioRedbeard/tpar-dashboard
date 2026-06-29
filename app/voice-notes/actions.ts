@@ -29,6 +29,32 @@ export type UploadVoiceNoteResult =
   | { ok: true; voice_note_id: string; transcript: string; duration_seconds: number | null }
   | { ok: false; error: string };
 
+// Transcription is on-prem now (P5): voice-note-upload returns immediately with the row
+// marked 'pending_local', and the VM worker fills the transcript. Poll briefly so short
+// notes (the norm) still come back with the transcript inline — but never block hard. If the
+// VM is slow/down, we return an empty transcript + the note still appears (worker fills it).
+async function pollVoiceNoteTranscript(
+  id: string,
+  maxMs = 24_000,
+): Promise<{ transcript: string; status: string | null; duration: number | null }> {
+  const supa = db();
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    const { data } = await supa
+      .from("tech_voice_notes")
+      .select("transcript, transcription_status, audio_duration_seconds")
+      .eq("id", id)
+      .maybeSingle();
+    const status = (data?.transcription_status as string) ?? null;
+    const transcript = (data?.transcript as string) ?? "";
+    if ((transcript && transcript.trim()) || ["transcribed", "blank", "failed"].includes(status ?? "")) {
+      return { transcript, status, duration: (data?.audio_duration_seconds as number | null) ?? null };
+    }
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  return { transcript: "", status: "pending_local", duration: null };
+}
+
 export async function uploadVoiceNote(formData: FormData): Promise<UploadVoiceNoteResult> {
   const me = await getCurrentTech();
   if (!me?.canWrite) return { ok: false, error: "Not signed in or no write access." };
@@ -95,13 +121,15 @@ export async function uploadVoiceNote(formData: FormData): Promise<UploadVoiceNo
     return { ok: false, error: msg };
   }
 
+  const voiceId = json.voice_note_id as string;
+  const polled = await pollVoiceNoteTranscript(voiceId);
   revalidatePath("/voice-notes");
   if (hcpJobId) revalidatePath(`/job/${hcpJobId}`);
   return {
     ok: true,
-    voice_note_id: json.voice_note_id as string,
-    transcript: (json.transcript as string) ?? "",
-    duration_seconds: (json.duration_seconds as number | null) ?? null,
+    voice_note_id: voiceId,
+    transcript: polled.transcript,
+    duration_seconds: polled.duration,
   };
 }
 
@@ -194,13 +222,15 @@ export async function finalizeVoiceNote(input: {
     return { ok: false, error: msg };
   }
 
+  const voiceId = json.voice_note_id as string;
+  const polled = await pollVoiceNoteTranscript(voiceId);
   revalidatePath("/voice-notes");
   if (hcpJobId) revalidatePath(`/job/${hcpJobId}`);
   return {
     ok: true,
-    voice_note_id: json.voice_note_id as string,
-    transcript: (json.transcript as string) ?? "",
-    duration_seconds: (json.duration_seconds as number | null) ?? null,
+    voice_note_id: voiceId,
+    transcript: polled.transcript,
+    duration_seconds: polled.duration,
   };
 }
 
