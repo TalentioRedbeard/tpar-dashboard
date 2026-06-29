@@ -13,6 +13,10 @@ import { VoiceNoteJobPicker } from "./VoiceNoteJobPicker";
 import { resolveJobIdentifier } from "@/lib/typed-db/job-360";
 
 export const metadata = { title: "New voice note · TPAR-DB" };
+// On-prem transcription is async: finalizeVoiceNote/uploadVoiceNote poll ~24s for the transcript
+// (so short notes still return it inline). Give the server action room above Vercel's default so a
+// slightly-slow note isn't killed mid-action (the audio is already saved either way).
+export const maxDuration = 60;
 
 export default async function NewVoiceNotePage({
   searchParams,
