@@ -15,7 +15,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { browserClient } from "../lib/supabase-browser";
 import { createOfficeNoteUpload, markOfficeNotePendingLocal, saveSilentOfficeNote, retranscribePendingOfficeNotes, startConversation, stopConversation } from "../lib/office-notes";
 
-const CHUNK_MS = 5 * 60 * 1000;  // 5-minute segments (Danny's spec)
+const CHUNK_MS = 60 * 1000;  // 1-minute segments (Danny 2026-06-29: 5 min lagged too much while
+// developing out loud — wanted near-real-time feedback). Compute is NOT the constraint: the warm
+// VM model transcribes 60s of audio in ~3-5s (~8% GPU1 duty), and total transcribe work scales with
+// audio length, not chunk count — only small per-chunk overhead. The real tradeoff is transcript
+// coherence across boundaries (a sentence split between chunks); 60s is the sweet spot. Drop toward
+// 30s for snappier feedback at the cost of more split sentences.
 const SILENCE_RMS = 0.012;       // peak below this across the chunk = silent (tune on test)
 const NO_SIGNAL_RMS = 0.005;     // live level below this = effectively no input
 const NO_SIGNAL_MS = 4000;       // ...sustained this long while ON -> warn (dial down / muted)
