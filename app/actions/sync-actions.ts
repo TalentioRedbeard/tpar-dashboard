@@ -11,7 +11,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/supabase";
 
-type SourceKey = "hcp" | "salesask" | "bouncie" | "texts" | "calls" | "embeddings";
+type SourceKey = "hcp" | "bouncie" | "texts" | "calls" | "embeddings";
 
 export type SyncResult =
   | { ok: null }
@@ -48,13 +48,6 @@ const TRIGGERS: Record<SourceKey, Trigger> = {
     auth: { kind: "service_role" },
     body: () => ({ daysBack: 1 }),
     verify: () => maxFromTable("appointments_master", "updated_at"),
-    timeout_ms: 60_000,
-  },
-  salesask: {
-    url: `${SUPABASE_V1_BASE}/salesask-sync`,
-    auth: { kind: "x-trigger-secret", envKey: "SALESASK_SYNC_SECRET" },
-    body: () => ({}),
-    verify: () => maxFromTable("salesask_recordings", "updated_at"),
     timeout_ms: 60_000,
   },
   bouncie: {

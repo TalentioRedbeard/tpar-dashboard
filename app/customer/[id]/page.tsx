@@ -237,8 +237,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       count: (notesRes.data ?? []).length,
     },
     {
-      section: "SalesAsk recordings",
-      source_fn: "salesask-sync",
+      section: "Conversation recordings",
+      source_fn: "estimate-from-conversation",
       tables: ["salesask_recordings"],
       last_ts: ((recordingsRes.data ?? [])[0] as { recorded_at?: string } | undefined)?.recorded_at ?? null,
       count: (recordingsRes.data ?? []).length,

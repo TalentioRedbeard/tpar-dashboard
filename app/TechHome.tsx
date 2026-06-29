@@ -130,18 +130,6 @@ export default async function TechHome({ me }: { me: CurrentTech }) {
       : { label: "Membership", emoji: "🎟️", href: "#", disabled: true, subtitle: "Clock into a job first" },
   ];
 
-  // Lead techs (Omar/Keane/Chaunce) get the SalesAsk tile so they can jump
-  // straight from the dashboard into the recording app.
-  if (me.tech?.is_lead) {
-    tiles.push({
-      label: "SalesAsk",
-      emoji: "🎙️",
-      href: "https://app.salesask.com",
-      subtitle: "Open recording app",
-      external: true,
-    });
-  }
-
   // My appointments today
   // Filter: tech_primary_name = me OR me in tech_all_names
   // Use OR via two queries union'd (Supabase JS PostgREST doesn't support array

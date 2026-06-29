@@ -108,7 +108,6 @@ export default async function AdminHome({ me }: { me: CurrentTech }) {
     { label: "Membership", emoji: "🎟️", href: "/customers", subtitle: "Enroll a customer" },
     { label: "Snap server", emoji: "💻", href: "/snap", subtitle: "Screenshot the laptop" },
     { label: "Push key", emoji: "⌨️", href: "/snap", subtitle: "Send keystroke to laptop" },
-    { label: "SalesAsk", emoji: "🎙️", href: "https://app.salesask.com", subtitle: "Open the recording app" },
   ];
 
   const nowLabel = new Date().toLocaleString("en-US", {
