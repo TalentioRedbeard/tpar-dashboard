@@ -107,15 +107,19 @@ async function testRecordingFlow() {
     if (mk.error || !mk.data?.length) bad("markRecordingStored (status→stored)", mk.error?.message ?? "0 rows");
     else ok("markRecordingStored (audio now durable)");
 
+    // transcribe-audio is DECOMMISSIONED (P5) — transcription is on-prem now. Assert the cloud
+    // endpoint is closed (410), then verify the local lane: marking the row pending_local persists.
     const tr = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
       method: "POST", headers: { "Content-Type": "application/json", apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
       body: JSON.stringify({ recording_id: recId }),
     });
-    const trj = await tr.json().catch(() => ({}));
-    if (tr.status !== 200) bad("transcribe-audio responds 200 (no crash)", `HTTP ${tr.status}`);
-    else ok("transcribe-audio responds 200 (no crash on silent clip)", `ok=${trj.ok} suspect=${trj.suspect ?? "-"}`);
+    if (tr.status !== 410) bad("transcribe-audio decommissioned (expect 410)", `HTTP ${tr.status}`);
+    else ok("transcribe-audio decommissioned (cloud transcription lane closed, 410)");
+    const lane = await supa.from("recordings").update({ transcript_status: "pending_local", transcribe_lane: "local" }).eq("id", recId).eq("created_by", AL).select("id");
+    if (lane.error || !lane.data?.length) bad("recordings local lane (mark pending_local)", lane.error?.message ?? "0 rows");
+    else ok("recordings local lane (marked pending_local for the on-prem worker)");
     const { data: afterTr } = await supa.from("recordings").select("transcript_status").eq("id", recId).maybeSingle();
-    ok("transcript_status persisted", `transcript_status=${afterTr?.transcript_status ?? "(null)"} (was NULL-everywhere before)`);
+    ok("transcript_status persisted", `transcript_status=${afterTr?.transcript_status ?? "(null)"}`);
 
     const patch = { label: "smoke test", target_kind: "file", finalized_at: new Date().toISOString() };
     const fin = await supa.from("recordings").update(patch).eq("id", recId).eq("created_by", AL).is("finalized_at", null).select("id");

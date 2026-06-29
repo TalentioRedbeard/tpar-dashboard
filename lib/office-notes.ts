@@ -4,38 +4,20 @@
 // A continuous recorder (components/AmbientRecorder.tsx) chunks audio into 5-minute
 // segments; each is Whisper-transcribed and saved to office_notes. Rule: "if blank
 // -> NULL". Music/lyrics count as blank (Whisper drifts on music) -> nulled too.
-// Owner-only. Reuses the proven upload-first pipeline (private 'recordings' bucket
-// + transcribe-audio Whisper edge fn) from lib/recordings.ts.
+// Owner-only. Reuses the proven upload-first pipeline (private 'recordings' bucket)
+// from lib/recordings.ts; transcription is on-prem via the VM pull-worker.
 
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { isOwner } from "@/lib/admin";
 
 const BUCKET = "recordings";
-const MAX_TRANSCRIBE_BYTES = 25 * 1024 * 1024; // Whisper hard cap
 
 async function requireOwner() {
   const me = await getCurrentTech();
   if (!me) return { ok: false as const, error: "not signed in" };
   if (!isOwner(me.realEmail)) return { ok: false as const, error: "Office capture is owner-only." };
   return { ok: true as const, me };
-}
-
-// Cheap signal-based "is this junk we should null?" filter. Empty -> blank.
-// Whisper music/applause tags or heavy line-repetition (lyrics) -> music. The
-// robust upgrade is an LLM "conversation vs lyrics?" classify; this catches the
-// common cases for free.
-function classifyTranscript(raw: string): { keep: boolean; status: string } {
-  const s = (raw ?? "").trim();
-  if (!s) return { keep: false, status: "blank" };
-  if (/^[\s[(]*\b(music|applause|instrumental|silence|inaudible)\b/i.test(s)) return { keep: false, status: "music" };
-  if ((s.match(/[♪🎵🎶]/gu)?.length ?? 0) >= 2) return { keep: false, status: "music" };
-  const lines = s.split(/[\n.!?]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
-  if (lines.length >= 4) {
-    const uniq = new Set(lines);
-    if (uniq.size * 2 <= lines.length) return { keep: false, status: "music" }; // >=50% repeated lines
-  }
-  return { keep: true, status: "transcribed" };
 }
 
 // 1. Mint a signed upload slot + an office_notes row (status 'uploading').
@@ -83,59 +65,10 @@ export async function createOfficeNoteUpload(input: {
   return { ok: true, id: String(row.id), path: signed.path ?? path, token: signed.token };
 }
 
-// 2. Transcribe the uploaded chunk; null + tag if blank/music ("if blank -> NULL").
-export async function transcribeOfficeNote(id: string): Promise<{ ok: true; kept: boolean } | { ok: false; error: string }> {
-  const gate = await requireOwner();
-  if (!gate.ok) return gate;
-  const supa = db();
-
-  const { data: rec } = await supa.from("office_notes").select("audio_path").eq("id", id).maybeSingle();
-  const audioPath = rec?.audio_path as string | undefined;
-  if (!audioPath) return { ok: false, error: "office note not found" };
-
-  const { data: blob, error: dlErr } = await supa.storage.from(BUCKET).download(audioPath);
-  if (dlErr || !blob) {
-    await supa.from("office_notes").update({ transcript_status: "failed" }).eq("id", id);
-    return { ok: false, error: `download: ${dlErr?.message ?? "no file"}` };
-  }
-  if (blob.size > MAX_TRANSCRIBE_BYTES) {
-    await supa.from("office_notes").update({ transcript: null, transcript_status: "too_large" }).eq("id", id);
-    return { ok: true, kept: false };
-  }
-
-  const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-  try {
-    const file = new File([blob], `office-${id}.webm`, { type: "audio/webm" });
-    const fd = new FormData();
-    fd.append("audio", file, file.name);
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${KEY}` },
-      body: fd,
-    });
-    const out = await res.json().catch(() => ({} as Record<string, unknown>));
-    if (!res.ok || !out.ok) {
-      await supa.from("office_notes").update({ transcript: null, transcript_status: "failed" }).eq("id", id);
-      return { ok: false, error: String(out?.error ?? `transcribe ${res.status}`) };
-    }
-    const { keep, status } = classifyTranscript(String(out.transcript ?? ""));
-    await supa
-      .from("office_notes")
-      .update({ transcript: keep ? String(out.transcript).trim() : null, transcript_status: status })
-      .eq("id", id);
-    return { ok: true, kept: keep };
-  } catch (e) {
-    await supa.from("office_notes").update({ transcript_status: "failed" }).eq("id", id);
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-// P1 (record-conversations): route this chunk to the ON-PREM transcription lane instead of cloud
-// Whisper. The VM pull-worker (tpar-transcribe-worker) polls office_notes for transcript_status=
-// 'pending_local', transcribes locally on GPU1, and writes the transcript back — fail-closed, the
-// audio never leaves the building. transcribeOfficeNote (above) stays as a cloud fallback, NOT used
-// by default. sensitivity='private' since ambient office capture can include non-participants.
+// 2. Route this chunk to the ON-PREM transcription lane (P1 record-conversations). The VM pull-worker
+// (tpar-transcribe-worker) polls office_notes for transcript_status='pending_local', transcribes
+// locally on GPU1, and writes the transcript back — fail-closed, the audio never leaves the building.
+// sensitivity='private' since ambient office capture can include non-participants.
 export async function markOfficeNotePendingLocal(id: string): Promise<{ ok: boolean }> {
   const gate = await requireOwner();
   if (!gate.ok) return { ok: false };

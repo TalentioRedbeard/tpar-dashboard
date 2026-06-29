@@ -8,8 +8,8 @@
 //   2. browser uploads the blob DIRECTLY to the private 'recordings' bucket via
 //      storage.uploadToSignedUrl (bypasses Vercel entirely — no size cap).
 //   3. markRecordingStored    → status='stored' (the audio is now durable).
-//   4. requestTranscription   → Whisper on the stored bytes, written back with an
-//      atomic no-clobber guard; never gates the save.
+//   4. markRecordingPendingLocal → flips the row to 'pending_local'; the on-prem VM
+//      worker transcribes locally + writes back (no-clobber). Never gates the save.
 //   5. finalizeRecording      → attach label/transcript/target (+ note-to-Danny /
 //      Claude side-effects); runs the job-ref guard (the Cantrell orphan fix).
 //   6. discardRecording       → delete the object + row if not yet finalized.
@@ -25,7 +25,6 @@ export type SaveRecordingResult = { ok: true; id: string } | { ok: false; error:
 
 const TARGETS = ["job", "customer", "estimate", "note_to_danny", "file", "claude"] as const;
 const BUCKET = "recordings";
-const MAX_TRANSCRIBE_BYTES = 25 * 1024 * 1024; // Whisper hard cap
 
 type Me = NonNullable<Awaited<ReturnType<typeof getCurrentTech>>>;
 // Stable identity used for created_by + ownership checks within a session.
@@ -125,65 +124,7 @@ export async function markRecordingStored(id: string): Promise<{ ok: true } | { 
   return { ok: true };
 }
 
-// ── 4. Transcription (decoupled; never gates the save; atomic no-clobber) ────
-// Reads the ALREADY-STORED bytes (so nothing rides a capped server-action body)
-// and runs them through the existing transcribe-audio Mode 1 (text only). Writes
-// the result back only if no transcript exists yet, so a user/finalize edit wins.
-export async function requestTranscription(
-  id: string,
-): Promise<{ ok: true; transcript: string; suspect: boolean } | { ok: false; error: string; tooLong?: boolean }> {
-  const me = await getCurrentTech();
-  if (!me) return { ok: false, error: "not signed in" };
-  const supa = db();
-
-  const { data: rec } = await supa.from("recordings").select("audio_path, mime, transcript, created_by").eq("id", id).maybeSingle();
-  if (!rec?.audio_path) return { ok: false, error: "recording not found" };
-  if (rec.created_by !== whoIdentity(me) && !me.isAdmin && !me.isManager) return { ok: false, error: "not your recording" };
-  if (rec.transcript && String(rec.transcript).trim()) {
-    return { ok: true, transcript: String(rec.transcript), suspect: false };
-  }
-
-  const { data: blob, error: dlErr } = await supa.storage.from(BUCKET).download(rec.audio_path as string);
-  if (dlErr || !blob) return { ok: false, error: `download: ${dlErr?.message ?? "no file"}` };
-
-  if (blob.size > MAX_TRANSCRIBE_BYTES) {
-    await supa.from("recordings").update({ transcript_status: "too_large" }).eq("id", id).is("transcript", null);
-    return { ok: false, tooLong: true, error: "recording too long to auto-transcribe — the audio is saved; type a note" };
-  }
-
-  const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-  try {
-    const mime = (rec.mime as string) || "audio/webm";
-    const ext = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : "webm";
-    const file = new File([blob], `rec-${id}.${ext}`, { type: mime });
-    const fd = new FormData();
-    fd.append("audio", file, file.name);
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${KEY}` },
-      body: fd,
-    });
-    const out = await res.json().catch(() => ({} as Record<string, unknown>));
-    if (!res.ok || !out.ok) {
-      await supa.from("recordings").update({ transcript_status: "failed" }).eq("id", id).is("transcript", null);
-      return { ok: false, error: String(out?.error ?? `transcribe ${res.status}`) };
-    }
-    const transcript = String(out.transcript ?? "").trim();
-    const suspect = Boolean(out.suspect);
-    // Atomic: only persist if no transcript yet, so a user/finalize edit is never clobbered.
-    await supa
-      .from("recordings")
-      .update({ transcript: transcript || null, transcript_status: suspect ? "needs_review" : "transcribed" })
-      .eq("id", id)
-      .or("transcript.is.null,transcript.eq.");
-    return { ok: true, transcript, suspect };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-// ── 4b. On-prem transcription lane (P5 record-conversations) ─────────────────
+// ── 4. On-prem transcription lane (P5 record-conversations) ──────────────────
 // Route this recording to the VM instead of cloud Whisper: flip it to 'pending_local'
 // and the on-prem pull-worker (tpar-transcribe-worker) transcribes it on GPU1 and writes
 // the transcript back — fail-closed, the audio never leaves the building. requestTranscription
