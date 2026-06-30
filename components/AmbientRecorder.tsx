@@ -51,6 +51,7 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string>("");
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [panelOpen, setPanelOpen] = useState(true);  // collapse the meter panel so it can't cover help popups
   const smoothRef = useRef(0);               // EMA of rms for display
   const lowSinceRef = useRef<number | null>(null);
 
@@ -249,39 +250,58 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
   const levelPct = Math.round(level * 100);
   const savedAgo = lastSavedAt ? Math.round((Date.now() - lastSavedAt) / 1000) : null;
 
-  // Live capture-health panel (shown whenever a stream is active).
+  // Live capture-health panel (shown whenever a stream is active). Collapsible so it can be tucked
+  // out of the way of the help "?" popups it used to cover (Danny 2026-06-29).
   const healthPanel = on ? (
     <div className="w-[230px] rounded-lg border border-neutral-200 bg-white p-2 shadow">
-      <div className="mb-1 flex items-center justify-between text-[10px] text-neutral-500">
-        <span className="truncate" title={deviceLabel}>🎚 {deviceLabel || "mic"}</span>
-        <span>{levelPct}%</span>
+      <div className="flex items-center justify-between text-[10px] text-neutral-500">
+        <span className="flex min-w-0 items-center gap-1">
+          {/* a tiny always-visible level pip so a dead mic is obvious even when collapsed */}
+          <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${noSignal ? "bg-red-500" : level > 0.12 ? "bg-emerald-500" : "bg-amber-400"}`} />
+          <span className="truncate" title={deviceLabel}>🎚 {deviceLabel || "mic"}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1">
+          <span>{levelPct}%</span>
+          <button
+            type="button"
+            onClick={() => setPanelOpen((v) => !v)}
+            title={panelOpen ? "Collapse meter" : "Expand meter"}
+            className="rounded px-1 leading-none text-neutral-400 hover:text-neutral-700"
+          >
+            {panelOpen ? "▾" : "▸"}
+          </button>
+        </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
-        <div
-          className={`h-full transition-[width] duration-150 ${noSignal ? "bg-neutral-300" : level > 0.66 ? "bg-red-500" : level > 0.12 ? "bg-emerald-500" : "bg-amber-400"}`}
-          style={{ width: `${Math.max(noSignal ? 0 : 2, levelPct)}%` }}
-        />
-      </div>
-      {noSignal ? (
-        <div className="mt-1.5 rounded bg-red-50 px-1.5 py-1 text-[10px] font-medium text-red-700">
-          ⚠ No input detected — check the mic&apos;s gain dial / mute switch, or pick the right device below.
-        </div>
-      ) : (
-        <div className="mt-1 text-[10px] text-neutral-400">
-          {savedAgo != null ? `last chunk saved ${savedAgo < 90 ? `${savedAgo}s` : `${Math.round(savedAgo / 60)}m`} ago` : "first chunk in ≤5 min…"}
-        </div>
-      )}
-      {devices.length > 1 ? (
-        <select
-          value={deviceId}
-          onChange={(e) => void switchDevice(e.target.value)}
-          className="mt-1.5 w-full rounded border border-neutral-300 bg-white px-1 py-0.5 text-[10px] text-neutral-700"
-          title="Active input device"
-        >
-          {devices.map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>{d.label || `mic ${d.deviceId.slice(0, 6)}`}</option>
-          ))}
-        </select>
+      {panelOpen ? (
+        <>
+          <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+            <div
+              className={`h-full transition-[width] duration-150 ${noSignal ? "bg-neutral-300" : level > 0.66 ? "bg-red-500" : level > 0.12 ? "bg-emerald-500" : "bg-amber-400"}`}
+              style={{ width: `${Math.max(noSignal ? 0 : 2, levelPct)}%` }}
+            />
+          </div>
+          {noSignal ? (
+            <div className="mt-1.5 rounded bg-red-50 px-1.5 py-1 text-[10px] font-medium text-red-700">
+              ⚠ No input detected — check the mic&apos;s gain dial / mute switch, or pick the right device below.
+            </div>
+          ) : (
+            <div className="mt-1 text-[10px] text-neutral-400">
+              {savedAgo != null ? `last chunk saved ${savedAgo < 90 ? `${savedAgo}s` : `${Math.round(savedAgo / 60)}m`} ago` : "first chunk soon…"}
+            </div>
+          )}
+          {devices.length > 1 ? (
+            <select
+              value={deviceId}
+              onChange={(e) => void switchDevice(e.target.value)}
+              className="mt-1.5 w-full rounded border border-neutral-300 bg-white px-1 py-0.5 text-[10px] text-neutral-700"
+              title="Active input device"
+            >
+              {devices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>{d.label || `mic ${d.deviceId.slice(0, 6)}`}</option>
+              ))}
+            </select>
+          ) : null}
+        </>
       ) : null}
     </div>
   ) : null;
