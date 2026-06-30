@@ -71,6 +71,7 @@ const LEADERSHIP_ITEMS = [
   { href: "/studio",          label: "Studio", icon: "🎬" },
   { href: "/attach",          label: "Attach", icon: "📧" },
   { href: "/admin/leads",     label: "Leads", icon: "🎯" },
+  { href: "/campaigns/review", label: "Campaigns", icon: "📣" },
   { href: "/admin/view-as",   label: "View as", icon: "🕵️" },
   { href: "/admin/concerns",  label: "Concerns", icon: "⚠️" },
   { href: "/admin/catalog",   label: "Catalog", icon: "🧭" },
