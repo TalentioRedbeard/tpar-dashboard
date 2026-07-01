@@ -27,7 +27,14 @@ export function AskBar({ pageTitle }: { pageTitle: string }) {
     const q = query.trim();
     if (!q || pending) return;
     startTransition(async () => {
-      const r = await askBar({ question: q, pageContext: `${pageTitle} (${pathname})` });
+      // Send the EXACT on-screen URL (path + query string) so the brain can scope
+      // to precisely what's displayed — the week/filters live in the URL (?date=,
+      // ?view=, ?tech=, ?status=, ?customer=). Read at ask-time from window.location
+      // (always current, no useSearchParams/Suspense requirement).
+      const loc = typeof window !== "undefined"
+        ? window.location.pathname + window.location.search
+        : pathname;
+      const r = await askBar({ question: q, pageContext: `${pageTitle} (${loc})` });
       setResult(r);
     });
   }
