@@ -223,6 +223,10 @@ export default async function TimePage() {
 
   const buckets = computeDayBuckets(rows);
   const scopeLabel = me.isAdmin || me.isManager ? "All techs" : (me.tech?.tech_short_name ?? "you");
+  // Techs never see the HCP mirror/sync state — TPAR is their source of truth, and a
+  // "mirror pending/failed" pill reads as "my clock is broken" when their hours are fine
+  // (the recurring complaint). Only owner/managers, who actually monitor sync, see it.
+  const showMirror = me.isAdmin || me.isManager;
 
   return (
     <PageShell
@@ -360,10 +364,10 @@ export default async function TimePage() {
                           {e.source !== "tech-web" && (
                             <span className="text-xs text-neutral-500">· {e.source}</span>
                           )}
-                          {e.hcp_mirror_status === "pending" && (
+                          {showMirror && e.hcp_mirror_status === "pending" && (
                             <Pill tone="amber">mirror pending</Pill>
                           )}
-                          {e.hcp_mirror_status === "failed" && (
+                          {showMirror && e.hcp_mirror_status === "failed" && (
                             <Pill tone="red">mirror failed</Pill>
                           )}
                         </li>
