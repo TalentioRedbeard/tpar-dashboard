@@ -21,6 +21,7 @@ import { LifecycleButtons } from "../../components/LifecycleButtons";
 import { DismissJobButton } from "../../components/DismissJobButton";
 import { GpsLifecyclePrompt } from "../../components/GpsLifecyclePrompt";
 import { ScrollPanel } from "../../components/ui/ScrollPanel";
+import { DailyWrapCard } from "../../components/DailyWrapCard";
 import { WhiteboardPanel } from "../../components/WhiteboardPanel";
 import { ExpectationsPanel } from "../../components/ExpectationsPanel";
 import { getCurrentState as getClockState } from "../time/actions";
@@ -92,6 +93,8 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
 
   const supa = db();
   const today = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  // Calendar day in America/Chicago (DST-proof) — used by the Daily Wrap card.
+  const todayChi = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 
   // For admin "view-as" picker, also fetch the active tech list. Filter
   // is_test=true rows in JS (postgrest's neq excludes NULL rows too).
@@ -105,7 +108,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   const clockStatePromise = !viewingAs && me.tech ? getClockState() : Promise.resolve(null);
   const suggestionsPromise = !viewingAs && me.tech ? getPendingSuggestions() : Promise.resolve([]);
 
-  const [clockState, suggestions, apptsRes, commsRes, vehicleRes, kpiRes, techListResolved, lifecycleRes, mirrorLogsRes] = await Promise.all([
+  const [clockState, suggestions, apptsRes, commsRes, vehicleRes, kpiRes, techListResolved, lifecycleRes, mirrorLogsRes, dailyWrapRes] = await Promise.all([
     clockStatePromise,
     suggestionsPromise,
     // Today's appointments where this tech is primary.
@@ -174,6 +177,19 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       .gte("ts", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
       .order("ts", { ascending: false })
       .limit(200),
+    // Daily-wrap recordings by this tech in the last ~36h; filtered to "today in
+    // Chicago" in JS below (created_at is timestamptz — a UTC date cutoff would
+    // mislabel late-evening wraps). created_by = whoIdentity = tech short name.
+    !viewingAs && me.tech
+      ? supa
+          .from("recordings")
+          .select("id, created_at")
+          .eq("target_kind", "daily-wrap")
+          .eq("created_by", techName)
+          .gte("created_at", new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString())
+          .order("created_at", { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: null }),
   ]);
 
   const appts = (apptsRes.data ?? []) as Array<Record<string, unknown>>;
@@ -212,6 +228,12 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     appts.map((a) => a.hcp_customer_id as string | null),
     6,
   );
+
+  // Today's (Chicago) latest daily wrap — drives the DailyWrapCard's captured state.
+  const todaysWrapAt =
+    (((dailyWrapRes as { data: Array<{ created_at: string }> | null }).data) ?? [])
+      .map((r) => r.created_at)
+      .find((iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Chicago" }) === todayChi) ?? null;
 
   const comms = (commsRes.data ?? []) as Array<Record<string, unknown>>;
   const vehicle = vehicleRes.data as Record<string, unknown> | null;
@@ -480,6 +502,12 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
             </Link>
           </div>
         </section>
+      ) : null}
+
+      {/* Daily wrap — 30-second end-of-day verbal recap. Feeds the on-prem
+          transcription lane → tech-wrap-distill → Team wraps on /conversation. */}
+      {!viewingAs && me.tech ? (
+        <DailyWrapCard tech={techName} wrappedAt={todaysWrapAt} />
       ) : null}
 
       {/* Geofence-driven clock-in suggestions */}

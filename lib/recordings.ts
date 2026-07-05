@@ -23,7 +23,9 @@ import { revalidatePath } from "next/cache";
 
 export type SaveRecordingResult = { ok: true; id: string } | { ok: false; error: string };
 
-const TARGETS = ["job", "customer", "estimate", "note_to_danny", "file", "claude"] as const;
+// 'daily-wrap' = tech end-of-day verbal wrap (DailyWrapCard on /me); the DB check
+// constraint allows it (migration 20260705203401) and tech-wrap-distill sweeps it.
+const TARGETS = ["job", "customer", "estimate", "note_to_danny", "file", "claude", "daily-wrap"] as const;
 const BUCKET = "recordings";
 
 type Me = NonNullable<Awaited<ReturnType<typeof getCurrentTech>>>;

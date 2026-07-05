@@ -22,7 +22,8 @@ import {
 } from "../lib/recordings";
 import { browserClient } from "../lib/supabase-browser";
 
-type Target = "note_to_danny" | "job" | "customer" | "estimate" | "file" | "claude";
+// 'daily-wrap' is set by DailyWrapCard (not offered in this recorder's picker).
+type Target = "note_to_danny" | "job" | "customer" | "estimate" | "file" | "claude" | "daily-wrap";
 type UploadState = "idle" | "uploading" | "stored" | "error";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
