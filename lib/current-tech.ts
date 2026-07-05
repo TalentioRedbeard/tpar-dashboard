@@ -10,6 +10,17 @@ import { cache } from "react";
 
 export type DashboardRole = "admin" | "manager" | "production_manager" | "tech" | null;
 
+// Personality levers stored in tech_directory.prefs (jsonb, merged writes via
+// /settings). Honored by the AskBar (detail_level + processing_notes → answer
+// style) and /me (simple_mode). Unknown keys pass through untouched.
+export type TechPrefs = {
+  detail_level?: "concise" | "standard" | "walkthrough";
+  simple_mode?: boolean;
+  wrap_reminder?: boolean;
+  processing_notes?: string;
+  [key: string]: unknown;
+};
+
 export type CurrentTech = {
   email: string;
   isAdmin: boolean;          // env-fallback OR dashboardRole === 'admin'
@@ -35,8 +46,15 @@ export type CurrentTech = {
     gps_prompts_opt_out: boolean;
     hide_quick_recorder: boolean;
     default_landing: string | null;
+    /** Personality levers (prefs jsonb) — always an object, never null. */
+    prefs: TechPrefs;
   } | null;
 };
+
+// Normalize the raw jsonb into an always-an-object TechPrefs.
+function toPrefs(v: unknown): TechPrefs {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as TechPrefs) : {};
+}
 
 const VIEW_AS_COOKIE = "tpar_view_as";
 
@@ -45,7 +63,7 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
   if (!user || (!user.email && !user.phone)) return null;
 
   const supa = db();
-  const COLS = "tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, secondary_emails, dashboard_role, gps_prompts_opt_out, hide_quick_recorder, default_landing";
+  const COLS = "tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, secondary_emails, dashboard_role, gps_prompts_opt_out, hide_quick_recorder, default_landing, prefs";
 
   // Resolve the tech_directory row by EMAIL (Google / magic-link) or, for
   // phone-OTP logins (field techs who sign in with a texted code), by PHONE.
@@ -100,7 +118,7 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
     if (viewAsName && viewAsName.trim()) {
       const { data: targetTech } = await supa
         .from("tech_directory")
-        .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, gps_prompts_opt_out, hide_quick_recorder, default_landing")
+        .select("tech_id, tech_short_name, hcp_full_name, hcp_employee_id, is_active, is_lead, slack_user_id, notes, email, gps_prompts_opt_out, hide_quick_recorder, default_landing, prefs")
         .ilike("tech_short_name", viewAsName.trim())
         .eq("is_active", true)
         .maybeSingle();
@@ -130,6 +148,7 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
             gps_prompts_opt_out: !!(targetTech.gps_prompts_opt_out as boolean | null),
             hide_quick_recorder: !!(targetTech.hide_quick_recorder as boolean | null),
             default_landing: (targetTech.default_landing as string | null) ?? null,
+            prefs: toPrefs((targetTech as Record<string, unknown>).prefs),
           },
         };
       }
@@ -160,6 +179,7 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
       gps_prompts_opt_out: !!(data.gps_prompts_opt_out as boolean | null),
       hide_quick_recorder: !!(data.hide_quick_recorder as boolean | null),
       default_landing: (data.default_landing as string | null) ?? null,
+      prefs: toPrefs(data.prefs),
     } : null,
   };
 });

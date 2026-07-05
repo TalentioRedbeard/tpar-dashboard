@@ -23,6 +23,16 @@ const LANDING_ALLOW = new Set<string>([
 ]);
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
+// Personality levers (2026-07-05) — stored in tech_directory.prefs (jsonb).
+// These are HONORED, not decorative: detail_level + processing_notes shape the
+// page-aware ask (app/ask/bar-action.ts); simple_mode reshapes /me; wrap_reminder
+// gates the end-of-day Daily Wrap nudge. Writes MERGE into prefs — unknown keys
+// other features may add are never clobbered.
+// (not exported — "use server" files may only value-export async functions)
+const DETAIL_LEVELS = ["concise", "standard", "walkthrough"] as const;
+export type DetailLevel = (typeof DETAIL_LEVELS)[number];
+const PROCESSING_NOTES_MAX = 500;
+
 export type MySettings = {
   hasTech: boolean;
   isImpersonating: boolean;
@@ -35,6 +45,11 @@ export type MySettings = {
   color_hex: string | null;
   default_landing: string | null;
   techShortName: string | null;
+  // personality levers (from prefs jsonb)
+  detail_level: DetailLevel;
+  simple_mode: boolean;
+  wrap_reminder: boolean;
+  processing_notes: string;
   // owner-only globals
   smsMaster: boolean;
   phoneLogin: boolean;
@@ -49,7 +64,7 @@ export async function getMySettings(): Promise<MySettings | null> {
   if (me.tech) {
     const { data } = await supa
       .from("tech_directory")
-      .select("tech_short_name, sms_opt_out, eod_dm_opt_out, gps_prompts_opt_out, hide_quick_recorder, color_hex, default_landing")
+      .select("tech_short_name, sms_opt_out, eod_dm_opt_out, gps_prompts_opt_out, hide_quick_recorder, color_hex, default_landing, prefs")
       .eq("tech_id", me.tech.tech_id)
       .maybeSingle();
     row = (data ?? null) as Record<string, unknown> | null;
@@ -66,6 +81,8 @@ export async function getMySettings(): Promise<MySettings | null> {
     }
   }
 
+  const prefs = (row?.prefs && typeof row.prefs === "object" ? row.prefs : {}) as Record<string, unknown>;
+
   return {
     hasTech: !!me.tech,
     isImpersonating: me.isImpersonating,
@@ -77,6 +94,10 @@ export async function getMySettings(): Promise<MySettings | null> {
     color_hex: (row?.color_hex as string | null) ?? null,
     default_landing: (row?.default_landing as string | null) ?? null,
     techShortName: (row?.tech_short_name as string | null) ?? me.tech?.tech_short_name ?? null,
+    detail_level: DETAIL_LEVELS.includes(prefs.detail_level as DetailLevel) ? (prefs.detail_level as DetailLevel) : "standard",
+    simple_mode: prefs.simple_mode === true,
+    wrap_reminder: prefs.wrap_reminder === true,
+    processing_notes: typeof prefs.processing_notes === "string" ? prefs.processing_notes : "",
     smsMaster,
     phoneLogin,
   };
@@ -89,6 +110,11 @@ export async function updateMySettings(input: {
   hide_quick_recorder?: boolean;
   color_hex?: string | null;
   default_landing?: string | null;
+  // personality levers → merged into prefs jsonb (never clobbers unknown keys)
+  detail_level?: DetailLevel;
+  simple_mode?: boolean;
+  wrap_reminder?: boolean;
+  processing_notes?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const self = await requireSelf();
   if (!self.ok) return { ok: false, error: self.error };
@@ -114,9 +140,36 @@ export async function updateMySettings(input: {
     else return { ok: false, error: "That landing page isn't allowed." };
   }
 
+  // Personality levers → prefs jsonb. Whitelisted keys only, MERGED over the
+  // row's current prefs (read-then-write; single-owner row, so no real race).
+  // Unknown keys other features stash in prefs survive untouched.
+  const prefsPatch: Record<string, unknown> = {};
+  if (input.detail_level !== undefined) {
+    if (!DETAIL_LEVELS.includes(input.detail_level)) return { ok: false, error: "Unknown detail level." };
+    prefsPatch.detail_level = input.detail_level;
+  }
+  if (typeof input.simple_mode === "boolean") prefsPatch.simple_mode = input.simple_mode;
+  if (typeof input.wrap_reminder === "boolean") prefsPatch.wrap_reminder = input.wrap_reminder;
+  if (input.processing_notes !== undefined) {
+    const n = String(input.processing_notes).trim();
+    if (n.length > PROCESSING_NOTES_MAX) return { ok: false, error: `Processing notes must be ${PROCESSING_NOTES_MAX} characters or fewer.` };
+    prefsPatch.processing_notes = n;
+  }
+  if (Object.keys(prefsPatch).length > 0) {
+    const { data: cur, error: curErr } = await db()
+      .from("tech_directory")
+      .select("prefs")
+      .eq("tech_id", techId)
+      .maybeSingle();
+    if (curErr) return { ok: false, error: curErr.message };
+    const existing = (cur?.prefs && typeof cur.prefs === "object" ? cur.prefs : {}) as Record<string, unknown>;
+    patch.prefs = { ...existing, ...prefsPatch };
+  }
+
   const { error } = await db().from("tech_directory").update(patch).eq("tech_id", techId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");
+  revalidatePath("/me"); // simple_mode reshapes /me
   revalidatePath("/", "layout"); // hide_quick_recorder is read in the root layout
   return { ok: true };
 }

@@ -32,6 +32,7 @@ export default async function SettingsPage() {
           "Toggle the teammate-note text and the automated end-of-day Slack review",
           "Turn the GPS arrival / finish prompts on or off (separate from your phone's location permission)",
           "Show or hide the floating quick-Record button",
+          "Tell the app how it should fit you — answer detail level, simple mode, wrap reminder, and your own words on how you like information",
           "Pick your schedule-board color and your default landing page",
         ],
         stuck:

@@ -91,6 +91,15 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
 
   if (!techName) redirect("/?msg=not_a_tech");
 
+  // Simple mode (Settings → "How the app fits you", tech_directory.prefs).
+  // Calmer /me: hide the KPI snapshot / recent comms / vehicle panels and render
+  // the quick-action tiles larger. Everything a tech ACTS on stays: clock,
+  // expectations, whiteboard, Daily Wrap, clock suggestions, today's appointments.
+  // Suppressed under ?as= view-as so an admin's own lever doesn't reshape the
+  // preview of someone else's lane (cookie view-as follows the VIEWED tech's
+  // prefs via getCurrentTech, which is the faithful-preview behavior we want).
+  const simpleMode = !viewingAs && me.tech?.prefs?.simple_mode === true;
+
   const supa = db();
   const today = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
   // Calendar day in America/Chicago (DST-proof) — used by the Daily Wrap card.
@@ -457,52 +466,47 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
         </section>
       ) : null}
 
-      {!viewingAs && me.tech ? (
+      {!viewingAs && me.tech ? (() => {
+        // Simple mode = bigger tap targets: 2-up grid, larger padding/type.
+        const tileGrid = simpleMode ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 gap-2 sm:grid-cols-5";
+        const tile = simpleMode
+          ? "flex flex-col items-start gap-1.5 rounded-2xl border border-neutral-200 bg-white p-5 hover:border-brand-300 hover:bg-brand-50/30"
+          : "flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30";
+        const tileEmoji = simpleMode ? "text-4xl" : "text-2xl";
+        const tileTitle = simpleMode ? "text-lg font-semibold text-neutral-900" : "text-sm font-semibold text-neutral-900";
+        const tileHint = simpleMode ? "text-sm text-neutral-600" : "text-xs text-neutral-600";
+        return (
         <section className="mb-8">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <Link
-              href="/receipt"
-              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
-            >
-              <span className="text-2xl" aria-hidden>🧾</span>
-              <span className="text-sm font-semibold text-neutral-900">Receipt</span>
-              <span className="text-xs text-neutral-600">Snap a photo + log details</span>
+          <div className={tileGrid}>
+            <Link href="/receipt" className={tile}>
+              <span className={tileEmoji} aria-hidden>🧾</span>
+              <span className={tileTitle}>Receipt</span>
+              <span className={tileHint}>Snap a photo + log details</span>
             </Link>
-            <Link
-              href="/voice-notes/new"
-              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
-            >
-              <span className="text-2xl" aria-hidden>🎙️</span>
-              <span className="text-sm font-semibold text-neutral-900">Voice note</span>
-              <span className="text-xs text-neutral-600">Diagnostic, change order, billing, other</span>
+            <Link href="/voice-notes/new" className={tile}>
+              <span className={tileEmoji} aria-hidden>🎙️</span>
+              <span className={tileTitle}>Voice note</span>
+              <span className={tileHint}>Diagnostic, change order, billing, other</span>
             </Link>
-            <Link
-              href="/find"
-              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
-            >
-              <span className="text-2xl" aria-hidden>🔎</span>
-              <span className="text-sm font-semibold text-neutral-900">Find a job</span>
-              <span className="text-xs text-neutral-600">Type, talk, or browse today</span>
+            <Link href="/find" className={tile}>
+              <span className={tileEmoji} aria-hidden>🔎</span>
+              <span className={tileTitle}>Find a job</span>
+              <span className={tileHint}>Type, talk, or browse today</span>
             </Link>
-            <Link
-              href="/ask"
-              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
-            >
-              <span className="text-2xl" aria-hidden>💬</span>
-              <span className="text-sm font-semibold text-neutral-900">Ask</span>
-              <span className="text-xs text-neutral-600">Search the system</span>
+            <Link href="/ask" className={tile}>
+              <span className={tileEmoji} aria-hidden>💬</span>
+              <span className={tileTitle}>Ask</span>
+              <span className={tileHint}>Search the system</span>
             </Link>
-            <Link
-              href="/me/coaching"
-              className="flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30"
-            >
-              <span className="text-2xl" aria-hidden>📈</span>
-              <span className="text-sm font-semibold text-neutral-900">My coaching</span>
-              <span className="text-xs text-neutral-600">Your calls + your conversion</span>
+            <Link href="/me/coaching" className={tile}>
+              <span className={tileEmoji} aria-hidden>📈</span>
+              <span className={tileTitle}>My coaching</span>
+              <span className={tileHint}>Your calls + your conversion</span>
             </Link>
           </div>
         </section>
-      ) : null}
+        );
+      })() : null}
 
       {/* Daily wrap — 30-second end-of-day verbal recap. Feeds the on-prem
           transcription lane → tech-wrap-distill → Team wraps on /conversation. */}
@@ -713,6 +717,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
         ) : null}
       </section>
 
+      {/* Simple mode hides the info-dense panels below (vehicle / KPI / comms) —
+          they're review surfaces, not act-now surfaces. Data still fetched above
+          (kept as-is: low-risk conditional RENDERING, not a fetch rewrite). */}
+      {simpleMode ? null : (
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {/* Vehicle */}
         <section>
@@ -778,8 +786,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           )}
         </section>
       </div>
+      )}
 
       {/* Recent comms */}
+      {simpleMode ? null : (
       <section className="mt-8">
         <h2 className="mb-3 text-base font-semibold text-neutral-800">My recent comms (last 15)</h2>
         {comms.length === 0 ? (
@@ -817,6 +827,13 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           </ul>
         )}
       </section>
+      )}
+
+      {simpleMode ? (
+        <p className="mt-8 text-center text-xs text-neutral-400">
+          Simple mode is on — change it in <Link href="/settings" className="underline hover:text-neutral-600">Settings</Link>.
+        </p>
+      ) : null}
     </PageShell>
   );
 }

@@ -6,8 +6,17 @@
 
 import { useState, useTransition } from "react";
 import {
-  updateMySettings, setSmsMaster, setPhoneLoginEnabled, type MySettings,
+  updateMySettings, setSmsMaster, setPhoneLoginEnabled, type MySettings, type DetailLevel,
 } from "../lib/settings-actions";
+
+// "How the app fits you" — personality levers (2026-07-05). These are honored,
+// not decorative: detail level + processing notes steer the AI ask bar's answer
+// style; simple mode reshapes /me; wrap reminder gates the end-of-day nudge.
+const DETAIL_CHOICES: Array<{ value: DetailLevel; label: string; hint: string }> = [
+  { value: "concise", label: "Concise", hint: "give me the short version" },
+  { value: "standard", label: "Standard", hint: "the normal amount of detail" },
+  { value: "walkthrough", label: "Walkthrough", hint: "step-by-step, don't skip" },
+];
 
 const LANDING_BASE: Array<[string, string]> = [
   ["", "Role default"],
@@ -62,6 +71,10 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
   const [showRecorder, setShowRecorder] = useState(!initial.hide_quick_recorder);
   const [color, setColor] = useState(initial.color_hex ?? "");
   const [landing, setLanding] = useState(initial.default_landing ?? "");
+  const [detailLevel, setDetailLevel] = useState<DetailLevel>(initial.detail_level);
+  const [simpleMode, setSimpleMode] = useState(initial.simple_mode);
+  const [wrapReminder, setWrapReminder] = useState(initial.wrap_reminder);
+  const [processingNotes, setProcessingNotes] = useState(initial.processing_notes);
   const [baseline, setBaseline] = useState({
     receiveTeamSms: !initial.sms_opt_out,
     receiveEodDm: !initial.eod_dm_opt_out,
@@ -69,6 +82,10 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
     showRecorder: !initial.hide_quick_recorder,
     color: initial.color_hex ?? "",
     landing: initial.default_landing ?? "",
+    detailLevel: initial.detail_level,
+    simpleMode: initial.simple_mode,
+    wrapReminder: initial.wrap_reminder,
+    processingNotes: initial.processing_notes,
   });
 
   const [pending, start] = useTransition();
@@ -81,7 +98,11 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
     showGps !== baseline.showGps ||
     showRecorder !== baseline.showRecorder ||
     color !== baseline.color ||
-    landing !== baseline.landing;
+    landing !== baseline.landing ||
+    detailLevel !== baseline.detailLevel ||
+    simpleMode !== baseline.simpleMode ||
+    wrapReminder !== baseline.wrapReminder ||
+    processingNotes !== baseline.processingNotes;
 
   function save() {
     setErr(null);
@@ -94,9 +115,13 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
         hide_quick_recorder: !showRecorder,
         color_hex: color === "" ? null : color,
         default_landing: landing === "" ? null : landing,
+        detail_level: detailLevel,
+        simple_mode: simpleMode,
+        wrap_reminder: wrapReminder,
+        processing_notes: processingNotes,
       });
       if (res.ok) {
-        setBaseline({ receiveTeamSms, receiveEodDm, showGps, showRecorder, color, landing });
+        setBaseline({ receiveTeamSms, receiveEodDm, showGps, showRecorder, color, landing, detailLevel, simpleMode, wrapReminder, processingNotes });
         setSaved(true);
       } else setErr(res.error);
     });
@@ -133,6 +158,54 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
             <Toggle checked={showRecorder} onChange={setShowRecorder}
               label="Show the quick-Record button"
               hint="The floating Record button in the top-right corner." />
+          </Group>
+
+          <Group title="How the app fits you">
+            <div className="py-2">
+              <span className="mb-1.5 block text-sm font-medium text-neutral-800">How much detail do you want?</span>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                {DETAIL_CHOICES.map((c) => (
+                  <label
+                    key={c.value}
+                    className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2 ${
+                      detailLevel === c.value ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500" : "border-neutral-200 bg-white hover:border-neutral-300"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="detail_level"
+                      value={c.value}
+                      checked={detailLevel === c.value}
+                      onChange={() => setDetailLevel(c.value)}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-neutral-800">{c.label}</span>
+                      <span className="block text-xs text-neutral-500">{c.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-neutral-500">The ask bar and AI answers follow this — it&rsquo;s honored, not a suggestion.</p>
+            </div>
+            <Toggle checked={simpleMode} onChange={setSimpleMode}
+              label="Simple mode"
+              hint="Calmer My Day — fewer panels, bigger buttons." />
+            <Toggle checked={wrapReminder} onChange={setWrapReminder}
+              label="Wrap reminder"
+              hint="End-of-day nudge to record my Daily Wrap." />
+            <div className="py-2">
+              <label className="mb-1 block text-sm font-medium text-neutral-800">How do you like information?</label>
+              <textarea
+                value={processingNotes}
+                onChange={(e) => setProcessingNotes(e.target.value)}
+                maxLength={500}
+                rows={3}
+                placeholder="In your own words — e.g. short lists first · walk me through steps · big picture before details"
+                className={`${inputCls} resize-y`}
+              />
+              <p className="mt-1 text-xs text-neutral-500">Your own words go straight to the AI when it answers you.</p>
+            </div>
           </Group>
 
           <Group title="Display">
