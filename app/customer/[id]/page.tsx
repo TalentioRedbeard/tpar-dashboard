@@ -77,7 +77,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     }
   }
 
-  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership, hcpJobNotesRes, hcpEstimateNotesRes, provCustRes, provCardRes, provJobsRes, provCommsRes, openEstimatesRes, openInvoicesRes, ratesRes, recordingsRes] = await Promise.all([
+  const [c, recentComms, recentJobs, repeatRow, recurringJobsRow, similarRes, notesRes, agreementsRes, currentMembership, hcpJobNotesRes, hcpEstimateNotesRes, provCustRes, provCardRes, provJobsRes, provCommsRes, openEstimatesRes, openInvoicesRes, ratesRes, recordingsRes, enrichmentRes] = await Promise.all([
     supabase.from("customer_360").select("*").eq("hcp_customer_id", id).maybeSingle(),
     supabase
       .from("communication_events")
@@ -159,6 +159,13 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       .eq("hcp_customer_id", id)
       .order("recorded_at", { ascending: false, nullsFirst: false })
       .limit(30),
+    // Internal AI-built profile (on-prem enrichment worker → customer_enrichment).
+    // Service-role read; review-gated below (hide anything explicitly rejected).
+    supabase
+      .from("customer_enrichment")
+      .select("headline, summary, preferences, opportunities, risks, profile, model, status, review_status, generated_at")
+      .eq("hcp_customer_id", id)
+      .maybeSingle(),
   ]);
 
   // Pricing-brief derived values
@@ -175,6 +182,34 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       return { id: e.hcp_estimate_id as string, status, value_cents: totalCents, scheduled: e.scheduled_start as string | null };
     })
     .filter((e) => /^(pending|sent|draft|approved)$/i.test(e.status ?? ""));
+
+  // Internal AI-built profile. Only surface a successful enrichment that hasn't
+  // been rejected in review (today every row is review_status='proposed', so the
+  // AI-built badge carries the caveat). No row / failed row → render nothing.
+  type EnrichmentRow = {
+    headline: string | null;
+    summary: string | null;
+    preferences: string | null;
+    opportunities: string | null;
+    risks: string | null;
+    profile: { confidence?: number } | null;
+    model: string | null;
+    status: string | null;
+    review_status: string | null;
+    generated_at: string | null;
+  };
+  const enrichmentRow = (enrichmentRes.data ?? null) as EnrichmentRow | null;
+  const enrichment =
+    enrichmentRow &&
+    enrichmentRow.status === "enriched" &&
+    enrichmentRow.review_status !== "rejected" &&
+    (enrichmentRow.headline?.trim() || enrichmentRow.summary?.trim())
+      ? enrichmentRow
+      : null;
+  // Worker writes single-line text; multi-item fields are semicolon-separated.
+  function enrichmentItems(v: string | null | undefined): string[] {
+    return (v ?? "").split(";").map((s) => s.trim()).filter(Boolean);
+  }
 
   const openInvoices = (openInvoicesRes.data ?? []) as InvRow[];
   const totalDueCents = openInvoices.reduce((s, inv) => s + Number(inv.due_amount ?? 0), 0);
@@ -531,6 +566,53 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             />
           </div>
         </Section>
+
+        {/* Internal profile — AI-built by the on-prem enrichment worker. Staff-only context. */}
+        {enrichment && (
+          <Section title="Internal profile">
+            <div className="rounded-2xl border border-brand-200/80 bg-white p-5">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <Pill tone="brand">🔒 Internal — AI-built from history, staff eyes only</Pill>
+                <span className="ml-auto text-[10px] text-neutral-400">
+                  {enrichment.model ?? "AI"}
+                  {typeof enrichment.profile?.confidence === "number" ? <> · confidence {enrichment.profile.confidence.toFixed(1)}</> : null}
+                  {enrichment.generated_at ? (
+                    <> · {new Date(enrichment.generated_at).toLocaleDateString("en-US", { timeZone: "America/Chicago" })}</>
+                  ) : null}
+                </span>
+              </div>
+              {enrichment.headline?.trim() ? (
+                <p className="text-sm font-semibold leading-snug text-brand-900">{enrichment.headline.trim()}</p>
+              ) : null}
+              {enrichment.summary?.trim() ? (
+                <p className="mt-2 text-sm leading-relaxed text-neutral-800">{enrichment.summary.trim()}</p>
+              ) : null}
+              {(enrichmentItems(enrichment.preferences).length > 0 ||
+                enrichmentItems(enrichment.opportunities).length > 0 ||
+                enrichmentItems(enrichment.risks).length > 0) && (
+                <div className="mt-4 grid grid-cols-1 gap-3 border-t border-neutral-100 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {([
+                    { label: "Preferences", items: enrichmentItems(enrichment.preferences), labelCls: "text-brand-700" },
+                    { label: "Opportunities", items: enrichmentItems(enrichment.opportunities), labelCls: "text-accent-700" },
+                    { label: "Risks", items: enrichmentItems(enrichment.risks), labelCls: "text-red-700" },
+                  ] as const).filter((g) => g.items.length > 0).map((g) => (
+                    <div key={g.label}>
+                      <div className={`text-xs font-medium uppercase tracking-wide ${g.labelCls}`}>{g.label}</div>
+                      <ul className="mt-1 space-y-0.5 text-sm text-neutral-700">
+                        {g.items.map((item, i) => (
+                          <li key={i} className="flex gap-1.5">
+                            <span aria-hidden className="text-neutral-300">·</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
 
         {Array.isArray(cust.topic_set) && (cust.topic_set as string[]).length > 0 && (
           <Section title="Topics seen">

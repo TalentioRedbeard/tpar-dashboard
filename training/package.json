@@ -1,0 +1,12 @@
+{
+  "name": "tpar-training-videos",
+  "private": true,
+  "description": "Regenerable app-training clip pipeline: Playwright drives the deployed app as test-tech Al and records video; narration via the synthesize-speech edge fn (ElevenLabs); assembly via ffmpeg. Standalone on purpose — Vercel never installs this.",
+  "type": "module",
+  "scripts": {
+    "record:my-day": "node record-my-day.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.47.0"
+  }
+}
