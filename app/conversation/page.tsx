@@ -10,7 +10,9 @@ import { isAdmin } from "@/lib/admin";
 import { db } from "@/lib/supabase";
 import { ConversationPanel } from "@/components/ConversationPanel";
 import { DailyReviewPanel } from "@/components/DailyReviewPanel";
+import { StewQueuePanel, type StewThread, type SettledThread } from "@/components/StewQueuePanel";
 import type { DailyReview } from "@/app/conversation/daily-review-actions";
+import type { OpenThreadRow } from "@/app/conversation/stew-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +51,32 @@ export default async function ConversationPage() {
       }
     : null;
 
+  // Stew Queue (Daily Review slice 2): open threads oldest-first + last-14-days settlements.
+  // Calendar math in America/Chicago (server runs UTC on Vercel).
+  const todayChi = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const settledCutoff = new Date(Date.parse(todayChi) - 14 * 86_400_000).toISOString().slice(0, 10);
+  const [{ data: openRows }, { data: settledRows }] = await Promise.all([
+    db()
+      .from("open_threads")
+      .select("id, title, body, status, first_seen, last_updated, resolution, history")
+      .eq("status", "open")
+      .order("first_seen", { ascending: true })
+      .limit(100),
+    db()
+      .from("open_threads")
+      .select("id, title, status, resolution, last_updated")
+      .in("status", ["resolved", "dissolved"])
+      .gte("last_updated", settledCutoff)
+      .order("last_updated", { ascending: false })
+      .limit(50),
+  ]);
+  const stewing: StewThread[] = ((openRows ?? []) as OpenThreadRow[]).map((t) => ({
+    ...t,
+    history: Array.isArray(t.history) ? t.history : [],
+    stewing_days: Math.max(0, Math.round((Date.parse(todayChi) - Date.parse(t.first_seen)) / 86_400_000)),
+  }));
+  const settled = (settledRows ?? []) as SettledThread[];
+
   return (
     <main className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
       <DailyReviewPanel
@@ -56,6 +84,7 @@ export default async function ConversationPage() {
         storedDate={(dr as { review_date: string } | null)?.review_date ?? null}
         storedSpan={(dr as { source_span: string | null } | null)?.source_span ?? null}
       />
+      <StewQueuePanel open={stewing} settled={settled} />
       <ConversationPanel recent={recent} />
     </main>
   );
