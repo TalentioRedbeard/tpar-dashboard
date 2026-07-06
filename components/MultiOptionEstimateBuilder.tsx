@@ -27,12 +27,15 @@ import {
 import { generateLineDescription } from "@/lib/estimate-actions";
 import { rateFor, linePriceDollars, materialsCostCents, applyOptionModifiers, type ModLine } from "@/lib/estimate-pricing";
 import { BasedOnPanel } from "./BasedOnPanel";
+import { PriceItWithMe } from "./PriceItWithMe";
 import { generateBasedOnEstimate, type BasedOnDraftOption } from "@/lib/based-on-actions";
 
 const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
 const CUSTOM = "__custom__";
 
-type Line = {
+// Exported for the "Price it with me" panel (components/PriceItWithMe), which
+// injects pre-filled Lines via onAddLines. Type-only there — no runtime cycle.
+export type Line = {
   q1: string; q2: string; q3: string; item: string; customName: string;
   hours: string; crew: string; materials: string; description: string;
   modifierKeys: string[];
@@ -45,6 +48,13 @@ type Opt = { name: string; lines: Line[] };
 
 const blankLine = (): Line => ({ q1: "", q2: "", q3: "", item: "", customName: "", hours: "4", crew: "2", materials: "0", description: "", modifierKeys: [], priceOverride: "" });
 const blankOpt = (i: number): Opt => ({ name: `Option ${i + 1}`, lines: [blankLine()] });
+
+// An untouched blank line (still at blankLine() defaults) — safe to replace
+// when the "Price it with me" panel injects its first proposed lines.
+const isPristineLine = (l: Line): boolean =>
+  !l.q1 && !l.q2 && !l.q3 && !l.item && !l.customName.trim() && !l.description.trim()
+  && l.hours === "4" && l.crew === "2" && l.materials === "0"
+  && l.modifierKeys.length === 0 && l.priceOverride === "";
 
 function chosenName(l: Line): string { return l.item === CUSTOM ? l.customName.trim() : l.item; }
 const linePrice = (l: Line): number => linePriceDollars(l.hours, l.crew, l.materials);
@@ -250,6 +260,18 @@ export function MultiOptionEstimateBuilder({
       })),
     })));
     if (draftNote && !note.trim()) setNote(draftNote);
+  }
+
+  // Inject proposed lines from the "Price it with me" panel into one option.
+  // Replaces a single still-pristine blank line, otherwise appends. The tech
+  // reviews every number in the normal form before pushing (human-in-the-loop).
+  function addConversationLines(optionIndex: number, lines: Line[]) {
+    if (lines.length === 0) return;
+    setOptions((prev) => prev.map((o, i) => {
+      if (i !== Math.max(0, Math.min(optionIndex, prev.length - 1))) return o;
+      const pristine = o.lines.length === 1 && isPristineLine(o.lines[0]);
+      return { ...o, lines: pristine ? [...lines] : [...o.lines, ...lines] };
+    }));
   }
 
   // One-shot auto-seed: when entering from an estimate appointment, run the
@@ -580,6 +602,18 @@ export function MultiOptionEstimateBuilder({
         <BasedOnPanel hcpCustomerId={customer.hcpCustomerId} onApply={applyBasedOn} disabled={pending} />
         <span className="text-xs text-neutral-400">…or build manually below</span>
       </div>
+
+      {/* 🧮 Price it with me — conversational line-item builder. Extracts scope
+          + asks the judgment questions, then injects deterministic pre-filled
+          lines into the options below for normal human review. */}
+      <PriceItWithMe
+        pricebook={opts}
+        modifiers={modMap}
+        optionNames={options.map((o) => o.name)}
+        hcpJobId={initialJob?.hcpJobId ?? null}
+        disabled={pending}
+        onAddLines={addConversationLines}
+      />
 
       {/* Auto-seed status — drafting good/better/best from the visit notes */}
       {seeding ? (
