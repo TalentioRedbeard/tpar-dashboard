@@ -9,6 +9,7 @@ import { Section } from "../../components/ui/Section";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Pill } from "../../components/ui/Pill";
 import { AskResult, type RoutePlan, type RouteScope } from "../../components/AskResult";
+import { PushToDanny } from "../../components/PushToDanny";
 import { supabaseServer } from "../../lib/supabase-server";
 
 export const metadata = { title: "Ask · TPAR-DB" };
@@ -155,7 +156,7 @@ export default async function AskPage({
 
       {q && preferStructured && routeRes?.plan && (
         <Section>
-          <AskResult plan={routeRes.plan} rows={routeRes.rows ?? []} sqlError={routeRes.sql_error ?? null} scope={routeRes.scope ?? null} />
+          <AskResult plan={routeRes.plan} rows={routeRes.rows ?? []} sqlError={routeRes.sql_error ?? null} scope={routeRes.scope ?? null} question={q} />
         </Section>
       )}
 
@@ -176,6 +177,9 @@ export default async function AskPage({
                 className="prose prose-sm max-w-none whitespace-pre-wrap text-sm leading-relaxed text-neutral-800"
                 dangerouslySetInnerHTML={{ __html: renderAnswer(result.answer) }}
               />
+              {/* Escalation footer — same one AskResult carries, so BOTH /ask
+                  answer shapes (structured + legacy ask-tpar) can push. */}
+              <PushToDanny question={q} answerSnippet={result.answer.slice(0, 200)} />
             </div>
           ) : (
             <EmptyState

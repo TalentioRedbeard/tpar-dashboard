@@ -6,6 +6,7 @@
 
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from "@vis.gl/react-google-maps";
 import { useMemo, useState } from "react";
+import { PushToDanny } from "./PushToDanny";
 
 export type RoutePlan = {
   kind: "text" | "map" | "table" | "synthesis";
@@ -27,9 +28,16 @@ type Props = {
   rows: Record<string, unknown>[];
   sqlError?: string | null;
   scope?: RouteScope | null;
+  /** The question that produced this answer. When present, the quiet
+   *  "Push it to Danny" escalation footer renders under the answer
+   *  (AskBar + /ask pass it; other surfaces stay unchanged). */
+  question?: string | null;
+  /** Page context forwarded to ask-escalate. Defaults to the on-screen URL
+   *  at tap time (see PushToDanny). */
+  pageContext?: string | null;
 };
 
-export function AskResult({ plan, rows, sqlError, scope }: Props) {
+export function AskResult({ plan, rows, sqlError, scope, question, pageContext }: Props) {
   const csvCols = plan.columns && plan.columns.length > 0 ? plan.columns : rows[0] ? Object.keys(rows[0]) : [];
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
@@ -87,6 +95,14 @@ export function AskResult({ plan, rows, sqlError, scope }: Props) {
           <summary className="cursor-pointer text-neutral-600">SQL used</summary>
           <pre className="mt-2 overflow-x-auto rounded bg-white p-2 font-mono text-[11px] text-neutral-800">{plan.sql}</pre>
         </details>
+      ) : null}
+
+      {question && question.trim() ? (
+        <PushToDanny
+          question={question.trim()}
+          answerSnippet={(plan.narrative || plan.title || "").slice(0, 200)}
+          pageContext={pageContext ?? null}
+        />
       ) : null}
     </div>
   );

@@ -20,6 +20,10 @@ export function AskBar({ pageTitle }: { pageTitle: string }) {
   const pathname = usePathname();
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<AskBarResult | null>(null);
+  // What produced the current result — the question + the exact page-context
+  // string sent to the brain. Feeds the "Push it to Danny" footer so the
+  // escalation carries the same context the answer was grounded in.
+  const [asked, setAsked] = useState<{ q: string; ctx: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
   function submit(e: FormEvent) {
@@ -34,13 +38,16 @@ export function AskBar({ pageTitle }: { pageTitle: string }) {
       const loc = typeof window !== "undefined"
         ? window.location.pathname + window.location.search
         : pathname;
-      const r = await askBar({ question: q, pageContext: `${pageTitle} (${loc})` });
+      const ctx = `${pageTitle} (${loc})`;
+      const r = await askBar({ question: q, pageContext: ctx });
+      setAsked({ q, ctx });
       setResult(r);
     });
   }
 
   function clear() {
     setResult(null);
+    setAsked(null);
     setQuery("");
   }
 
@@ -90,6 +97,8 @@ export function AskBar({ pageTitle }: { pageTitle: string }) {
               rows={result.rows ?? []}
               sqlError={result.sql_error ?? null}
               scope={result.scope ?? null}
+              question={asked?.q ?? null}
+              pageContext={asked?.ctx ?? null}
             />
           ) : (
             <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
