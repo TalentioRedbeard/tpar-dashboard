@@ -192,7 +192,11 @@ export async function createRecorder({ clip, hashedToken, startPath = "/me", vie
   // ── spotlight(target) — the "pointing" primitive ──────────────────────────
   // Scrolls into view, glides the cursor onto the element, pulses a rounded
   // gold ring around its bounding box while the cursor rests on it.
-  async function spotlight(target, { hold = 2500, pulses = 3, pad = 8, shot: shotName = null, moveMs = 900, settleMs = 900 } = {}) {
+  // cursorAt: optional { fx, fy } fractions of the box for the cursor rest
+  // point (default { fx: 0.5, fy: 0.55 }). Values outside 0..1 park the
+  // cursor just OUTSIDE the box — used on live-button surfaces (job-page
+  // trigger bar) so the glide target is never a button center.
+  async function spotlight(target, { hold = 2500, pulses = 3, pad = 8, shot: shotName = null, moveMs = 900, settleMs = 900, cursorAt = null } = {}) {
     const loc = resolve(target);
     try { await loc.waitFor({ state: "visible", timeout: 6000 }); }
     catch { console.warn(`spotlight: target not visible (${typeof target === "string" ? target : "locator"}) — narration carries the beat`); await sleep(hold); return false; }
@@ -200,8 +204,10 @@ export async function createRecorder({ clip, hashedToken, startPath = "/me", vie
     await sleep(settleMs);
     const box = await loc.boundingBox().catch(() => null);
     if (!box) { console.warn("spotlight: no bounding box — skipping ring"); await sleep(hold); return false; }
-    const cx = Math.min(Math.max(box.x + box.width * 0.5, 6), viewport.width - 6);
-    const cy = Math.min(Math.max(box.y + box.height * 0.55, 6), viewport.height - 6);
+    const fx = cursorAt?.fx ?? 0.5;
+    const fy = cursorAt?.fy ?? 0.55;
+    const cx = Math.min(Math.max(box.x + box.width * fx, 6), viewport.width - 6);
+    const cy = Math.min(Math.max(box.y + box.height * fy, 6), viewport.height - 6);
     await glideTo(cx, cy, moveMs);
     await page.evaluate(({ r, pad, pulses }) => {
       const ring = document.createElement("div");
