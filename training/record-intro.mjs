@@ -1,16 +1,31 @@
-// Clip 0 — "Welcome to the TPAR app" (~80-90s series opener).
-// Beats match narration/clip-0-intro.md. Built on lib/recorder.mjs: rendered
-// cursor, spotlight rings, beat manifest → videos/intro-beats.json.
+// Clip 0 v2 — "Welcome to the TPAR app" (~4min series opener, the map).
+// Beats match narration/clip-0-intro.md (Danny's edited 10-beat script, 7/06).
+// Built on lib/recorder.mjs: rendered cursor, spotlight rings, beat manifest
+// → videos/intro-beats.json.
 //
 // Usage:  node record-intro.mjs <hashed_token from auth admin generate_link>
 //
-// Storyboard:
+// Storyboard (filmed as test-tech Al — every page renders his tech-scoped view):
 //   b1  title card (the swappable HOST SLOT — keep it a distinct beat)
-//   b2  /me — clock section → quick-action tiles → Daily wrap
-//   b3  /find — the search input
-//   b4  /estimate/new — "Price it with me" (opened live) + the options area
-//   b5  the AskBar (persistent under-header ask bar, same page)
-//   b6  /how-to — Field Guide money ladder, then home to /me
+//   b2  /me — fast pass: clock → quick-action tiles → Daily wrap (clip 1 goes deep)
+//   b3  /jobs ("My jobs", Al seeded onto the test job so the list is non-empty)
+//       → /find (the dynamic search) — Danny's beat header is "Jobs / Find"
+//   b4  /estimates ("My estimates" list) → /estimate/new?customer=<Marketing Test>
+//       — spotlight "Price it with me", open it (allowed), textarea + Option 1
+//   b5  /comms — Al's scoped view (empty-state card is the honest render)
+//   b6  /gallery — the chooser (photo search); no grid without picking a job
+//   b7  /shopping — Suppliers + Log-a-need (catalog/market links are
+//       leadership-gated, so Al never sees them — see the deviation note)
+//   b8  /settings — the "How the app fits you" group
+//   b9  /me — AskBar: TYPE "where do receipts go?", submit, wait the answer in,
+//       spotlight the "Not settled? Push it to Danny." footer, CLICK THE REVEAL
+//       ONLY, spotlight the two urgency tiles.
+//       ⛔ ABSOLUTE: NEVER click either tile (⏳ Can wait / 🚨 Need him now) —
+//       they place real phone calls. A capture-phase click shield is installed
+//       the moment the tiles appear + zero-press asserted after the beat.
+//   b10 /how-to#doctrine — money ladder → stuck ladder, slow scroll, park, close
+//   NOTE: Reports is never visited or spotlighted (removed from the script;
+//   leadership-gated for Al anyway).
 
 import { createRecorder, loadDurations, sleep } from "./lib/recorder.mjs";
 
@@ -21,76 +36,260 @@ if (!hashedToken) { console.error("usage: node record-intro.mjs <hashed_token>")
 // (no param → customer picker only; real customer names stay out of the clip).
 const DEMO_CUSTOMER = "cus_d4dd79856773477cba547f20a940af86"; // "Marketing Test"
 
-const D = loadDurations("clip-0-intro"); // measured mp3 seconds per beat (optional)
+const ASK_QUESTION = "where do receipts go?";
+
+const D = loadDurations("clip-0-intro"); // measured mp3 seconds per beat (v2)
 const durMs = (b, fallbackSec) => Math.round(((D[b] ?? fallbackSec) + 0.7) * 1000);
 
 const r = await createRecorder({ clip: "intro", hashedToken, startPath: "/me" });
 const { page } = r;
+
+// Cursor-alive wait (proven in clips 4/5) — drift in the empty right margin
+// so the frame never looks frozen while a real latency runs.
+async function waitAlive(locator, timeoutMs, anchors = [[980, 300], [940, 340]]) {
+  const t0 = Date.now();
+  let i = 0;
+  while (Date.now() - t0 < timeoutMs) {
+    if (await locator.isVisible().catch(() => false)) return true;
+    const [x, y] = anchors[i % anchors.length];
+    i += 1;
+    await r.glideTo(x, y, 1400);
+    await sleep(900);
+  }
+  return false;
+}
 
 // ── b1: title card — the host slot ──────────────────────────────────────────
 await r.parkCursor();
 await r.beat("b1");
 await r.titleCard({
   title: "TULSA PLUMBING & REMODELING",
-  subtitle: "The TPAR App — the one-minute map",
-  hold: durMs("b1", 18.5),
+  subtitle: "The TPAR App — the map",
+  hold: durMs("b1", 21.8),
 });
 
-// ── b2: /me — home base sweep (clock → tiles → Daily wrap) ──────────────────
+// ── b2: /me — fast home-base pass (clock → tiles → Daily wrap) ──────────────
 await r.beat("b2");
 {
-  const total = durMs("b2", 14.5);
+  const total = durMs("b2", 20.8);
   const clockCard = page.locator("section", { has: page.getByRole("button", { name: /clock (in|out)/i }) }).first();
-  await r.spotlight(clockCard, { hold: Math.round(total * 0.20), shot: "b2-clock" });
+  await r.spotlight(clockCard, { hold: Math.round(total * 0.24), shot: "b2-clock" });
   const tileGrid = page.locator('a[href="/receipt"]').locator("xpath=ancestor::div[1]");
-  await r.spotlight(tileGrid, { hold: Math.round(total * 0.20), shot: "b2-tiles" });
-  await r.spotlight(await r.sectionOf("Daily wrap"), { hold: Math.round(total * 0.18), shot: "b2-wrap" });
+  await r.spotlight(tileGrid, { hold: Math.round(total * 0.22), shot: "b2-tiles" });
+  await r.spotlight(await r.sectionOf("Daily wrap"), { hold: Math.round(total * 0.2), shot: "b2-wrap" });
+  await r.slowScroll(0, Math.round(total * 0.12));
 }
 
-// ── b3: /find — search by name, address, or memory ──────────────────────────
-await r.gotoAndSettle("/find");
+// ── b3: /jobs (the nav "Jobs" route) → /find — Danny's "Jobs / Find" beat ────
+await r.gotoAndSettle("/jobs", 1800);
 await r.beat("b3");
 {
+  const total = durMs("b3", 28.7);
+  // Al's tech-scoped "My jobs" list (seeded with the test job so a real row shows).
+  const jobsList = page.locator("main ul.space-y-2").first();
+  const listOk = await jobsList.isVisible().catch(() => false);
+  if (listOk) {
+    await r.spotlight(jobsList, { hold: Math.round(total * 0.3), shot: "b3-jobs-list" });
+  } else {
+    // Honest fallback: the scoped empty-state card still carries the beat.
+    await r.spotlight(page.getByText(/No jobs assigned to you/i).first(), { hold: Math.round(total * 0.3), shot: "b3-jobs-empty" });
+  }
+  // "Search by name, by address — or just describe what you remember" = /find.
+  await r.gotoAndSettle("/find", 1600);
   const input = page.getByPlaceholder(/trotzuk|leave empty/i).first();
-  await r.spotlight(input, { hold: durMs("b3", 10) - 3500, pad: 10, shot: "b3-search" });
+  await r.spotlight(input, { hold: Math.round(total * 0.42), pad: 10, shot: "b3-search" });
 }
 
-// ── b4: /estimate/new — Price it with me + the options area ─────────────────
-await r.gotoAndSettle(`/estimate/new?customer=${DEMO_CUSTOMER}`, 2200);
+// ── b4: /estimates → /estimate/new — Price it with me ───────────────────────
+await r.gotoAndSettle("/estimates", 1800);
 await r.beat("b4");
 {
-  const total = durMs("b4", 20);
+  const total = durMs("b4", 31.2);
+  // Al's "My estimates" list (estimates on his scheduled customers).
+  const estList = page.locator("main ul.space-y-2").first();
+  if (await estList.isVisible().catch(() => false)) {
+    await r.spotlight(estList, { hold: Math.round(total * 0.2), shot: "b4-pipeline" });
+  } else {
+    await r.spotlight(page.getByText(/No estimates yet on your scheduled customers/i).first(), { hold: Math.round(total * 0.2), shot: "b4-pipeline" });
+  }
+  await r.gotoAndSettle(`/estimate/new?customer=${DEMO_CUSTOMER}`, 2200);
   const priceCard = page.getByText("Price it with me").first().locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
-  await r.spotlight(priceCard, { hold: Math.round(total * 0.16), shot: "b4-price" });
-  // Open it live — shows the click ripple + the "describe the work" textarea.
+  await r.spotlight(priceCard, { hold: Math.round(total * 0.14), shot: "b4-price" });
+  // Open it live (allowed) — the click ripple + the "describe the work" textarea.
   await r.clickWith(page.getByText("Price it with me").first());
   await sleep(700);
   const textarea = page.locator("textarea").first();
-  await r.spotlight(textarea, { hold: Math.round(total * 0.22), pad: 10, shot: "b4-describe" });
+  await r.spotlight(textarea, { hold: Math.round(total * 0.2), pad: 10, shot: "b4-describe" });
   const optionCard = page.locator('input[placeholder*="Option 1 name"]').first().locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
-  await r.spotlight(optionCard, { hold: Math.round(total * 0.28), shot: "b4-options" });
+  await r.spotlight(optionCard, { hold: Math.round(total * 0.2), shot: "b4-options" });
 }
 
-// ── b5: the AskBar — same page, glide up to the persistent ask bar ──────────
+// ── b5: /comms — the thread of record, scoped to Al ─────────────────────────
+await r.gotoAndSettle("/comms", 1800);
 await r.beat("b5");
 {
-  const ask = page.getByPlaceholder(/Ask anything/i).first();
-  await r.spotlight(ask, { hold: durMs("b5", 10) - 3200, pad: 10, shot: "b5-askbar" });
+  const total = durMs("b5", 14.6);
+  // Al's scoped view: comm list if any, else the honest scoped empty-state card.
+  const commList = page.locator("main ul.space-y-2").first();
+  if (await commList.isVisible().catch(() => false)) {
+    await r.spotlight(commList, { hold: total - 3400, shot: "b5-threads" });
+  } else {
+    const emptyCard = page.getByText(/No calls or texts|No customers on your schedule/i).first();
+    await r.spotlight(emptyCard, { hold: total - 3400, shot: "b5-threads" });
+  }
 }
 
-// ── b6: /how-to — the Field Guide (money ladder), then home ─────────────────
-await r.gotoAndSettle("/how-to");
+// ── b6: /gallery — every job photo, searchable ──────────────────────────────
+await r.gotoAndSettle("/gallery", 1800);
 await r.beat("b6");
 {
-  const total = durMs("b6", 11.5);
-  const board = page.getByText("Board 1 · The money ladder").first().locator("xpath=ancestor-or-self::section[1]");
-  await r.spotlight(board, { hold: Math.round(total * 0.35), shot: "b6-ladder" });
-  // Slow scroll down through the ladder steps.
+  const total = durMs("b6", 10.7);
+  // The chooser (tech view: "Your jobs" search input) — ring the input itself,
+  // same proven pattern as the /find search. (No "rounded" ancestor exists —
+  // the take-1 xpath resolved to nothing.)
+  const jobsInput = page.getByPlaceholder(/Job # \/ invoice/i).first();
+  if (await jobsInput.isVisible().catch(() => false)) {
+    await r.spotlight(jobsInput, { hold: total - 3200, pad: 12, shot: "b6-search" });
+  } else {
+    await r.spotlight(page.getByText(/Find a job or customer/i).first(), { hold: total - 3200, shot: "b6-search" });
+  }
+}
+
+// ── b7: /shopping — parts + pricing hub (Al's view) ─────────────────────────
+await r.gotoAndSettle("/shopping", 2000);
+await r.beat("b7");
+{
+  const total = durMs("b7", 12.3);
+  // Catalog/market tiles are leadership-gated — try them first (in case the
+  // gate changes), else spotlight what a tech actually gets: Suppliers + needs.
+  const marketLink = page.getByText("Browse the parts catalog").first();
+  if (await marketLink.isVisible().catch(() => false)) {
+    await r.spotlight(await r.sectionOf("Market — prices, catalog & delivery"), { hold: total - 3400, shot: "b7-market" });
+  } else {
+    // The Suppliers SECTION is taller than the viewport (ring lands off-screen)
+    // — ring its compact header instead, then the Log-a-need card.
+    const suppliersHeader = page.getByRole("heading", { name: "Suppliers", exact: true }).first()
+      .locator("xpath=ancestor::header[1]");
+    await r.spotlight(suppliersHeader, { hold: Math.round(total * 0.42), pad: 10, shot: "b7-suppliers" });
+    await r.spotlight(await r.sectionOf("Log a new need"), { hold: Math.round(total * 0.28), shot: "b7-log-need" });
+  }
+}
+
+// ── b8: /settings — "How the app fits you" ──────────────────────────────────
+await r.gotoAndSettle("/settings", 1800);
+await r.beat("b8");
+{
+  const total = durMs("b8", 9.2);
+  const fitsGroup = page.getByText("How the app fits you", { exact: true }).first()
+    .locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
+  await r.spotlight(fitsGroup, { hold: total - 3000, shot: "b8-fits-you" });
+}
+
+// ── b9: /me — Ask + "Push it to Danny" (REVEAL ONLY — never the tiles) ──────
+await r.gotoAndSettle("/me", 2000);
+await r.beat("b9");
+{
+  const total = durMs("b9", 30.7);
+  const t0 = Date.now();
+  const askInput = page.getByPlaceholder(/Ask anything/i).first();
+  const askWrap = askInput.locator('xpath=ancestor::div[contains(@class,"mb-6")][1]');
+
+  await r.spotlight(askInput, { hold: 1600, pad: 10, pulses: 2, shot: "b9-askbar" });
+  await r.clickWith(askInput);
+  await page.keyboard.type(ASK_QUESTION, { delay: 42 }); // visible keystrokes
+  await r.shot("b9-typed");
+  await sleep(400);
+  const askBtn = askWrap.getByRole("button", { name: /^Ask$/ }).first();
+  await r.clickWith(askBtn); // read-only ask lane — allowed
+
+  // Wait the real answer in (pending renders a bare "Thinking…" div.mt-2;
+  // the real AskResult card is a CHILD div inside div.mt-2).
+  const answered = askWrap.locator("div.mt-2 > div").first();
+  const ok = await waitAlive(answered, 120_000);
+  if (!ok) {
+    console.error("FAILED: AskBar never rendered an answer — see screenshots");
+    await r.shot("b9-answer-FAILED");
+    await r.finish();
+    process.exit(1);
+  }
+  if (await askWrap.locator("div.mt-2 div.bg-red-50").first().isVisible().catch(() => false)) {
+    console.error("FAILED: AskBar returned an error box — failed take");
+    await r.shot("b9-answer-ERROR");
+    await r.finish();
+    process.exit(1);
+  }
+  await sleep(500);
+  await r.shot("b9-answer");
+
+  // HARD GATE: the Push-to-Danny footer must have rendered (deployed 982e29e).
+  const revealBtn = askWrap.getByRole("button", { name: /Not settled\? Push it to Danny\./ }).first();
+  try {
+    await revealBtn.waitFor({ state: "visible", timeout: 8000 });
+  } catch {
+    console.error("FAILED: 'Not settled? Push it to Danny.' footer never rendered under the answer — is 982e29e deployed? See videos/frame-intro-b9-FAIL-no-push-footer.png");
+    await r.shot("b9-FAIL-no-push-footer");
+    await r.finish();
+    process.exit(1);
+  }
+  await r.spotlight(revealBtn, { hold: 2600, pad: 8, pulses: 2, shot: "b9-push-footer" });
+
+  // CLICK THE REVEAL ONLY — client-side state flip, no send. The tiles it
+  // reveals place REAL PHONE CALLS; they are never clicked (shield + assert).
+  await r.clickWith(revealBtn);
+  await sleep(700);
+  const canWait = askWrap.getByRole("button", { name: /Can wait/ }).first();
+  const needNow = askWrap.getByRole("button", { name: /Need him now/ }).first();
+  const tilesUp = (await canWait.isVisible().catch(() => false)) && (await needNow.isVisible().catch(() => false));
+  if (!tilesUp) {
+    console.error("FAILED: urgency tiles did not appear after the reveal click");
+    await r.shot("b9-FAIL-no-tiles");
+    await r.finish();
+    process.exit(1);
+  }
+  // SAFETY SHIELD from this moment on: swallow + count any press-shaped event
+  // before it can reach a live tile. Spotlight never presses — belt + suspenders.
+  await page.evaluate(() => {
+    window.__pressAttempts = 0;
+    for (const t of ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "dblclick", "contextmenu"]) {
+      window.addEventListener(t, (e) => { window.__pressAttempts++; e.preventDefault(); e.stopImmediatePropagation(); }, true);
+    }
+  });
+  // Ring the tiles' CONTAINER, cursor parked BELOW the grid (fy>1 — never on a
+  // tile). NOTE: the has: locator must be page-rooted (clip-2 pattern) — a
+  // locator already rooted at askWrap silently matches nothing.
+  const tileGrid = askWrap.locator("div.grid", { has: page.getByRole("button", { name: /Can wait/ }) }).first();
+  const remaining = total - (Date.now() - t0);
+  await r.spotlight(tileGrid, {
+    hold: Math.max(remaining - 1600, 4500),
+    pulses: 4, pad: 10, shot: "b9-urgency-tiles",
+    cursorAt: { fx: 0.5, fy: 1.18 },
+  });
+  const attempts = await page.evaluate(() => window.__pressAttempts ?? -1).catch(() => -1);
+  if (attempts !== 0) {
+    console.error(`FAILED SAFETY ASSERT: ${attempts} press-shaped event(s) fired after the tiles appeared (all shielded, but this take is void).`);
+    await r.finish();
+    process.exit(1);
+  }
+  console.log("urgency-tile press events: 0 (asserted)");
+  await r.parkCursor(); // move away from the tiles before the beat ends
+}
+
+// ── b10: /how-to#doctrine — the Field Guide, then close ─────────────────────
+await r.gotoAndSettle("/how-to#doctrine", 1800);
+await r.beat("b10");
+{
+  const total = durMs("b10", 21.7);
+  const ladderBoard = page.getByText("Board 1 · The money ladder").first()
+    .locator("xpath=ancestor-or-self::section[1]");
+  await r.spotlight(ladderBoard, { hold: Math.round(total * 0.34), shot: "b10-ladder" });
+  const stuck = page.getByText("Board 3 · When you're stuck").first()
+    .locator("xpath=ancestor-or-self::section[1]");
+  await r.spotlight(stuck, { hold: Math.round(total * 0.26), shot: "b10-stuck" });
+  // Slow scroll on through the guide, then park for the close.
   const y = await page.evaluate(() => window.scrollY);
-  await r.slowScroll(y + 550, Math.round(total * 0.22));
-  await r.gotoAndSettle("/me");
-  await r.slowScroll(0, 600);
-  await sleep(2500);
+  await r.slowScroll(y + 500, Math.round(total * 0.18));
+  await r.parkCursor();
+  await sleep(Math.max(Math.round(total * 0.14), 1800));
 }
 
 await sleep(1500); // tail margin so the close never clips at video end
