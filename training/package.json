@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "record:intro": "node record-intro.mjs",
-    "record:my-day": "node record-my-day.mjs"
+    "record:my-day": "node record-my-day.mjs",
+    "record:clock-status": "node record-clip2.mjs",
+    "record:daily-wrap": "node record-clip3.mjs",
+    "record:estimate-piwm": "node record-clip4.mjs",
+    "record:ask-field-guide": "node record-clip5.mjs",
+    "record:receipts": "node record-clip6.mjs"
   },
   "devDependencies": {
     "playwright": "^1.47.0"
