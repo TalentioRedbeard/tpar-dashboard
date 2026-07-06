@@ -123,7 +123,15 @@ export function DailyWrapCard({ tech, wrappedAt }: {
 
   return (
     <section className="mb-8">
-      <div className="rounded-2xl border border-gold-500/50 bg-white p-4">
+      {/* Framed + labeled like the quick-action tiles (Field Doctrine rollout:
+          "each tile clearly framed and labeled") — persistent header, gold
+          accent kept as the wrap's identity mark. */}
+      <div className="rounded-2xl border-2 border-brand-200 bg-white p-4 shadow-sm">
+        <div className="mb-2 flex items-center gap-2 border-b border-neutral-100 pb-2">
+          <span className="text-3xl leading-none" aria-hidden>🌇</span>
+          <span className="text-sm font-bold text-brand-900">Daily wrap</span>
+          <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-gold-600">30 seconds</span>
+        </div>
         {phase === "recording" ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -159,9 +167,8 @@ export function DailyWrapCard({ tech, wrappedAt }: {
         ) : (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-neutral-900">🌇 Daily wrap</div>
-              <p className="mt-0.5 text-xs text-neutral-600">
-                30 seconds: how&apos;d the day go, what fought you, what should the app do better?
+              <p className="text-xs text-neutral-600">
+                How&apos;d the day go, what fought you, what should the app do better?
               </p>
             </div>
             <button

@@ -22,6 +22,7 @@ import { DismissJobButton } from "../../components/DismissJobButton";
 import { GpsLifecyclePrompt } from "../../components/GpsLifecyclePrompt";
 import { ScrollPanel } from "../../components/ui/ScrollPanel";
 import { DailyWrapCard } from "../../components/DailyWrapCard";
+import { TodaysOneThing } from "../../components/TodaysOneThing";
 import { WhiteboardPanel } from "../../components/WhiteboardPanel";
 import { ExpectationsPanel } from "../../components/ExpectationsPanel";
 import { getCurrentState as getClockState } from "../time/actions";
@@ -29,6 +30,7 @@ import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
 import { getPendingSuggestions } from "../time/suggestions";
 import { EstimateBadge } from "../../components/EstimateBadge";
 import { getEstimatesForCards, estimatesForCard } from "../../lib/estimates-for-cards";
+import { getDailyPrinciple } from "../../lib/field-doctrine";
 
 export const metadata = { title: "My day · TPAR-DB" };
 
@@ -117,7 +119,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   const clockStatePromise = !viewingAs && me.tech ? getClockState() : Promise.resolve(null);
   const suggestionsPromise = !viewingAs && me.tech ? getPendingSuggestions() : Promise.resolve([]);
 
-  const [clockState, suggestions, apptsRes, commsRes, vehicleRes, kpiRes, techListResolved, lifecycleRes, mirrorLogsRes, dailyWrapRes] = await Promise.all([
+  const [clockState, suggestions, apptsRes, commsRes, vehicleRes, kpiRes, techListResolved, lifecycleRes, mirrorLogsRes, dailyWrapRes, dailyPrinciple] = await Promise.all([
     clockStatePromise,
     suggestionsPromise,
     // Today's appointments where this tech is primary.
@@ -199,6 +201,9 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           .order("created_at", { ascending: false })
           .limit(10)
       : Promise.resolve({ data: null }),
+    // "Today's one thing" — one Field Doctrine principle, rotating daily
+    // (day-of-year America/Chicago). Read-only, so it renders in view-as too.
+    getDailyPrinciple(),
   ]);
 
   const appts = (apptsRes.data ?? []) as Array<Record<string, unknown>>;
@@ -432,6 +437,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
         </section>
       ) : null}
 
+      {/* Today's one thing — one doctrine principle a day, quiet but unmissable.
+          Read-only nav (like the how-to link below), so view-as sees it too. */}
+      <TodaysOneThing principle={dailyPrinciple} />
+
       {/* "Read this first" how-to entry point for techs. This is READ-ONLY nav
           (unlike the clock/status actions below, which gate on !viewingAs to
           prevent admin writes-as-tech), so show it in view-as too — an admin
@@ -468,12 +477,16 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
 
       {!viewingAs && me.tech ? (() => {
         // Simple mode = bigger tap targets: 2-up grid, larger padding/type.
+        // Framing pass (Field Doctrine rollout, Danny: "each tile clearly framed
+        // and labeled"): visible brand border + slight elevation + larger icon +
+        // bold label. Same treatment as the Daily Wrap card below — the action
+        // surfaces read as one family.
         const tileGrid = simpleMode ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-2 gap-2 sm:grid-cols-5";
         const tile = simpleMode
-          ? "flex flex-col items-start gap-1.5 rounded-2xl border border-neutral-200 bg-white p-5 hover:border-brand-300 hover:bg-brand-50/30"
-          : "flex flex-col items-start gap-1 rounded-2xl border border-neutral-200 bg-white p-3 hover:border-brand-300 hover:bg-brand-50/30";
-        const tileEmoji = simpleMode ? "text-4xl" : "text-2xl";
-        const tileTitle = simpleMode ? "text-lg font-semibold text-neutral-900" : "text-sm font-semibold text-neutral-900";
+          ? "flex flex-col items-start gap-2 rounded-2xl border-2 border-brand-200 bg-white p-5 shadow-sm transition hover:border-brand-300 hover:bg-brand-50/30 hover:shadow"
+          : "flex flex-col items-start gap-1.5 rounded-2xl border-2 border-brand-200 bg-white p-3 shadow-sm transition hover:border-brand-300 hover:bg-brand-50/30 hover:shadow";
+        const tileEmoji = simpleMode ? "text-5xl" : "text-3xl";
+        const tileTitle = simpleMode ? "text-lg font-bold text-brand-900" : "text-sm font-bold text-brand-900";
         const tileHint = simpleMode ? "text-sm text-neutral-600" : "text-xs text-neutral-600";
         return (
         <section className="mb-8">

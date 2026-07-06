@@ -9,7 +9,9 @@
 
 import Link from "next/link";
 import { PageShell } from "../../components/PageShell";
+import { FieldGuide } from "../../components/FieldGuide";
 import { getCurrentTech } from "../../lib/current-tech";
+import { getFieldDoctrine } from "../../lib/field-doctrine";
 
 export const metadata = { title: "How to use the app · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -192,7 +194,11 @@ function AvenueIcons() {
 
 export default async function HowToPage() {
   // Role-aware: the leadership money/cost cluster only renders for admin + manager.
-  const me = await getCurrentTech().catch(() => null);
+  // The Field Doctrine guide renders for EVERYONE (techs first, but all roles).
+  const [me, doctrine] = await Promise.all([
+    getCurrentTech().catch(() => null),
+    getFieldDoctrine(),
+  ]);
   const leadership = !!(me && (me.isAdmin || me.isManager));
   return (
     <PageShell
@@ -212,6 +218,11 @@ export default async function HowToPage() {
           </p>
           <HeartbeatStrip />
         </section>
+
+        {/* ── Field doctrine — the money ladder, the 10 principles, the stuck
+            ladder. Visual, tap-to-expand, all roles (linked from /me's
+            "Today's one thing" card via #doctrine). ── */}
+        <FieldGuide rows={doctrine} />
 
         <Step n={1} title="Getting in">
           <ul className="list-disc space-y-1.5 pl-5">
