@@ -19,7 +19,7 @@ import type { DoctrineRow } from "../lib/field-doctrine";
 function PendingChip() {
   return (
     <span className="inline-flex shrink-0 items-center rounded-full border border-accent-500/50 bg-accent-50 px-1.5 py-0.5 text-[10px] font-semibold text-accent-700">
-      $ being finalized
+      being finalized
     </span>
   );
 }
