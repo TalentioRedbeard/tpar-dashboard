@@ -22,6 +22,7 @@ import { DismissJobButton } from "../../components/DismissJobButton";
 import { GpsLifecyclePrompt } from "../../components/GpsLifecyclePrompt";
 import { ScrollPanel } from "../../components/ui/ScrollPanel";
 import { DailyWrapCard } from "../../components/DailyWrapCard";
+import { MessageOfficeCard } from "../../components/MessageOfficeCard";
 import { TodaysOneThing } from "../../components/TodaysOneThing";
 import { WhiteboardPanel } from "../../components/WhiteboardPanel";
 import { ExpectationsPanel } from "../../components/ExpectationsPanel";
@@ -520,6 +521,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
         </section>
         );
       })() : null}
+
+      {/* Message the office — quick typed note to the office or Danny via the
+          team-push fn. Collapsed row by default; same gate as the tiles above. */}
+      {!viewingAs && me.tech ? <MessageOfficeCard /> : null}
 
       {/* Daily wrap — 30-second end-of-day verbal recap. Feeds the on-prem
           transcription lane → tech-wrap-distill → Team wraps on /conversation. */}
