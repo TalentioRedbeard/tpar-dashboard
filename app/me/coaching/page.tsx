@@ -8,7 +8,8 @@
 //   - This week's call→appt conversion vs last week
 //   - Aged unacked high-importance comms she owns
 //   - The teaching tape (Velvet Taco call id 2503) linked inline
-//   - How we price (doctrine principle + live money ladder from field_doctrine)
+//   - How we price (doctrine principle + live money ladder from field_doctrine
+//     + data-earned standard-rates strip from standard_line_rates_v, tolerant of absence)
 //   - The diagnostic-ladder intake questions as a printable reference
 //
 // Reads from communication_events + appointments_master + field_doctrine. No new tables.
@@ -194,6 +195,25 @@ export default async function CoachingPage() {
     return { total: rows.length, converted, pct: Math.round(100 * converted / rows.length * 10) / 10 };
   }
 
+  // STANDARD RATES — data-earned medians of what line items actually total.
+  // The view (standard_line_rates_v) may not exist yet (lands separately) —
+  // on ANY failure (missing view, network) the strip simply doesn't render.
+  type StandardRateRow = { item_key: string; n_lines: number; median_total_dollars: number | string | null };
+  let standardRates: StandardRateRow[] = [];
+  try {
+    const { data, error } = await supa
+      .from("standard_line_rates_v")
+      .select("item_key, n_lines, median_total_dollars")
+      .gte("n_lines", 5)
+      .order("n_lines", { ascending: false })
+      .limit(10);
+    if (!error && data) {
+      standardRates = (data as StandardRateRow[]).filter((r) => Number.isFinite(Number(r.median_total_dollars)));
+    }
+  } catch {
+    // view not created yet — render nothing
+  }
+
   const thisWeek = await conversionFor(thisWeekCalls);
   const lastWeek = await conversionFor(lastWeekCalls);
   const delta = Math.round((thisWeek.pct - lastWeek.pct) * 10) / 10;
@@ -313,6 +333,30 @@ export default async function CoachingPage() {
               </li>
             ))}
           </ol>
+        )}
+        {standardRates.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-neutral-800">Standard rates — earned from our own jobs</h3>
+            <p className="mt-1 text-xs text-neutral-500">
+              Medians of what these line items actually total. Quote them straight under standard conditions; your judgment adjusts the up-front price when the job&apos;s harder than standard.
+            </p>
+            <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {standardRates.map((r, i) => (
+                <li
+                  key={`${r.item_key}-${i}`}
+                  className="flex items-baseline justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm"
+                >
+                  <span className="min-w-0 truncate text-neutral-800">{r.item_key}</span>
+                  <span className="shrink-0">
+                    <strong className="font-mono text-base font-semibold tabular-nums text-neutral-900">
+                      ${Math.round(Number(r.median_total_dollars)).toLocaleString("en-US")}
+                    </strong>
+                    <span className="ml-1.5 text-[11px] text-neutral-400">n={r.n_lines} jobs</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Link
