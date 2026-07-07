@@ -210,6 +210,22 @@ export default async function HowToPage() {
       hideAskBar
     >
       <div className="space-y-4">
+        {/* ── Watch the walkthrough (top CTA → /training) ── */}
+        <Link
+          href="/training"
+          className="group flex items-center gap-4 rounded-2xl border-2 border-navy-700 bg-gradient-to-br from-navy-900 to-navy-800 p-5 text-white shadow-sm transition hover:from-navy-800 hover:to-navy-700"
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 text-2xl transition group-hover:bg-white/25" aria-hidden>
+            ▶
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gold-300">New · start here</div>
+            <div className="text-base font-semibold">Watch the app walkthrough</div>
+            <div className="mt-0.5 text-sm text-white/70">7 short chapters (~13 min) — the whole app, screen by screen.</div>
+          </div>
+          <span className="shrink-0 text-white/50 transition group-hover:translate-x-0.5 group-hover:text-white" aria-hidden>→</span>
+        </Link>
+
         {/* ── The 30-second version ── */}
         <section className="rounded-2xl border border-brand-300 bg-brand-50 p-5">
           <h2 className="text-base font-semibold text-brand-900">The 30-second version</h2>

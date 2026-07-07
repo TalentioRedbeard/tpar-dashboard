@@ -62,6 +62,7 @@ const TOOL_ITEMS = [
   { href: "/whiteboard", label: "Board", icon: "📝" },
   { href: "/inbox", label: "Inbox", icon: "📥" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
+  { href: "/training", label: "Training", icon: "🎓" },
   { href: "/how-to", label: "How to use the app", icon: "❔" },
 ];
 
