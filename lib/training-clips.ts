@@ -35,8 +35,8 @@ export const TRAINING_CLIPS: TrainingClip[] = [
     emoji: "👋",
     title: "Welcome — the one-minute map",
     desc: "The whole app in a minute: what it does, why it's here, and how your day flows through it.",
-    runtime: "4:18",
-    runtimeSec: 258,
+    runtime: "3:36",
+    runtimeSec: 216,
     url: `${BUCKET_BASE}/intro.mp4`,
   },
   {
