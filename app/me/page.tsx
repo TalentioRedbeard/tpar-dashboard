@@ -438,9 +438,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
         </section>
       ) : null}
 
-      {/* Today's one thing — one doctrine principle a day, quiet but unmissable.
-          Read-only nav (like the how-to link below), so view-as sees it too. */}
-      <TodaysOneThing principle={dailyPrinciple} />
+      {/* Today's one thing — TURNED OFF (Danny 2026-07-07): daily-rotating doctrine
+          cards arrived stripped of context and read as personal coaching points.
+          The doctrine stays available as PULL (Field Guide on /how-to, Ask) — never
+          push. Component + getDailyPrinciple kept for possible future re-enable. */}
 
       {/* "Read this first" how-to entry point for techs. This is READ-ONLY nav
           (unlike the clock/status actions below, which gate on !viewingAs to
