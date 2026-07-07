@@ -5,7 +5,7 @@ import fs from "node:fs";
 
 const FILES = {
   "clip-0-intro": "narration/clip-0-intro.md", // v2 (2026-07-06): Danny's edited 10-beat script
-  "clip-1-my-day": "narration/clip-1-my-day.md", // v2c (7/06 PM): punctuation-only delivery pass
+  "clip-1-my-day": "narration/clip-1-my-day.md", // v3 (7/07): Danny's notes — SIX beats (Coaching close + Message-the-office b4)
   "clip-2-clock-status": "narration/clip-2-clock-status.md",
   "clip-3-daily-wrap": "narration/clip-3-daily-wrap.md",
   "clip-4-estimate-piwm": "narration/clip-4-estimate-piwm.md",
@@ -14,7 +14,7 @@ const FILES = {
 };
 const EXPECT = {
   "clip-0-intro": 10,
-  "clip-1-my-day": 5,
+  "clip-1-my-day": 6,
   "clip-2-clock-status": 4,
   "clip-3-daily-wrap": 3,
   "clip-4-estimate-piwm": 6,

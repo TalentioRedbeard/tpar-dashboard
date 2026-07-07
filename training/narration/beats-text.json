@@ -12,11 +12,12 @@
     "b10": "Last stop: How-to, the manual that's actually short. What every button does. And the Field Guide, which holds how we carry ourselves. The principles, the requirement of getting paid, and exactly what to do or who to call when you're stuck. That's the map. Next clip: a tutorial on the My Day page, up close."
   },
   "clip-1-my-day": {
-    "b1": "This is My Day. Your home base in the TPAR app. Everything you need for the day lives on this one page. Right up top: your clock button. Tap it when you start and when you stop. That's it.",
-    "b2": "Below that, the day's expectations. What a good day looks like in your lane. And the whiteboard, where the team posts what everybody should see today.",
-    "b3": "These tiles are your quick actions. Snap a receipt the minute it's in your hand. Leave a voice note instead of typing. Find any job. And Ask. That's the smart search. Ask it anything about a job or a customer, in plain words.",
-    "b4": "This one matters: your Daily Wrap. Thirty seconds at the end of the day. How'd it go, what fought you, what should the app do better. You talk, it types. What you say here actually changes how we build things.",
-    "b5": "And your appointments for today, right where you'd expect them. That's the tour. One page, everything in reach. Next clip: clocking in and out on a real job."
+    "b1": "This is the My Day page. Your home base in the TPAR app for daily navigation. Everything you need to manage your work day lives on this one page. Right up top: your clock-in, clock-out button. Tap it when you start and when you stop. That's it.",
+    "b2": "Below that, the day's expectations. What a good day looks like in your lane, what we're focusing on. And the whiteboard, where the team posts what everybody should see today.",
+    "b3": "These tiles are your quick actions. Snap a receipt the minute it's in your hand. Leave a voice note instead of typing. Find any job. Ask. That's the smart search. Ask it anything about a job or a customer, in plain words. And My coaching: your calls and your numbers, with more coming there.",
+    "b4": "And when the office needs to know something, push it from right here. Message the office, or Danny directly. Type it, send it, back to work. No phone tag.",
+    "b5": "The Daily Wrap. This one matters: a minimum of thirty seconds at the end of the day. How'd it go, what fought you, what should the app do better, what can the company do better. You talk, it types. What you say here actually changes how we build things.",
+    "b6": "And your appointments for today, right where you'd expect them. That's the tour. One page with all the basics in reach. Next clip: clocking in and clocking out, and using the trigger buttons for job management."
   },
   "clip-2-clock-status": {
     "b1": "Your day starts with one tap. Clock in on My Day when you begin, clock out when you're done. That's the whole job. If you forget, the app will nudge you. If you're at a job site, it'll offer to do it for you.",
