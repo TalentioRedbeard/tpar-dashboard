@@ -83,6 +83,7 @@ const ADMIN_ITEMS = [
   { href: "/owner",              label: "Owner Control", icon: "🎛️" },
   { href: "/conversation",       label: "Conversation", icon: "💬" },
   { href: "/context",            label: "Context", icon: "🤝" },
+  { href: "/bom",                label: "Service BOMs", icon: "🔧" },
   { href: "/admin/expectations", label: "Expectations", icon: "✅" },
   { href: "/admin/integrations", label: "Integrations", icon: "🔌" },
   { href: "/alarms",          label: "Alarms", icon: "⏰" },

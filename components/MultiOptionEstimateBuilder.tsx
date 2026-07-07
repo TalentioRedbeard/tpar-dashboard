@@ -25,6 +25,7 @@ import {
   type EstimateModifier,
 } from "@/lib/multi-option-estimate-actions";
 import { generateLineDescription } from "@/lib/estimate-actions";
+import { materialsForService, type ServiceMaterials } from "@/lib/bom-estimate-actions";
 import { rateFor, linePriceDollars, materialsCostCents, applyOptionModifiers, type ModLine } from "@/lib/estimate-pricing";
 import { BasedOnPanel } from "./BasedOnPanel";
 import { PriceItWithMe } from "./PriceItWithMe";
@@ -162,6 +163,29 @@ export function MultiOptionEstimateBuilder({
   const [options, setOptions] = useState<Opt[]>([blankOpt(0)]);
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
+
+  // ── Approved-BOM materials hint (BUILD 2) ─────────────────────────────────
+  // When a line's Q4 item maps to a service with an APPROVED service_bom, show
+  // its deterministic standard-materials cost as an accept-able suggestion —
+  // never auto-filled (human-in-the-loop). Cache by item name so each service is
+  // fetched once: a ServiceMaterials value = has a bom, null = no bom (don't
+  // refetch), undefined = not yet loaded (no hint).
+  const [bomHints, setBomHints] = useState<Record<string, ServiceMaterials | null>>({});
+  const bomInFlight = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const names = new Set<string>();
+    for (const o of options) for (const l of o.lines) {
+      if (l.item && l.item !== CUSTOM) names.add(l.item);
+    }
+    for (const name of names) {
+      if (name in bomHints || bomInFlight.current.has(name)) continue;
+      bomInFlight.current.add(name);
+      materialsForService(name)
+        .then((res) => setBomHints((p) => ({ ...p, [name]: res })))
+        .catch(() => setBomHints((p) => ({ ...p, [name]: null })))
+        .finally(() => bomInFlight.current.delete(name));
+    }
+  }, [options, bomHints]);
 
   // ── Auto-seed from an estimate appointment (one-shot) ────────────────────
   const ranRef = useRef(false);
@@ -679,6 +703,24 @@ export function MultiOptionEstimateBuilder({
                   <label className="block"><span className="text-xs font-medium text-neutral-600">Price $ (value-based — clear to use labor formula)</span>
                     <input type="number" min="0" step="1" value={l.priceOverride} onChange={(e) => updateLine(oi, li, { priceOverride: e.target.value })} placeholder="(uses formula)" className={inputCls} /></label>
                 </div>
+
+                {/* Approved-BOM materials hint — deterministic standard-materials
+                    cost for this service (service_material_estimate RPC). A
+                    suggestion the tech accepts; never auto-fills the Materials $. */}
+                {l.item && l.item !== CUSTOM && bomHints[l.item] ? (() => {
+                  const hint = bomHints[l.item]!;
+                  return (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-800">
+                      <span>📦 Standard materials for this: <span className="font-semibold">${hint.materials_cost_dollars.toFixed(2)}</span> ({hint.n_priced}/{hint.n_required} parts priced)</span>
+                      <button type="button" onClick={() => updateLine(oi, li, { materials: String(hint.materials_cost_dollars) })}
+                        title="Fill the Materials $ (cost) field with this standard cost — you can still edit it."
+                        className="rounded border border-emerald-300 bg-white px-1.5 py-0.5 font-medium text-emerald-700 hover:bg-emerald-100">use</button>
+                      {hint.coverage_pct < 100 && hint.unpriced_parts.length > 0 ? (
+                        <span className="text-emerald-700/70">partial — {hint.unpriced_parts.slice(0, 2).join(", ")} not priced yet</span>
+                      ) : null}
+                    </div>
+                  );
+                })() : null}
 
                 <label className="mt-2 block"><span className="text-xs font-medium text-neutral-600">Description / scope (customer-facing; include exclusions)</span>
                   <textarea value={l.description} onChange={(e) => updateLine(oi, li, { description: e.target.value })} rows={2} className={inputCls}
