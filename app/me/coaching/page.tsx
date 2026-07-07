@@ -8,9 +8,10 @@
 //   - This week's call→appt conversion vs last week
 //   - Aged unacked high-importance comms she owns
 //   - The teaching tape (Velvet Taco call id 2503) linked inline
-//   - The diagnostic ladder + price ranges as a printable reference
+//   - How we price (doctrine principle + live money ladder from field_doctrine)
+//   - The diagnostic-ladder intake questions as a printable reference
 //
-// Reads from communication_events + appointments_master. No new tables.
+// Reads from communication_events + appointments_master + field_doctrine. No new tables.
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -79,6 +80,7 @@ export default async function CoachingPage() {
     agedUnackedRes,
     teachingTapeRes,
     ratesRes,
+    moneyLadderRes,
   ] = await Promise.all([
     // Last 10 calls (any channel, any direction, real customer comms only)
     supa
@@ -136,6 +138,15 @@ export default async function CoachingPage() {
       .eq("is_active", true)
       .order("category")
       .order("amount_cents", { ascending: false }),
+
+    // Money ladder — LIVE from field_doctrine (single source of truth;
+    // doctrine edits propagate here automatically). Renders "How we price".
+    supa
+      .from("field_doctrine")
+      .select("ord, title, rule, icon")
+      .eq("section", "money_ladder")
+      .eq("active", true)
+      .order("ord"),
   ]);
 
   const recentCalls = (recentCallsRes.data ?? []) as CommRow[];
@@ -144,6 +155,7 @@ export default async function CoachingPage() {
   const agedRows = (agedUnackedRes.data ?? []) as Array<{ id: number; occurred_at: string; customer_name: string | null; importance: number; summary: string | null }>;
   const teachingTape = teachingTapeRes.data as { id: number; occurred_at: string; customer_name: string | null; summary: string | null; importance: number } | null;
   const rates = (ratesRes.data ?? []) as Array<{ rate_key: string; category: string; display_name: string; unit: "flat"|"hour"|"percent"|"each"; amount_cents: number; scope_notes: string | null }>;
+  const moneyLadder = (moneyLadderRes.data ?? []) as Array<{ ord: number; title: string; rule: string; icon: string | null }>;
 
   function fmtRate(unit: "flat"|"hour"|"percent"|"each", cents: number): string {
     if (unit === "percent") return `${cents}%`;
@@ -203,7 +215,7 @@ export default async function CoachingPage() {
         actions: [
           "Top strip shows this-week vs. last-week conversion. Up is good, down is a nudge.",
           "Teaching tape is Danny's Velvet Taco call — listen to the 5 moves.",
-          "Rate card foldable: read off the real numbers when a customer asks. Don't invent.",
+          "Rate card foldable holds the factor inputs — hours × rate + materials + modifiers make the price.",
           "Recent calls list links to /comms/{id} for the full transcript + audio.",
         ],
         stuck: <>Conversion looks weirdly low? Could be calls not linked to appointments yet — they catch up overnight.</>,
@@ -279,15 +291,49 @@ export default async function CoachingPage() {
             ))}
           </div>
           <p className="mt-3 text-[11px] text-neutral-500">
-            Customer-facing posture stays upfront pricing. Madisson reads off the number — doesn&apos;t quote each line item. Edits at <Link href="/admin/rates" className="underline hover:text-neutral-700">/admin/rates</Link>.
+            These are factor inputs, not job prices — they feed the formula: the price comes from hours × rate + materials + modifiers. Customer-facing posture stays upfront pricing. Edits at <Link href="/admin/rates" className="underline hover:text-neutral-700">/admin/rates</Link>.
           </p>
         </details>
       )}
 
-      {/* DIAGNOSTIC LADDER + PRICE RANGES (printable) */}
+      {/* HOW WE PRICE — doctrine, not a rates list (replaced the placeholder price ranges, 2026-07-07) */}
+      <section className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4">
+        <h2 className="text-base font-semibold text-neutral-800">💰 How we price</h2>
+        <p className="mt-2 text-sm text-neutral-700">
+          Rates never dictate the price. Price from the actual factors — time, material, and modifiers — with your judgment applied. The result: an up-front price built from the work description.
+        </p>
+        {moneyLadder.length > 0 && (
+          <ol className="mt-3 space-y-1.5">
+            {moneyLadder.map((s) => (
+              <li key={s.ord} className="flex items-baseline gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
+                <span className="w-4 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500" aria-hidden>{s.ord}</span>
+                {s.icon ? <span aria-hidden className="shrink-0">{s.icon}</span> : null}
+                <span className="shrink-0 font-medium text-neutral-900">{s.title}</span>
+                <span className="min-w-0 truncate text-neutral-600">— {s.rule}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Link
+            href="/estimate/new"
+            className="inline-flex items-center rounded-xl bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-900"
+          >
+            Describe the work → Price it with me
+          </Link>
+          <Link
+            href="/how-to#doctrine"
+            className="inline-flex items-center rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            The full Field Guide →
+          </Link>
+        </div>
+      </section>
+
+      {/* DIAGNOSTIC LADDER — intake questions (printable) */}
       <details className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4">
         <summary className="cursor-pointer text-sm font-semibold text-neutral-800">
-          📋 The intake ladder + price ranges (printable reference)
+          📋 The intake ladder (printable reference)
         </summary>
         <div className="mt-3 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
           <div>
@@ -334,24 +380,6 @@ export default async function CoachingPage() {
               <li>&quot;Anything else around the house been bugging you?&quot;</li>
               <li>&quot;Want me to have them bring [X] just in case?&quot;</li>
             </ul>
-          </div>
-          <div className="sm:col-span-2">
-            <h3 className="mb-1 font-semibold text-neutral-700">Typical price ranges (give these when asked — not exact quotes)</h3>
-            <ul className="ml-4 list-disc space-y-0.5 text-neutral-700">
-              <li>Toilet R&amp;R (customer-supplied): <strong>$285–$425</strong></li>
-              <li>Toilet R&amp;R (TPAR-supplied mid-grade): <strong>$550–$750</strong></li>
-              <li>Drain clear (single fixture): <strong>$185–$285</strong></li>
-              <li>Drain clear (main line, accessible cleanout): <strong>$285–$425</strong></li>
-              <li>Drain + camera: <strong>$450–$650</strong></li>
-              <li>Water heater R&amp;R (40gal standard): <strong>$1,400–$1,800</strong></li>
-              <li>Tankless install (gas): <strong>$3,500–$5,500</strong></li>
-              <li>Faucet R&amp;R: <strong>$185–$285</strong></li>
-              <li>Hose bib repair: <strong>$185–$385</strong></li>
-              <li>Service call / diagnostic: <strong>$215</strong></li>
-            </ul>
-            <p className="mt-1 text-xs text-neutral-500">
-              Confirm these with Danny before quoting; they&apos;re placeholders pending the canonical pricebook scrape.
-            </p>
           </div>
         </div>
       </details>
@@ -422,7 +450,7 @@ export default async function CoachingPage() {
       )}
 
       <p className="mt-6 text-xs text-neutral-500">
-        v0 · This page is for you, not your manager. Nobody&apos;s grading. Watch your conversion improve week-over-week and you&apos;ll see what&apos;s working.
+        v1 · 2026-07-07: placeholder price ranges removed — pricing comes from the factors (time, material, modifiers), not a rates list. This page is for you, not your manager. Nobody&apos;s grading. Watch your conversion improve week-over-week and you&apos;ll see what&apos;s working.
       </p>
     </PageShell>
   );
