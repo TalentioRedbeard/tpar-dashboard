@@ -109,6 +109,26 @@ export function loadDurations(clipKey) {
   } catch { return {}; }
 }
 
+// ── Pace-to-narration (v2c anti-drag, hoisted from record-intro.mjs) ─────────
+// Each beat's wall-clock span is FLOORED at its narration length + pad —
+// actives (spotlights, navs) finish early and paceTo absorbs the remainder, so
+// the assembled cut carries no accumulated dead air. Overruns (slow nav, live
+// waits like PIWM extract/build or the Ask answer) simply run long — waitAlive
+// stays event-driven and is never truncated; span ≥ narration keeps
+// assemble.py's audio placement in sync. Call paceTo(prev) AFTER the next
+// beat's nav, so navigation rides inside the previous beat's budget.
+//   const { beatStart, paceTo } = createPacer(r, durMs);
+export function createPacer(r, durMs) {
+  let tBeat = Date.now();
+  return {
+    async beatStart(name) { tBeat = Date.now(); await r.beat(name); },
+    async paceTo(b) {
+      const left = durMs(b) - (Date.now() - tBeat);
+      if (left > 0) await sleep(left);
+    },
+  };
+}
+
 export async function createRecorder({ clip, hashedToken, startPath = "/me", viewport = { width: 1280, height: 800 } }) {
   if (!hashedToken) throw new Error("hashedToken required (from auth admin generate_link)");
   fs.mkdirSync("videos", { recursive: true });

@@ -27,7 +27,7 @@
 //   NOTE: Reports is never visited or spotlighted (removed from the script;
 //   leadership-gated for Al anyway).
 
-import { createRecorder, loadDurations, sleep } from "./lib/recorder.mjs";
+import { createRecorder, createPacer, loadDurations, sleep } from "./lib/recorder.mjs";
 
 const hashedToken = process.argv[2];
 if (!hashedToken) { console.error("usage: node record-intro.mjs <hashed_token>"); process.exit(1); }
@@ -44,19 +44,9 @@ const durMs = (b, fallbackSec) => Math.round(((D[b] ?? fallbackSec) + 0.7) * 100
 const r = await createRecorder({ clip: "intro", hashedToken, startPath: "/me" });
 const { page } = r;
 
-// Pace-to-narration (v2c anti-drag): each beat's wall-clock span is FLOORED at
-// its narration length + pad — actives (spotlights, navs) finish early and the
-// pacer absorbs the remainder, so the assembled cut carries no accumulated
-// dead air (v2's 258s video over 203s narration = the "feels slow"). Overruns
-// (slow nav, the live Ask wait) simply run long; span ≥ narration keeps
-// assemble.py's audio placement in sync. paceTo(prev) runs AFTER the next
-// beat's nav, so navigation rides inside the previous beat's budget.
-let tBeat = Date.now();
-async function beatStart(name) { tBeat = Date.now(); await r.beat(name); }
-async function paceTo(b) {
-  const left = durMs(b) - (Date.now() - tBeat);
-  if (left > 0) await sleep(left);
-}
+// Pace-to-narration (v2c anti-drag): shared implementation in lib/recorder.mjs
+// (v2's 258s video over 203s narration = the "feels slow" this fixes).
+const { beatStart, paceTo } = createPacer(r, durMs);
 
 // Cursor-alive wait (proven in clips 4/5) — drift in the empty right margin
 // so the frame never looks frozen while a real latency runs.

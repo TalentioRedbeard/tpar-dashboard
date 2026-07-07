@@ -12,40 +12,40 @@
     "b10": "Last stop: How-to, the manual that's actually short. What every button does. And the Field Guide, which holds how we carry ourselves. The principles, the requirement of getting paid, and exactly what to do or who to call when you're stuck. That's the map. Next clip: a tutorial on the My Day page, up close."
   },
   "clip-1-my-day": {
-    "b1": "This is My Day — your home base in the TPAR app. Everything you need for the day lives on this one page. Right up top: your clock button. Tap it when you start and when you stop — that's it.",
-    "b2": "Below that, the day's expectations — what a good day looks like in your lane — and the whiteboard, where the team posts what everybody should see today.",
-    "b3": "These tiles are your quick actions. Snap a receipt the minute it's in your hand. Leave a voice note instead of typing. Find any job. And Ask — that's the smart search; ask it anything about a job or a customer, in plain words.",
-    "b4": "This one matters: your Daily Wrap. Thirty seconds at the end of the day — how'd it go, what fought you, what should the app do better. You talk, it types. What you say here actually changes how we build things.",
-    "b5": "And your appointments for today, right where you'd expect them. That's the tour — one page, everything in reach. Next clip: clocking in and out on a real job."
+    "b1": "This is My Day. Your home base in the TPAR app. Everything you need for the day lives on this one page. Right up top: your clock button. Tap it when you start and when you stop. That's it.",
+    "b2": "Below that, the day's expectations. What a good day looks like in your lane. And the whiteboard, where the team posts what everybody should see today.",
+    "b3": "These tiles are your quick actions. Snap a receipt the minute it's in your hand. Leave a voice note instead of typing. Find any job. And Ask. That's the smart search. Ask it anything about a job or a customer, in plain words.",
+    "b4": "This one matters: your Daily Wrap. Thirty seconds at the end of the day. How'd it go, what fought you, what should the app do better. You talk, it types. What you say here actually changes how we build things.",
+    "b5": "And your appointments for today, right where you'd expect them. That's the tour. One page, everything in reach. Next clip: clocking in and out on a real job."
   },
   "clip-2-clock-status": {
-    "b1": "Your day starts with one tap. Clock in on My Day when you begin, clock out when you're done — that's the whole job. If you forget, the app will nudge you; if you're at a job site, it'll offer to do it for you.",
-    "b2": "Every job carries this status bar — the whole visit, step by step. Scheduling's handled for you; your presses start here: On My Way when you roll. Start when you're in it. Presentation, then the work. Collect when it's paid, and Finish closes it out. Tap each one as it happens — no paperwork, no calls.",
-    "b3": "Here's what those taps do: dispatch sees where things stand, the schedule stays true, and the customer gets told what's happening — without anybody chasing you down or calling you mid-job. One press covers everyone.",
-    "b4": "And the app watches your back: pull up to a job, and it offers the press for you — just tap yes. Miss one? Fix it right there on the job page. The bar, pressed as it happens. That's the whole system."
+    "b1": "Your day starts with one tap. Clock in on My Day when you begin, clock out when you're done. That's the whole job. If you forget, the app will nudge you. If you're at a job site, it'll offer to do it for you.",
+    "b2": "Every job carries this status bar. The whole visit, step by step. Scheduling's handled for you. Your presses start here: On My Way when you roll. Start when you're in it. Presentation, then the work. Collect when it's paid, and Finish closes it out. Tap each one as it happens. No paperwork, no calls.",
+    "b3": "Here's what those taps do: dispatch sees where things stand, the schedule stays true, and the customer gets told what's happening. Without anybody chasing you down or calling you mid-job. One press covers everyone.",
+    "b4": "And the app watches your back: pull up to a job, and it offers the press for you. Just tap yes. Miss one? Fix it right there on the job page. The bar, pressed as it happens. That's the whole system."
   },
   "clip-3-daily-wrap": {
-    "b1": "End of the day, before you head out: thirty seconds, out loud. How'd the day go, what fought you, and what should the app do better. Tap Record on the Daily Wrap card and just talk — you talk, it types.",
-    "b2": "Here's the part that matters: what you say doesn't disappear into a file. It gets read. The things that fought you become fixes, and the things you wish the app did — we build those. What you say here actually changes how this company runs.",
-    "b3": "Want a nudge so you don't forget? Settings — flip on the end-of-day reminder and it'll ping you before you head home. Thirty seconds. Your voice, on the record. That's the wrap."
+    "b1": "End of the day, before you head out: thirty seconds, out loud. How'd the day go, what fought you, and what should the app do better. Tap Record on the Daily Wrap card and just talk. You talk, it types.",
+    "b2": "Here's the part that matters: what you say doesn't disappear into a file. It gets read. The things that fought you become fixes, and the things you wish the app did. We build those. What you say here actually changes how this company runs.",
+    "b3": "Want a nudge so you don't forget? Settings. Flip on the end-of-day reminder and it'll ping you before you head home. Thirty seconds. Your voice, on the record. That's the wrap."
   },
   "clip-4-estimate-piwm": {
-    "b1": "This is where estimates get built — options for the customer, never pressure. Every line is the same math: hours, crew, materials, and your judgment on the modifiers. Type, category, work type, item — then the numbers. That's the TPAR way: time, material, judgment.",
-    "b2": "But when you're standing in a yard not sure what to charge — this is your move. Price it with me. Describe the work in your own words, like you'd tell another plumber. What you saw, what you think it needs, what's weird about the house.",
-    "b3": "While it reads, remember the ladder: nothing opens without something in writing. A diagnostic fee is about an hour of our rate — its job is findings and a path forward, not a fix. And there's no flat price for judgment work — never has been. The price comes from the time, the materials, and the answers only you can give.",
-    "b4": "And here they come — the judgment questions. What system, what access, what are we actually testing. These are the modifiers. Nobody knows these answers but the tech on site — that's why it asks you.",
-    "b5": "Now it builds. And here's the rule that protects everybody: the machine never invents a price. It proposes the hours, the crew, the materials — and the math is computed from our rate ladder, same as if you'd filled the form by hand. If it can't find the work in our pricebook, it says so honestly, and the custom item goes to Danny's review queue.",
-    "b6": "There they are — priced, grounded, and yours to edit. Add them to the option, then read every number like you wrote it, because now you did. You're the last set of eyes before a customer sees this. Options, not pressure — and never send what you haven't read."
+    "b1": "This is where estimates get built. Options for the customer, never pressure. Every line is the same math: hours, crew, materials, and your judgment on the modifiers. Type, category, work type, item. Then the numbers. That's the TPAR way: time, material, judgment.",
+    "b2": "But when you're standing in a yard not sure what to charge, this is your move. Price it with me. Describe the work in your own words, like you'd tell another plumber. What you saw, what you think it needs, what's weird about the house.",
+    "b3": "While it reads, remember the ladder: nothing opens without something in writing. A diagnostic fee is about an hour of our rate. Its job is findings and a path forward, not a fix. And there's no flat price for judgment work. Never has been. The price comes from the time, the materials, and the answers only you can give.",
+    "b4": "And here they come. The judgment questions. What system, what access, what are we actually testing. These are the modifiers. Nobody knows these answers but the tech on site. That's why it asks you.",
+    "b5": "Now it builds. And here's the rule that protects everybody: the machine never invents a price. It proposes the hours, the crew, the materials. And the math is computed from our rate ladder, same as if you'd filled the form by hand. If it can't find the work in our pricebook, it says so honestly, and the custom item goes to Danny's review queue.",
+    "b6": "There they are. Priced, grounded, and yours to edit. Add them to the option, then read every number like you wrote it, because now you did. You're the last set of eyes before a customer sees this. Options, not pressure. And never send what you haven't read."
   },
   "clip-5-ask-field-guide": {
-    "b1": "Stuck on anything — pricing, process, where something lives in the app? Don't sit on it, and don't burn twenty minutes on phone tag. Ask. Type it the way you'd say it.",
-    "b2": "It knows how we work — the doctrine, the money ladder, our own data. Watch: no made-up price, because we don't have flat prices. It gives you the structure, the judgment questions, and where to build the number. Thirty seconds, standing in the yard.",
-    "b3": "And when you want the whole picture, it's one page: the Field Guide. The money ladder, step by step. The principles — slow down, improve on silence or keep it, their story is input, not proof. Tap any card for the why.",
-    "b4": "Last thing, and it matters: when you're stuck, climb this ladder — Ask, then Madisson, then your lead, then Danny. No penalty for climbing, ever. And if your app access ever breaks, that's an emergency to us — text the office right then. Nobody gets left alone on a job. That's the deal."
+    "b1": "Stuck on anything? Pricing, process, where something lives in the app? Don't sit on it, and don't burn twenty minutes on phone tag. Ask. Type it the way you'd say it.",
+    "b2": "It knows how we work. The doctrine, the money ladder, our own data. Watch: no made-up price, because we don't have flat prices. It gives you the structure, the judgment questions, and where to build the number. Thirty seconds, standing in the yard.",
+    "b3": "And when you want the whole picture, it's one page: the Field Guide. The money ladder, step by step. The principles. Slow down, improve on silence or keep it, their story is input, not proof. Tap any card for the why.",
+    "b4": "Last thing, and it matters: when you're stuck, climb this ladder. Ask, then Madisson, then your lead, then Danny. No penalty for climbing, ever. And if your app access ever breaks, that's an emergency to us. Text the office right then. Nobody gets left alone on a job. That's the deal."
   },
   "clip-6-receipts-photos": {
-    "b1": "Receipts have one rule: snap it the minute it's in your hand. Supply house counter, gas pump, wherever — Receipt tile, photo, done. Don't let it ride in the truck, because truck receipts die in trucks.",
-    "b2": "That photo isn't going into a shoebox. It lands on the job, the cost tracks itself, and the office stops re-typing crumpled paper. Every dollar we spend finds its job — which is how we know what work actually pays.",
-    "b3": "Same instinct with job photos: before and after, and always before you haul the old one off. Photos go in the app — on the job — not in a text to the office, where they get buried. If it happened on the job, it lives on the job. That's the habit."
+    "b1": "Receipts have one rule: snap it the minute it's in your hand. Supply house counter, gas pump, wherever. Receipt tile, photo, done. Don't let it ride in the truck, because truck receipts die in trucks.",
+    "b2": "That photo isn't going into a shoebox. It lands on the job, the cost tracks itself, and the office stops re-typing crumpled paper. Every dollar we spend finds its job. Which is how we know what work actually pays.",
+    "b3": "Same instinct with job photos: before and after, and always before you haul the old one off. Photos go in the app. On the job. Not in a text to the office, where they get buried. If it happened on the job, it lives on the job. That's the habit."
   }
 }

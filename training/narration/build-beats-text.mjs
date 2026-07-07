@@ -1,9 +1,11 @@
-// One-off: merge clips 2-6 narration (the "> " quoted beat lines in each md,
-// in order) into beats-text.json, preserving the existing clip-0/clip-1 entries.
+// Merge each clip's narration (the "> " quoted beat lines in its md, in
+// order) into beats-text.json, preserving entries for clips not listed here.
 // Run from training/: node narration/build-beats-text.mjs
 import fs from "node:fs";
 
 const FILES = {
+  "clip-0-intro": "narration/clip-0-intro.md", // v2 (2026-07-06): Danny's edited 10-beat script
+  "clip-1-my-day": "narration/clip-1-my-day.md", // v2c (7/06 PM): punctuation-only delivery pass
   "clip-2-clock-status": "narration/clip-2-clock-status.md",
   "clip-3-daily-wrap": "narration/clip-3-daily-wrap.md",
   "clip-4-estimate-piwm": "narration/clip-4-estimate-piwm.md",
@@ -11,6 +13,8 @@ const FILES = {
   "clip-6-receipts-photos": "narration/clip-6-receipts-photos.md",
 };
 const EXPECT = {
+  "clip-0-intro": 10,
+  "clip-1-my-day": 5,
   "clip-2-clock-status": 4,
   "clip-3-daily-wrap": 3,
   "clip-4-estimate-piwm": 6,

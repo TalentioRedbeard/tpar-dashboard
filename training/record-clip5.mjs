@@ -11,18 +11,23 @@
 //       then the principles grid
 //   b4  the stuck ladder + the red app-access alert strip, park + close
 
-import { createRecorder, loadDurations, sleep } from "./lib/recorder.mjs";
+import { createRecorder, createPacer, loadDurations, sleep } from "./lib/recorder.mjs";
 
 const hashedToken = process.argv[2];
 if (!hashedToken) { console.error("usage: node record-clip5.mjs <hashed_token>"); process.exit(1); }
 
 const QUESTION = "how do I charge for a hydrostatic test?";
 
-const D = loadDurations("clip-5-ask-field-guide");
+const D = loadDurations("clip-5-ask-field-guide"); // measured mp3 seconds per beat (v2c: speed 1.1/stab 0.4/sim 0.75)
 const durMs = (b, fallbackSec) => Math.round(((D[b] ?? fallbackSec) + 0.7) * 1000);
 
 const r = await createRecorder({ clip: "ask-field-guide", hashedToken, startPath: "/me" });
 const { page } = r;
+
+// Pace-to-narration (v2c anti-drag): shared floor logic from lib/recorder.mjs.
+// EXCEPTION — the live Ask answer wait (b2) is REAL and event-driven; paceTo
+// on b2 is a floor only (no-op when the wait overran). Never truncated.
+const { beatStart, paceTo } = createPacer(r, durMs);
 
 // Cursor-alive wait (same pattern as clip 4) — drift in the empty right margin.
 async function waitAlive(locator, timeoutMs, anchors = [[980, 300], [940, 340]]) {
@@ -43,10 +48,8 @@ const askInput = page.getByPlaceholder(/Ask anything/i).first();
 const askWrap = askInput.locator('xpath=ancestor::div[contains(@class,"mb-6")][1]');
 
 // ── b1: Ask — spotlight the bar, type the question, submit ──────────────────
-await r.beat("b1");
+await beatStart("b1");
 {
-  const total = durMs("b1", 11.7);
-  const t0 = Date.now();
   await sleep(600);
   await r.spotlight(askInput, { hold: 1800, pad: 10, pulses: 2, shot: "b1-askbar" });
   await r.clickWith(askInput);
@@ -55,11 +58,11 @@ await r.beat("b1");
   await sleep(500);
   const askBtn = askWrap.getByRole("button", { name: /^Ask$/ }).first();
   await r.clickWith(askBtn); // read-only ask lane — allowed
-  await sleep(Math.max(total - (Date.now() - t0), 400));
 }
+await paceTo("b1");
 
 // ── b2: the answer — wait it in (latency is real), then spotlight it ────────
-await r.beat("b2");
+await beatStart("b2");
 {
   const total = durMs("b2", 18.3);
   const t0 = Date.now();
@@ -86,34 +89,37 @@ await r.beat("b2");
 }
 
 // ── b3: the Field Guide — money ladder (expand one step) + principles ────────
-await r.gotoAndSettle("/how-to#doctrine", 1800);
-await r.beat("b3");
+// (nav rides inside b2's budget; paceTo b2 = floor only after the live wait)
+await r.gotoAndSettle("/how-to#doctrine", 1260);
+await paceTo("b2");
+await beatStart("b3");
 {
   const total = durMs("b3", 18.7);
   const ladderBoard = page.getByText("Board 1 · The money ladder").first()
     .locator("xpath=ancestor-or-self::section[1]");
   const firstStep = ladderBoard.locator("details").nth(1); // step 1 of the ladder
-  await r.spotlight(firstStep, { hold: Math.round(total * 0.2), shot: "b3-ladder-step" });
+  await r.spotlight(firstStep, { hold: Math.round(total * 0.18), shot: "b3-ladder-step" });
   await r.clickWith(firstStep.locator("summary").first()); // <details> expand — client-side
   await sleep(700);
-  await r.spotlight(firstStep, { hold: Math.round(total * 0.22), pulses: 2, shot: "b3-step-open" });
+  await r.spotlight(firstStep, { hold: Math.round(total * 0.2), pulses: 2, shot: "b3-step-open" });
   const principles = page.getByText("Board 2 · How we carry ourselves").first()
     .locator("xpath=ancestor-or-self::section[1]");
-  await r.spotlight(principles, { hold: Math.round(total * 0.3), shot: "b3-principles" });
+  await r.spotlight(principles, { hold: Math.round(total * 0.26), shot: "b3-principles" });
 }
+await paceTo("b3");
 
 // ── b4: the stuck ladder + the red alert strip, then close ──────────────────
-await r.beat("b4");
+await beatStart("b4");
 {
   const total = durMs("b4", 21.4);
   const stuck = page.getByText("Board 3 · When you're stuck").first()
     .locator("xpath=ancestor-or-self::section[1]");
-  await r.spotlight(stuck, { hold: Math.round(total * 0.42), shot: "b4-stuck-ladder" });
+  await r.spotlight(stuck, { hold: Math.round(total * 0.38), shot: "b4-stuck-ladder" });
   const alert = page.getByText(/App access broken/).first().locator("xpath=ancestor::div[1]");
-  await r.spotlight(alert, { hold: Math.round(total * 0.3), pulses: 4, shot: "b4-alert-strip" });
+  await r.spotlight(alert, { hold: Math.round(total * 0.26), pulses: 4, shot: "b4-alert-strip" });
   await r.parkCursor();
-  await sleep(Math.max(Math.round(total * 0.12), 1500));
 }
+await paceTo("b4");
 
 await sleep(1500); // tail margin so the close never clips at video end
 await r.finish();
