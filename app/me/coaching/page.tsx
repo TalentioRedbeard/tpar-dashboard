@@ -147,6 +147,7 @@ export default async function CoachingPage() {
       .select("ord, title, rule, icon")
       .eq("section", "money_ladder")
       .eq("active", true)
+      .eq("approved", true) // tech-visibility gate: new rows hidden until Danny approves
       .order("ord"),
   ]);
 

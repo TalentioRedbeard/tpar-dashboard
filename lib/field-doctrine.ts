@@ -27,6 +27,7 @@ export async function getFieldDoctrine(): Promise<DoctrineRow[]> {
     .from("field_doctrine")
     .select("section, ord, title, rule, detail, icon, check_pending")
     .eq("active", true)
+    .eq("approved", true) // tech-visibility gate: new rows hidden until Danny approves
     .order("section")
     .order("ord");
   if (error) {
