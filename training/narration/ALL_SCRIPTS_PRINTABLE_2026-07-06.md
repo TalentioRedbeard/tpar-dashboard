@@ -32,19 +32,20 @@
 ## Clip 1 — My Day: your home base (1:19)
 
 **1.1 — the top**
-> This is My Day — your home base in the TPAR app. Everything you need for the day lives on this one page. Right up top: your clock button. Tap it when you start and when you stop — that's it.
+> This is the 'My Day'page — your home base in the TPAR app for daily navigation. Everything you need to manage your work day lives on this one page. Right up top: your clock-in/clock-out button. Tap it when you start and when you stop — that's it.
 
 **1.2 — expectations + whiteboard**
-> Below that, the day's expectations — what a good day looks like in your lane — and the whiteboard, where the team posts what everybody should see today.
+> Below that, the day's expectations — what a good day looks like in your lane, what we're focusing on, and the whiteboard - where the team posts what everybody should see today.
 
 **1.3 — quick actions**
-> These tiles are your quick actions. Snap a receipt the minute it's in your hand. Leave a voice note instead of typing. Find any job. And Ask — that's the smart search; ask it anything about a job or a customer, in plain words.
+> These tiles are your quick actions. Snap a receipt the minute it's in your hand. Leave a voice note instead of typing. Find any job. Ask, 'Ask' — that's the smart search; ask it anything about a job or a customer, in plain words. ****In the video, you clearly see the 'Coaching' button, but the narrator doesn't say anything about it. I don't remember where we left the coaching button at. I thought we had some development done, but I didn't feel like it was truly finished. Something for us to get back to.****
 
 **1.4 — the Daily Wrap**
-> This one matters: your Daily Wrap. Thirty seconds at the end of the day — how'd it go, what fought you, what should the app do better. You talk, it types. What you say here actually changes how we build things.
+> 'The Daily Wrap', this one matters: A minimum of thirty seconds at the end of the day — how'd it go, what fought you, what should the app do better, what can the company do better. You talk, it types. What you say here actually changes how we build things.
 
 **1.5 — appointments + close**
-> And your appointments for today, right where you'd expect them. That's the tour — one page, everything in reach. Next clip: clocking in and out on a real job.
+> And your appointments for today ****the clip shows no appointments, for the item it's describing. Before our next edit session, can we just add 'Al' to a couple jobs (so long as customers aren't notified) for a more sensible presentation and after the clips are made, remove Al from those jobs to fix the data.**** . That's the tour — one page with all the basics in  in reach. Next clip: clocking in and clocking out and using the trigger buttons for job management. 
+****I want them to be able to push messages to the office or Danny from their 'My Day' page, can we facilitate that before we remake the clip?****
 
 ---
 
