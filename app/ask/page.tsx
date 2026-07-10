@@ -14,6 +14,10 @@ import { supabaseServer } from "../../lib/supabase-server";
 
 export const metadata = { title: "Ask · TPAR-DB" };
 export const dynamic = "force-dynamic";
+// ask-tpar's legacy NL lane on the local 14b can take ~45-80s worst case; the
+// router call (~6s) runs first. Explicit ceiling so the RSC render never gets
+// cut off by a platform default while the 75s fetch below is still waiting.
+export const maxDuration = 120;
 
 const ASK_TPAR_URL = `${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ask-tpar`;
 const ROUTE_URL = `${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/appguide-route`;
@@ -49,7 +53,10 @@ async function askTpar(question: string): Promise<AskTparResult> {
         "Authorization": `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ question }),
-      signal: AbortSignal.timeout(30_000),
+      // ask-tpar chains two chat calls on the local 14b; long-bundle intents
+      // ran ~43s before the lean-bundle trim. 75s = observed worst case +
+      // headroom for a cold-ish prefill. (The router call keeps its 30s.)
+      signal: AbortSignal.timeout(75_000),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {

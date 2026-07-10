@@ -7,6 +7,7 @@
 //   - "My comms" filter on /comms
 //   - PIP per-tech metrics rendered visually
 
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { db } from "../../lib/supabase";
@@ -25,6 +26,7 @@ import { DailyWrapCard } from "../../components/DailyWrapCard";
 import { MessageOfficeCard } from "../../components/MessageOfficeCard";
 import { TodaysOneThing } from "../../components/TodaysOneThing";
 import { WhiteboardPanel } from "../../components/WhiteboardPanel";
+import { DannysDayCard } from "../../components/DannysDayCard";
 import { ExpectationsPanel } from "../../components/ExpectationsPanel";
 import { getCurrentState as getClockState } from "../time/actions";
 import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
@@ -462,6 +464,17 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       {/* Company whiteboard — daily team postings, on everybody's dashboard.
           Company-wide, so it renders regardless of view-as / clock state. */}
       <WhiteboardPanel />
+
+      {/* Danny's Day — where Danny is per his TPAR Structure calendar.
+          Scheduled-from-calendar by design (NO GPS — the personal-vehicle wall
+          stays intact); weekdays 8–5 only; unknown blocks render as "Busy".
+          Read-only visibility, so it shows in view-as too. Suspense: the
+          Google Calendar round-trip must never slow /me for a tech. */}
+      {me.tech ? (
+        <Suspense fallback={null}>
+          <DannysDayCard />
+        </Suspense>
+      ) : null}
 
       {/* Quick-action tiles for capture surfaces. Linked surfaces have the
           same gestures available standalone (without an active appointment) —
