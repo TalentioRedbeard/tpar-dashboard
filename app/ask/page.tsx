@@ -10,6 +10,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { Pill } from "../../components/ui/Pill";
 import { AskResult, type RoutePlan, type RouteScope } from "../../components/AskResult";
 import { PushToDanny } from "../../components/PushToDanny";
+import { VoiceAsk } from "../../components/VoiceAsk";
 import { supabaseServer } from "../../lib/supabase-server";
 
 export const metadata = { title: "Ask · TPAR-DB" };
@@ -130,6 +131,11 @@ export default async function AskPage({
       title="Ask TPAR"
       description="Natural-language ops queries against the live system. Same backend as Slack /ask — your role determines what you can see (admin → all data; tech → your own; manager → all read-only)."
     >
+      {/* Push-to-talk voice lane (Hey-TPAR rung 1): on-prem whisper -> ask-tpar
+          (same caller-scoped JWT as the form below) -> spoken answer, with the
+          "let me look that up" ack bridging lookup latency. */}
+      <VoiceAsk />
+
       <form className="mb-6 flex flex-wrap items-stretch gap-2" role="search">
         <input
           type="search"
