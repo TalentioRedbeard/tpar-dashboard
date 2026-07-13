@@ -82,6 +82,12 @@ async function resolveHcpLinkage(id: string): Promise<
   | { ok: true; hcpEstimateId: string; hcpJobId: string | null }
   | { ok: false; error: string }
 > {
+  // The detail page serves BOTH id shapes (template build 2026-07-13): an
+  // HCP-native id (csr_/est_) IS the send key; a bid_estimates uuid resolves
+  // to one. requireSender can match techs by hcpEstimateId via appointments.
+  if (/^(csr_|est_)/.test(id)) {
+    return { ok: true, hcpEstimateId: id, hcpJobId: null };
+  }
   const { data: est } = await db()
     .from("bid_estimates")
     .select("hcp_estimate_id, hcp_job_id")

@@ -184,9 +184,12 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
               </tr>
             ) : visible.map((r, i) => {
               // AI-built rows deep-link to the builder review surface; everything
-              // else opens directly in HCP (estimate doc + line items live there).
-              const href = r.is_ai_built && r.bid_estimate_id ? `/estimate/${r.bid_estimate_id}` : (r.hcp_url ?? "#");
-              const external = !(r.is_ai_built && r.bid_estimate_id);
+              // else opens the in-app estimate page (layout-B template, 2026-07-13
+              // — Danny's pick), which carries its own "Open in HCP" button.
+              const href = r.is_ai_built && r.bid_estimate_id
+                ? `/estimate/${r.bid_estimate_id}`
+                : `/estimate/${r.hcp_estimate_id}`;
+              const external = false;
               // Padding lives on the ANCHORS, not the tds, so the whole row is
               // an honest click target with no dead zones between cells
               // (tablet-primary; click-bug fix 2026-07-13). The customer cell

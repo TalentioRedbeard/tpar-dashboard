@@ -15,6 +15,7 @@ import { EntityFlags } from "@/components/EntityFlags";
 import { getEstimateDetail } from "./actions";
 import { EstimateEditForm } from "./EstimateEditForm";
 import { SendEstimateButton } from "./SendEstimateButton";
+import { HcpEstimateView } from "./HcpEstimateView";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Estimate · TPAR-DB" };
@@ -49,6 +50,12 @@ export default async function EstimateDetailPage({
   const { id } = await params;
   const me = await getCurrentTech().catch(() => null);
   if (!me) redirect(`/login?from=/estimate/${id}`);
+
+  // HCP-native ids (csr_/est_) get the layout-B template page — the in-app
+  // detail the 3,040 HCP estimates never had. Bid uuids keep the builder page.
+  if (/^(csr_|est_)/.test(id)) {
+    return <HcpEstimateView id={id} me={me} />;
+  }
 
   const est = await getEstimateDetail(id);
   if (!est) {
