@@ -7,7 +7,7 @@
 // states block the confirm. Sender-gated server-side (requireSender).
 
 import { useState, useTransition } from "react";
-import { previewEstimateSend, sendEstimateToCustomer, type SendPreview } from "./actions";
+import { previewEstimateSend, previewEstimateEmail, sendEstimateToCustomer, type SendPreview } from "./actions";
 
 export function SendEstimateButton({ id, hasHcpEstimate }: { id: string; hasHcpEstimate: boolean }) {
   const [pending, start] = useTransition();
@@ -17,6 +17,17 @@ export function SendEstimateButton({ id, hasHcpEstimate }: { id: string; hasHcpE
   const [sent, setSent] = useState(false);
   const [toEmail, setToEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [emailHtml, setEmailHtml] = useState<{ html: string; subject: string } | null>(null);
+
+  function openEmailPreview() {
+    if (pending) return;
+    setErr(null);
+    start(async () => {
+      const p = await previewEstimateEmail(id);
+      if (p.ok) setEmailHtml({ html: p.html, subject: p.subject });
+      else setErr(p.error);
+    });
+  }
 
   function loadPreview(overrideEmail?: string) {
     setErr(null);
@@ -124,6 +135,15 @@ export function SendEstimateButton({ id, hasHcpEstimate }: { id: string; hasHcpE
           />
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openEmailPreview}
+              disabled={pending}
+              className="rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              title="See the exact email the customer would receive"
+            >
+              👁 Preview
+            </button>
             {toEmail.trim() && toEmail.trim() !== preview.toEmail ? (
               <button
                 type="button"
@@ -155,6 +175,36 @@ export function SendEstimateButton({ id, hasHcpEstimate }: { id: string; hasHcpE
         </div>
       )}
       {err ? <div className="max-w-80 text-xs text-red-600">{err}</div> : null}
+
+      {emailHtml ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setEmailHtml(null)}
+        >
+          <div
+            className="flex h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-2.5">
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-neutral-400">What the customer sees</div>
+                <div className="truncate text-sm font-semibold text-neutral-900">{emailHtml.subject}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmailHtml(null)}
+                className="rounded-md border border-neutral-300 px-2.5 py-1 text-sm text-neutral-600 hover:bg-neutral-50"
+              >
+                Close
+              </button>
+            </div>
+            <iframe title="Email preview" srcDoc={emailHtml.html} sandbox="" className="w-full flex-1 bg-white" />
+            <div className="border-t border-neutral-200 px-4 py-2 text-[11px] text-neutral-500">
+              The &ldquo;View your estimate&rdquo; button opens the hosted page — send yourself a [TEST] from /estimates to click through it for real.
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

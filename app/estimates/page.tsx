@@ -75,7 +75,9 @@ export default async function EstimatesPage() {
           Showing the 1,000 most recently active estimates — use search to reach older history.
         </p>
       ) : null}
-      <EstimatePipelineTable rows={rows} />
+      {/* This page is already admin/manager-gated, so batch send is available
+          to everyone who can see it; the send fn re-guards every item. */}
+      <EstimatePipelineTable rows={rows} canBatchSend meEmail={me.email} />
     </PageShell>
   );
 }

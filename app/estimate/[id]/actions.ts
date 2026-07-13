@@ -161,6 +161,27 @@ export async function previewEstimateSend(id: string, toEmail?: string): Promise
   };
 }
 
+export type EmailPreview =
+  | { ok: true; html: string; subject: string }
+  | { ok: false; error: string };
+
+// "Can I see what the customer will actually see?" — the edge fn renders the
+// exact email it would send (dry_run + include_html); nothing sends, nothing
+// is recorded. The hosted /e/<token> page the email's button opens is the
+// other half — a [TEST] send to your own inbox exercises that one for real.
+export async function previewEstimateEmail(id: string): Promise<EmailPreview> {
+  const link = await resolveHcpLinkage(id);
+  if (!link.ok) return { ok: false, error: link.error };
+  const sender = await requireSender({ hcpJobId: link.hcpJobId, hcpEstimateId: link.hcpEstimateId });
+  if (!sender.ok) return { ok: false, error: sender.error };
+
+  const parsed = await callSendEstimate({ hcp_estimate_id: link.hcpEstimateId, dry_run: true, include_html: true });
+  if (!parsed.ok || typeof parsed.email_html !== "string") {
+    return { ok: false, error: (parsed as { error?: string }).error ?? "Preview failed." };
+  }
+  return { ok: true, html: parsed.email_html, subject: String(parsed.subject ?? "Your estimate") };
+}
+
 export type SendEstimateResult =
   | { ok: true; view_url: string | null; deduped: boolean }
   | { ok: false; error: string };

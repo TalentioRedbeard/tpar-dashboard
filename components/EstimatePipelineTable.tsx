@@ -2,10 +2,15 @@
 
 // Sent-estimate pipeline table (reads estimate_pipeline_v). Sort + search + fixed
 // column widths, same feel as the old builder EstimatesTable. Each row links to the
-// HCP estimate, EXCEPT AI-built rows (is_ai_built) which deep-link to /estimate/[id].
+// in-app estimate page; AI-built rows deep-link to the builder review surface.
+// Managers/admins additionally get batch send: select rows → send to customers
+// (per-estimate guardrails in the edge fn) or send the whole batch as [TEST]
+// emails to their own inbox (kind='test' — invisible to the pipeline).
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { batchSendEstimates, type BatchItemResult } from "../app/estimates/batch-actions";
 
 export type PipelineRow = {
   hcp_estimate_id: string;
@@ -60,6 +65,21 @@ function StagePill({ stage }: { stage: string | null }) {
   );
 }
 
+function summarizeSkips(skipped: BatchItemResult[]): string {
+  const counts = new Map<string, number>();
+  for (const s of skipped) {
+    const key = s.error?.startsWith("no_recipient_email")
+      ? "no email on file"
+      : s.error?.startsWith("estimate_terminal_state")
+        ? "already decided in HCP"
+        : s.error?.startsWith("hcp_state_unavailable")
+          ? "HCP unreachable"
+          : "error";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([k, n]) => `${k} ×${n}`).join(", ");
+}
+
 function rowMatchesSearch(r: PipelineRow, q: string): boolean {
   if (!q) return true;
   const needle = q.toLowerCase();
@@ -95,11 +115,27 @@ const COLS: Array<{ key: SortKey; label: string; widthClass: string; align?: "le
   { key: "age_days", label: "Age", widthClass: "w-[80px]", align: "right" },
 ];
 
-export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow[] }) {
+export function EstimatePipelineTable({
+  rows: initialRows,
+  canBatchSend = false,
+  meEmail = null,
+}: {
+  rows: PipelineRow[];
+  canBatchSend?: boolean;
+  meEmail?: string | null;
+}) {
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<SortKey>("last_activity");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [testEmail, setTestEmail] = useState(meEmail ?? "");
+  const [confirming, setConfirming] = useState<"customers" | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [outcomes, setOutcomes] = useState<Map<string, BatchItemResult>>(new Map());
+  const [batchNote, setBatchNote] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const router = useRouter();
 
   const visible = useMemo(() => {
     let filtered = stageFilter === "all" ? initialRows : initialRows.filter((r) => (r.stage ?? "") === stageFilter);
@@ -122,6 +158,59 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
   }
 
   const STAGES = ["all", "awaiting", "won", "declined", "expired"] as const;
+
+  const allVisibleSelected = visible.length > 0 && visible.every((r) => selected.has(r.hcp_estimate_id));
+  function toggleAllVisible() {
+    setSelected((prev) => {
+      if (allVisibleSelected) return new Set();
+      return new Set([...prev, ...visible.map((r) => r.hcp_estimate_id)]);
+    });
+  }
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Chunked sequential batch: ≤10 per server-action call, live progress,
+  // per-row outcomes kept so skips (no email, already decided) are visible.
+  function runBatch(test: boolean) {
+    const ids = [...selected];
+    if (ids.length === 0 || pending) return;
+    setConfirming(null);
+    setBatchNote(null);
+    setOutcomes(new Map());
+    setProgress({ done: 0, total: ids.length });
+    startTransition(async () => {
+      const all = new Map<string, BatchItemResult>();
+      for (let i = 0; i < ids.length; i += 10) {
+        const chunk = ids.slice(i, i + 10);
+        const res = await batchSendEstimates({ ids: chunk, test, toEmail: test ? testEmail.trim() : undefined });
+        if (!res.ok) {
+          setBatchNote(res.error);
+          break;
+        }
+        for (const r of res.results) all.set(r.id, r);
+        setOutcomes(new Map(all));
+        setProgress({ done: Math.min(i + 10, ids.length), total: ids.length });
+      }
+      const done = [...all.values()];
+      const sent = done.filter((r) => r.ok && !r.deduped).length;
+      const skipped = done.filter((r) => !r.ok);
+      setBatchNote(
+        `${sent} sent${test ? ` as [TEST] to ${testEmail.trim()}` : ""}` +
+          (skipped.length ? ` · ${skipped.length} skipped (${summarizeSkips(skipped)})` : ""),
+      );
+      setProgress(null);
+      if (!test) {
+        setSelected(new Set());
+        router.refresh();
+      }
+    });
+  }
 
   return (
     <div>
@@ -151,15 +240,90 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
         </span>
       </div>
 
+      {canBatchSend && selected.size > 0 ? (
+        <div className="mb-3 rounded-2xl border-2 border-brand-200 bg-brand-50/40 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-brand-900">{selected.size} selected</span>
+            <input
+              type="email"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              placeholder="staff inbox for the test"
+              className="w-56 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+            />
+            <button
+              type="button"
+              disabled={pending || !testEmail.trim()}
+              onClick={() => runBatch(true)}
+              className="rounded-md border border-brand-300 bg-white px-3 py-1.5 text-sm font-medium text-brand-800 hover:bg-brand-50 disabled:opacity-40"
+            >
+              🧪 Send batch as [TEST] to me
+            </button>
+            {confirming === "customers" ? (
+              <span className="flex items-center gap-2">
+                <span className="text-xs text-neutral-700">
+                  Each goes to the email on its HCP record; no-email or already-decided estimates are skipped and
+                  reported. This cannot be unsent.
+                </span>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => runBatch(false)}
+                  className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-40"
+                >
+                  Yes — send {selected.size} to customers
+                </button>
+                <button type="button" onClick={() => setConfirming(null)} className="text-sm text-neutral-500 hover:text-neutral-700">
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => setConfirming("customers")}
+                className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-40"
+              >
+                📤 Send {selected.size} to customers…
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => { setSelected(new Set()); setOutcomes(new Map()); setBatchNote(null); }}
+              className="ml-auto text-xs text-neutral-500 hover:text-neutral-700"
+            >
+              clear selection
+            </button>
+          </div>
+          {progress ? (
+            <div className="mt-2 text-xs font-medium text-brand-800">Sending… {progress.done}/{progress.total}</div>
+          ) : null}
+          {batchNote ? <div className="mt-2 text-xs font-medium text-neutral-700">{batchNote}</div> : null}
+        </div>
+      ) : null}
+
       <div className="overflow-hidden rounded-2xl border-2 border-neutral-400 bg-white shadow-sm">
         <table className="w-full table-fixed text-sm">
           <colgroup>
+            {canBatchSend ? <col className="w-[40px]" /> : null}
             {COLS.map((c) => (
               <col key={c.key} className={c.widthClass} />
             ))}
           </colgroup>
           <thead className="border-b border-neutral-200 bg-neutral-50">
             <tr>
+              {canBatchSend ? (
+                <th className="px-2 py-2">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    title="Select everything currently shown (respects search + stage filter)"
+                    className="h-4 w-4 accent-brand-700"
+                  />
+                </th>
+              ) : null}
               {COLS.map((c) => (
                 <th
                   key={c.key}
@@ -178,7 +342,7 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
           <tbody className="divide-y divide-neutral-100">
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={COLS.length} className="px-3 py-6 text-center text-sm text-neutral-500">
+                <td colSpan={COLS.length + (canBatchSend ? 1 : 0)} className="px-3 py-6 text-center text-sm text-neutral-500">
                   {query || stageFilter !== "all" ? "No estimates match." : "No estimates."}
                 </td>
               </tr>
@@ -200,8 +364,25 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
                 ) : (
                   <Link href={href} className={`block px-3 py-2 ${extra}`}>{children}</Link>
                 );
+              const outcome = outcomes.get(r.hcp_estimate_id);
               return (
                 <tr key={r.hcp_estimate_id} className={`cursor-pointer transition hover:bg-brand-50/40 ${i % 2 === 0 ? "bg-white" : "bg-neutral-100"}`}>
+                  {canBatchSend ? (
+                    <td className="px-2 py-2 text-center">
+                      {outcome ? (
+                        <span title={outcome.ok ? (outcome.deduped ? "already in flight — deduped" : "sent") : outcome.error}>
+                          {outcome.ok ? "✅" : "⚠️"}
+                        </span>
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(r.hcp_estimate_id)}
+                          onChange={() => toggleOne(r.hcp_estimate_id)}
+                          className="h-4 w-4 accent-brand-700"
+                        />
+                      )}
+                    </td>
+                  ) : null}
                   <td className="truncate p-0">
                     {cell(
                       <span className="flex items-center gap-1.5 font-mono text-xs">
