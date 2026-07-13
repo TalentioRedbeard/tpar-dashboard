@@ -9,6 +9,7 @@ import { PageShell } from "@/components/PageShell";
 import { Section } from "@/components/ui/Section";
 import { Pill } from "@/components/ui/Pill";
 import { getCurrentTech } from "@/lib/current-tech";
+import { db } from "@/lib/supabase";
 import { getEstimateDetail } from "./actions";
 import { EstimateEditForm } from "./EstimateEditForm";
 import { SendEstimateButton } from "./SendEstimateButton";
@@ -59,9 +60,19 @@ export default async function EstimateDetailPage({
   }
 
   const canEdit = !!me.isAdmin;
-  const hcpUrl = est.hcp_estimate_id
-    ? `https://pro.housecallpro.com/app/estimates/${est.hcp_estimate_id}`
-    : null;
+  // hcp_estimate_id is the csr_* wrapper id, which HCP's web UI rejects.
+  // estimate_pipeline_v computes the working option-id URL (est_*/job_* aware)
+  // — click-bug fix 2026-07-13. Naive construction stays as a last resort.
+  let hcpUrl: string | null = null;
+  if (est.hcp_estimate_id) {
+    const { data: pipe } = await db()
+      .from("estimate_pipeline_v")
+      .select("hcp_url")
+      .eq("hcp_estimate_id", est.hcp_estimate_id)
+      .maybeSingle();
+    hcpUrl = (pipe?.hcp_url as string | undefined)
+      ?? `https://pro.housecallpro.com/app/estimates/${est.hcp_estimate_id}`;
+  }
 
   return (
     <PageShell

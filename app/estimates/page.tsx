@@ -35,14 +35,16 @@ export default async function EstimatesPage() {
     redirect("/me");
   }
   const supa = db();
-  // Newest activity first. Limit generously — the awaiting/recent sets are what
-  // matter; the won/declined/expired history runs into the thousands.
+  // Newest activity first. 1,000 = the PostgREST per-request ceiling; the old
+  // 500 cap silently hid reachable estimates (the subtler half of the
+  // click-bug, plan §3.1). Full pagination rides with the EntityPageShell work.
   const { data } = await supa
     .from("estimate_pipeline_v")
     .select("hcp_estimate_id, hcp_customer_id, customer_name, estimate_number, stage, total_dollars, min_dollars, option_count, created_at, last_activity, age_days, is_ai_built, bid_estimate_id, hcp_url")
     .order("last_activity", { ascending: false, nullsFirst: false })
-    .limit(500);
+    .limit(1000);
   const rows = (data ?? []) as PipelineRow[];
+  const atCap = rows.length >= 1000;
 
   const byStage = new Map<string, number>();
   for (const r of rows) {
@@ -68,6 +70,11 @@ export default async function EstimatesPage() {
         })}
       </section>
 
+      {atCap ? (
+        <p className="mb-2 text-xs text-neutral-500">
+          Showing the 1,000 most recently active estimates — use search to reach older history.
+        </p>
+      ) : null}
       <EstimatePipelineTable rows={rows} />
     </PageShell>
   );

@@ -187,15 +187,19 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
               // else opens directly in HCP (estimate doc + line items live there).
               const href = r.is_ai_built && r.bid_estimate_id ? `/estimate/${r.bid_estimate_id}` : (r.hcp_url ?? "#");
               const external = !(r.is_ai_built && r.bid_estimate_id);
+              // Padding lives on the ANCHORS, not the tds, so the whole row is
+              // an honest click target with no dead zones between cells
+              // (tablet-primary; click-bug fix 2026-07-13). The customer cell
+              // keeps its own deliberate secondary link to /customer/[id].
               const cell = (children: ReactNode, extra = "") =>
                 external ? (
-                  <a href={href} target="_blank" rel="noreferrer" className={`block ${extra}`}>{children}</a>
+                  <a href={href} target="_blank" rel="noreferrer" className={`block px-3 py-2 ${extra}`}>{children}</a>
                 ) : (
-                  <Link href={href} className={`block ${extra}`}>{children}</Link>
+                  <Link href={href} className={`block px-3 py-2 ${extra}`}>{children}</Link>
                 );
               return (
                 <tr key={r.hcp_estimate_id} className={`cursor-pointer transition hover:bg-brand-50/40 ${i % 2 === 0 ? "bg-white" : "bg-neutral-100"}`}>
-                  <td className="truncate px-3 py-2">
+                  <td className="truncate p-0">
                     {cell(
                       <span className="flex items-center gap-1.5 font-mono text-xs">
                         {r.is_ai_built ? (
@@ -205,18 +209,18 @@ export function EstimatePipelineTable({ rows: initialRows }: { rows: PipelineRow
                       </span>,
                     )}
                   </td>
-                  <td className="px-3 py-2">{cell(<StagePill stage={r.stage} />)}</td>
-                  <td className="truncate px-3 py-2">
+                  <td className="p-0">{cell(<StagePill stage={r.stage} />)}</td>
+                  <td className="truncate p-0">
                     {r.hcp_customer_id ? (
-                      <Link href={`/customer/${r.hcp_customer_id}`} className="font-medium text-neutral-900 hover:underline">
+                      <Link href={`/customer/${r.hcp_customer_id}`} className="block truncate px-3 py-2 font-medium text-neutral-900 hover:underline">
                         {r.customer_name ?? "—"}
                       </Link>
                     ) : (
                       cell(<span className="font-medium text-neutral-900">{r.customer_name ?? "—"}</span>)
                     )}
                   </td>
-                  <td className="truncate px-3 py-2 text-right font-medium text-neutral-900">{cell(<span>{fmtMoney(r)}</span>, "text-right")}</td>
-                  <td className="truncate px-3 py-2 text-right text-neutral-600">{cell(<span>{fmtAge(r.age_days)}</span>, "text-right")}</td>
+                  <td className="truncate p-0 text-right font-medium text-neutral-900">{cell(<span>{fmtMoney(r)}</span>, "text-right")}</td>
+                  <td className="truncate p-0 text-right text-neutral-600">{cell(<span>{fmtAge(r.age_days)}</span>, "text-right")}</td>
                 </tr>
               );
             })}
