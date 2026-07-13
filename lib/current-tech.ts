@@ -313,6 +313,48 @@ export async function requireManagement(): Promise<
 }
 
 /**
+ * Sender gate — customer-facing document sends (estimates now, invoices later).
+ * Decision #4 (plan 2026-07-13): admin and managers may send ANY estimate or
+ * invoice; a tech may send only for work they are scheduled to
+ * (appointments_master match on hcp_employee_id — matching by name invites the
+ * second-Chris collision). No job/appointment linkage → manager/admin only.
+ * Impersonation blocked: a customer-facing send must name the real actor.
+ */
+export async function requireSender(link: {
+  hcpJobId?: string | null;
+  hcpEstimateId?: string | null;
+}): Promise<
+  | { ok: true; email: string; role: "admin" | "manager" | "tech" }
+  | { ok: false; error: string }
+> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  if (me.isImpersonating) return { ok: false, error: "Exit view-as to send to a customer." };
+  if (me.isAdmin) return { ok: true, email: me.email, role: "admin" };
+  if (me.isManager) return { ok: true, email: me.email, role: "manager" };
+  if (me.dashboardRole === "tech") {
+    const empId = me.tech?.hcp_employee_id ?? null;
+    if (!empId) return { ok: false, error: "Your profile isn't linked to an HCP employee yet — ask Danny." };
+    const ors: string[] = [];
+    if (link.hcpJobId) ors.push(`hcp_job_id.eq.${link.hcpJobId}`);
+    if (link.hcpEstimateId) ors.push(`hcp_estimate_id.eq.${link.hcpEstimateId}`);
+    if (ors.length === 0) {
+      return { ok: false, error: "This isn't linked to scheduled work — ask a manager to send it." };
+    }
+    const { data } = await db()
+      .from("appointments_master")
+      .select("id")
+      .or(ors.join(","))
+      .contains("tech_all_ids", [empId])
+      .limit(1)
+      .maybeSingle();
+    if (data) return { ok: true, email: me.email, role: "tech" };
+    return { ok: false, error: "Only techs scheduled to this work (or a manager) can send it." };
+  }
+  return { ok: false, error: "Your account has no dashboard role assigned." };
+}
+
+/**
  * Owner-only server-action gate. Stricter than requireWriter() — passes only
  * for the owner account, not other admins. Use for capabilities reserved to
  * the owner (e.g. editing the global "?" help content).
