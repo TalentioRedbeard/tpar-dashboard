@@ -380,15 +380,15 @@ export default async function JobsListPage({
     {
       header: "Invoice",
       cell: (r) =>
-        r.invoice_number
-          ? r.invoice_number
-          : r.hcp_job_id ? (
-              <span className="text-neutral-400" title={`Job id (no invoice yet): ${r.hcp_job_id}`}>
-                job_{r.hcp_job_id.replace(/^job_/, "").slice(0, 6)}…
-              </span>
-            ) : (
-              <span className="text-neutral-400">—</span>
-            ),
+        r.invoice_number ? (
+          r.invoice_number
+        ) : (
+          // Honest rendering (Danny 7/13): a truncated job_ id here read as a
+          // broken record when it just means HCP hasn't invoiced yet.
+          <span className="font-sans text-neutral-400" title={r.hcp_job_id ? `Job ${r.hcp_job_id}` : undefined}>
+            not invoiced
+          </span>
+        ),
       className: "font-mono text-xs",
     },
     { header: "Customer", cell: (r) => r.customer_name ?? "—", className: "font-medium text-neutral-900" },
@@ -412,6 +412,9 @@ export default async function JobsListPage({
           <span className="font-medium text-red-700">
             {fmtMoney(r.due_amount)} · {r.days_outstanding ?? "?"}d
           </span>
+        ) : r.due_amount == null ? (
+          // No invoice yet ≠ paid — saying "paid" here was the scary artifact.
+          <span className="text-neutral-400">—</span>
         ) : (
           <span className="text-neutral-400">paid</span>
         ),
