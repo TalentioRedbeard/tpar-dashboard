@@ -121,7 +121,7 @@ export default async function ManagePage() {
       label: `${c.tech_short_name} · ${c.work_date}`,
       detail: "App entry disagrees with HCP — bring to Danny with the side-by-side.",
       ageDays: Math.max(0, Math.floor((Date.now() - new Date(`${c.work_date}T12:00:00Z`).getTime()) / dayMs)),
-      href: "/manage#exceptions",
+      href: `/manage/timecards?week=${c.work_date}`,
     })),
     ...sendFails.map((s) => ({
       kind: `Send ${s.status}`,
@@ -250,11 +250,15 @@ export default async function ManagePage() {
           🚩 Flags queue →
         </Link>
         <span className="mx-2">·</span>
+        <Link href="/manage/timecards" className="hover:underline">
+          🕐 Timecard review →
+        </Link>
+        <span className="mx-2">·</span>
         <Link href="/admin/data-health" className="hover:underline">
           System data health (engineer view) →
         </Link>
         <span className="mx-2">·</span>
-        Coming to this panel: timecard review grid, send ledger, campaign batch review.
+        Coming to this panel: send ledger, campaign batch review.
       </section>
     </PageShell>
   );
