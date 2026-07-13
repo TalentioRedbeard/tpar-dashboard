@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "./supabase";
 import { getSessionUser } from "./supabase-server";
 import { isAdmin } from "./admin";
+import { syncVtm } from "./fleet-vtm";
 
 export type VehicleResult =
   | { ok: true; id?: string | number }
@@ -24,14 +25,20 @@ export async function setVehicleDriver(formData: FormData): Promise<VehicleResul
   if (!isAdmin(user.email)) return { ok: false, error: "admin only" };
 
   const supa = db();
+  const now = new Date().toISOString();
   const { error } = await supa
     .from("vehicles_master")
     .update({
       primary_driver_short_name: driver === "" ? null : driver,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     })
     .eq("id", vehicleId);
   if (error) return { ok: false, error: error.message };
+
+  // vehicles_master is the display copy; vehicle_tech_map is what GPS trip
+  // attribution reads. Writing only the first silently desynced the two
+  // (the 2023-Sprinter-under-Landon incident, plan 2026-07-13 section 10).
+  await syncVtm(supa, vehicleId, driver === "" ? null : driver, now);
 
   await supa.from("maintenance_logs").insert({
     source: "admin-vehicle-edit",
