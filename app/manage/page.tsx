@@ -54,7 +54,7 @@ export default async function ManagePage() {
   const today = chiToday();
   const weekStart = chiWeekStartIso();
 
-  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes] = await Promise.all([
+  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes, flagRes] = await Promise.all([
     // Tile 1: today's board — jobs today vs techs clocked in.
     supa
       .from("appointments_master")
@@ -91,6 +91,13 @@ export default async function ManagePage() {
       .in("status", ["bounced", "failed", "complained"])
       .order("sent_at", { ascending: false })
       .limit(50),
+    // Rail: open flags — the team's noticings, adjudicated on /manage/flags.
+    supa
+      .from("data_flags")
+      .select("id, entity_label, entity_id, flag_type, created_by, created_at, status")
+      .in("status", ["open", "in_review"])
+      .order("created_at", { ascending: true })
+      .limit(200),
   ]);
 
   const jobsToday = apptRes.count ?? 0;
@@ -105,6 +112,7 @@ export default async function ManagePage() {
   const estOldest = estRows.length ? Math.max(...estRows.map((r) => r.age_days ?? 0)) : 0;
   const conflicts = (conflictRes.data ?? []) as Array<{ tech_short_name: string; work_date: string; conflicts: unknown }>;
   const sendFails = (sendFailRes.data ?? []) as Array<{ hcp_estimate_id: string; to_email: string | null; status: string; sent_at: string | null }>;
+  const openFlags = (flagRes.data ?? []) as Array<{ id: number; entity_label: string | null; entity_id: string; flag_type: string; created_by: string; created_at: string; status: string }>;
 
   const dayMs = 24 * 60 * 60 * 1000;
   const exceptions: Exception[] = [
@@ -121,6 +129,13 @@ export default async function ManagePage() {
       detail: "A customer-facing email did not arrive — re-check the address and resend.",
       ageDays: s.sent_at ? Math.max(0, Math.floor((Date.now() - new Date(s.sent_at).getTime()) / dayMs)) : 0,
       href: "/estimates",
+    })),
+    ...openFlags.map((f) => ({
+      kind: f.status === "in_review" ? "Flag · with Danny" : "Flag",
+      label: `${f.flag_type} · ${f.entity_label ?? f.entity_id}`,
+      detail: `Raised by ${f.created_by.split("@")[0]} — adjudicate on the flags queue.`,
+      ageDays: Math.max(0, Math.floor((Date.now() - new Date(f.created_at).getTime()) / dayMs)),
+      href: "/manage/flags",
     })),
   ].sort((a, b) => b.ageDays - a.ageDays);
 
@@ -160,10 +175,10 @@ export default async function ManagePage() {
       label: "Exceptions open",
       value: `${exceptions.length}`,
       sub: exceptions.length
-        ? `oldest ${exceptions[0].ageDays}d — work the rail below`
+        ? `${openFlags.length ? `${openFlags.length} flags · ` : ""}oldest ${exceptions[0].ageDays}d — work the rail below`
         : "Zero. Clear board — that's the goal state.",
-      href: "#exceptions",
-      cta: "Jump to the rail",
+      href: openFlags.length ? "/manage/flags" : "#exceptions",
+      cta: openFlags.length ? "Open the flags queue" : "Jump to the rail",
     },
   ];
 
@@ -231,11 +246,15 @@ export default async function ManagePage() {
       </section>
 
       <section className="text-xs text-neutral-500">
+        <Link href="/manage/flags" className="hover:underline">
+          🚩 Flags queue →
+        </Link>
+        <span className="mx-2">·</span>
         <Link href="/admin/data-health" className="hover:underline">
           System data health (engineer view) →
         </Link>
         <span className="mx-2">·</span>
-        Coming to this panel: timecard review grid, flags queue, send ledger, campaign batch review.
+        Coming to this panel: timecard review grid, send ledger, campaign batch review.
       </section>
     </PageShell>
   );

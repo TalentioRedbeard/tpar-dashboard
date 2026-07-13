@@ -10,6 +10,8 @@ import { Section } from "@/components/ui/Section";
 import { Pill } from "@/components/ui/Pill";
 import { getCurrentTech } from "@/lib/current-tech";
 import { db } from "@/lib/supabase";
+import { FlagButton } from "@/components/FlagButton";
+import { EntityFlags } from "@/components/EntityFlags";
 import { getEstimateDetail } from "./actions";
 import { EstimateEditForm } from "./EstimateEditForm";
 import { SendEstimateButton } from "./SendEstimateButton";
@@ -108,9 +110,15 @@ export default async function EstimateDetailPage({
               Open in HCP ↗
             </a>
           ) : null}
+          <FlagButton
+            entityType="estimate"
+            entityId={est.id}
+            entityLabel={`${est.project_name || est.customer_name || "Untitled estimate"}${est.hcp_estimate_number ? ` #${est.hcp_estimate_number}` : ""}`}
+          />
         </div>
       }
     >
+      <EntityFlags entityType="estimate" entityId={est.id} />
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Status</div>

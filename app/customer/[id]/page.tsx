@@ -24,6 +24,8 @@ import { EmptyState } from "../../../components/ui/EmptyState";
 import { LinkButton } from "../../../components/ui/Button";
 import { ProvenanceCard, type ProvenanceItem } from "../../../components/ui/ProvenanceCard";
 import { getCurrentMembership } from "../../membership/actions";
+import { FlagButton } from "../../../components/FlagButton";
+import { EntityFlags } from "../../../components/EntityFlags";
 
 export const dynamic = "force-dynamic";
 
@@ -379,6 +381,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
               + Build estimate
             </LinkButton>
           ) : null}
+          <FlagButton entityType="customer" entityId={id} entityLabel={displayName} />
         </div>
       }
       help={{
@@ -393,6 +396,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         stuck: <>Page looks empty? Customer-card may not be built yet — admin can fire it from /admin/system.</>,
       }}
     >
+      <EntityFlags entityType="customer" entityId={id} />
       <div className="space-y-10">
         {/* Quick comms — text or queue a callback. Lands in customer 360 automatically. */}
         {canWrite && (

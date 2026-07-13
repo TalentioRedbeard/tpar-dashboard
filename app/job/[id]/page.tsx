@@ -41,6 +41,8 @@ import { getJobTasks } from "../../../lib/job-tasks";
 import { getMaterialsUsedForJob } from "../../../lib/materials-actions";
 import { EstimateBadge } from "../../../components/EstimateBadge";
 import { getEstimatesForCards, estimatesForCard } from "../../../lib/estimates-for-cards";
+import { FlagButton } from "../../../components/FlagButton";
+import { EntityFlags } from "../../../components/EntityFlags";
 
 export const dynamic = "force-dynamic";
 
@@ -551,9 +553,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               ) : null}
             </>
           ) : null}
+          <FlagButton
+            entityType="job"
+            entityId={id}
+            entityLabel={[j.customer_name as string, addressLine].filter(Boolean).join(" — ") || id}
+          />
         </div>
       }
     >
+      <EntityFlags entityType="job" entityId={id} />
       <JobBriefingCard hcpJobId={id} briefing={briefing} pinnedEmails={pinnedForJob} />
       <div className="space-y-10">
         {/* Lifecycle trigger bar — ON TOP per Danny 2026-06-15. The 7-step bar
