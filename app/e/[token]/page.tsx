@@ -40,5 +40,5 @@ export default async function HostedEstimatePage({
   // Log the view (best-effort; never blocks the render).
   await logEstimateView(res.sendId);
 
-  return <PublicEstimateView estimate={res.estimate} />;
+  return <PublicEstimateView estimate={res.estimate} token={token} />;
 }

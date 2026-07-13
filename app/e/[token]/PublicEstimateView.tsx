@@ -1,16 +1,28 @@
-// Branded, mobile-first public estimate render. Server component, NO client JS
-// (v1 is read-only — view + track only, no approve/decline). Renders ONLY the
-// whitelisted PublicEstimate from actions.ts: NEVER cost, margin, internal IDs,
-// AI reasoning, or "Open in HCP". Uses the app brand tokens (globals.css).
+// Branded, mobile-first public estimate render. Server component; the only
+// client JS is the per-option Approve control (Danny 7/13: "should have an
+// approval button"). Renders ONLY the whitelisted PublicEstimate from
+// actions.ts: NEVER cost, margin, internal IDs, AI reasoning, or "Open in
+// HCP". Uses the app brand tokens (globals.css).
 
 import type { PublicEstimate, PublicOption } from "./actions";
+import { ApproveButton, ApprovedBanner } from "./ApproveSection";
 
 function money(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return "—";
   return `$${Math.round(v).toLocaleString("en-US")}`;
 }
 
-function OptionCard({ opt, index }: { opt: PublicOption; index: number }) {
+function OptionCard({
+  opt,
+  index,
+  token,
+  approvable,
+}: {
+  opt: PublicOption;
+  index: number;
+  token: string;
+  approvable: boolean;
+}) {
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -43,12 +55,21 @@ function OptionCard({ opt, index }: { opt: PublicOption; index: number }) {
           {opt.description}
         </p>
       ) : null}
+
+      {approvable ? (
+        <ApproveButton
+          token={token}
+          optionIdx={index}
+          optionName={opt.name || `Option ${index + 1}`}
+          totalDollars={opt.total_dollars}
+        />
+      ) : null}
     </div>
   );
 }
 
-export function PublicEstimateView({ estimate }: { estimate: PublicEstimate }) {
-  const { customerName, estimateNumber, options, termsText } = estimate;
+export function PublicEstimateView({ estimate, token }: { estimate: PublicEstimate; token: string }) {
+  const { customerName, estimateNumber, options, termsText, approval } = estimate;
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
@@ -65,11 +86,19 @@ export function PublicEstimateView({ estimate }: { estimate: PublicEstimate }) {
         ) : null}
       </header>
 
-      {/* Options */}
+      {/* Approved state replaces the buttons — one approval per estimate. */}
+      {approval ? <ApprovedBanner optionName={approval.optionName} approvedAtISO={approval.approvedAtISO} /> : null}
+
+      {/* Options — pick one and approve it right here. */}
+      {options.length > 1 && !approval ? (
+        <p className="mb-3 text-sm text-neutral-600">
+          {options.length} options — pick the one that fits and approve it below.
+        </p>
+      ) : null}
       {options.length > 0 ? (
         <div className="space-y-4">
           {options.map((opt, i) => (
-            <OptionCard key={i} opt={opt} index={i} />
+            <OptionCard key={i} opt={opt} index={i} token={token} approvable={!approval} />
           ))}
         </div>
       ) : (
