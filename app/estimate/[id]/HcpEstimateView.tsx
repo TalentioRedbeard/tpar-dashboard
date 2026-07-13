@@ -15,6 +15,8 @@ import { EntityFlags } from "@/components/EntityFlags";
 import { EntityPageShell, EntityChecklist, RailCard, type ChecklistItem } from "@/components/EntityPageShell";
 import { EstimateSiteCard } from "@/components/EstimateSiteCard";
 import type { CurrentTech } from "@/lib/current-tech";
+import { VoiceNoteRecorder } from "@/app/voice-notes/VoiceNoteRecorder";
+import { listVoiceNotesForCustomer } from "@/app/voice-notes/actions";
 import { SendEstimateButton } from "./SendEstimateButton";
 
 type RawOption = {
@@ -56,7 +58,7 @@ const TERMINAL_DEAD = new Set(["user canceled", "pro canceled"]);
 export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech }) {
   const supa = db();
   const [rawRes, pipeRes, apptRes] = await Promise.all([
-    supa.from("hcp_estimates_raw").select("hcp_estimate_id, hcp_customer_id, raw").eq("hcp_estimate_id", id).maybeSingle(),
+    supa.from("hcp_estimates_raw").select("hcp_estimate_id, hcp_customer_id, raw, hcp_notes").eq("hcp_estimate_id", id).maybeSingle(),
     supa.from("estimate_pipeline_v").select("*").eq("hcp_estimate_id", id).maybeSingle(),
     supa
       .from("appointments_master")
@@ -67,7 +69,7 @@ export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech 
       .maybeSingle(),
   ]);
 
-  const est = rawRes.data as { hcp_estimate_id: string; hcp_customer_id: string | null; raw: Record<string, unknown> } | null;
+  const est = rawRes.data as { hcp_estimate_id: string; hcp_customer_id: string | null; raw: Record<string, unknown>; hcp_notes: string | null } | null;
   if (!est) {
     return (
       <PageShell title="Estimate not found" backHref="/estimates" backLabel="All estimates">
@@ -141,16 +143,55 @@ export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech 
     .limit(12);
   const sends = (sendsData ?? []) as Array<Record<string, unknown>>;
 
-  // Private notes are customer notes (estimates attach to the CUSTOMER).
-  const { data: notesData } = est.hcp_customer_id
-    ? await supa
-        .from("customer_notes")
-        .select("id, author_email, body, created_at")
-        .eq("hcp_customer_id", est.hcp_customer_id)
-        .order("created_at", { ascending: false })
-        .limit(8)
-    : { data: [] };
-  const notes = (notesData ?? []) as Array<{ id: string; author_email: string; body: string; created_at: string }>;
+  // Private notes = three sources merged (Danny 7/13): HCP's private notes
+  // (mirrored into hcp_*_raw.hcp_notes by the webhook — no author attribution
+  // in the mirror, so none is invented), our staff notes (customer_notes),
+  // and voice recordings (tech_voice_notes; transcript auto-fills on-prem).
+  // All customer-scoped: the same context follows the customer everywhere.
+  const [notesRes, hcpJobNotesRes, hcpEstNotesRes, voiceNotes] = est.hcp_customer_id
+    ? await Promise.all([
+        supa
+          .from("customer_notes")
+          .select("id, author_email, body, created_at")
+          .eq("hcp_customer_id", est.hcp_customer_id)
+          .order("created_at", { ascending: false })
+          .limit(8),
+        supa
+          .from("hcp_jobs_raw")
+          .select("hcp_job_id, scheduled_start, hcp_notes")
+          .eq("hcp_customer_id", est.hcp_customer_id)
+          .not("hcp_notes", "is", null)
+          .neq("hcp_notes", "")
+          .order("scheduled_start", { ascending: false, nullsFirst: false })
+          .limit(10),
+        supa
+          .from("hcp_estimates_raw")
+          .select("hcp_estimate_id, last_synced_at, hcp_notes")
+          .eq("hcp_customer_id", est.hcp_customer_id)
+          .neq("hcp_estimate_id", id)
+          .not("hcp_notes", "is", null)
+          .neq("hcp_notes", "")
+          .order("last_synced_at", { ascending: false, nullsFirst: false })
+          .limit(10),
+        listVoiceNotesForCustomer(est.hcp_customer_id),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }, []];
+  const notes = (notesRes.data ?? []) as Array<{ id: string; author_email: string; body: string; created_at: string }>;
+  const hcpNotes: Array<{ key: string; label: string; href: string | null; body: string; ts: string | null }> = [
+    ...(est.hcp_notes && est.hcp_notes.trim()
+      ? [{ key: "self", label: "this estimate", href: null, body: est.hcp_notes.trim(), ts: null }]
+      : []),
+    ...((hcpJobNotesRes.data ?? []) as Array<{ hcp_job_id: string; scheduled_start: string | null; hcp_notes: string }>).map((n) => ({
+      key: n.hcp_job_id, label: "job", href: `/job/${n.hcp_job_id}`, body: n.hcp_notes, ts: n.scheduled_start,
+    })),
+    ...((hcpEstNotesRes.data ?? []) as Array<{ hcp_estimate_id: string; last_synced_at: string | null; hcp_notes: string }>).map((n) => ({
+      key: n.hcp_estimate_id, label: "estimate", href: `/estimate/${n.hcp_estimate_id}`, body: n.hcp_notes, ts: n.last_synced_at,
+    })),
+  ];
+  const recordings = voiceNotes as Array<{
+    id: string; ts: string; tech_short_name: string | null; user_email: string | null;
+    transcript: string | null; transcription_status: string | null; audio_duration_seconds: number | null; intent_tag: string | null;
+  }>;
 
   const totalDollars = pipe.total_dollars != null ? Number(pipe.total_dollars) : null;
   const minDollars = pipe.min_dollars != null ? Number(pipe.min_dollars) : null;
@@ -296,7 +337,7 @@ export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech 
 
         <Section
           title="Private notes"
-          description="🔒 Internal — these live on the customer, so every estimate and job for them shows the same notes."
+          description="🔒 Internal — HCP's private notes and ours, together. These live on the customer, so every estimate and job for them shows the same notes."
         >
           {me.canWrite && est.hcp_customer_id ? (
             <div className="mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
@@ -308,14 +349,62 @@ export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech 
               />
             </div>
           ) : null}
-          {notes.length === 0 ? (
-            <p className="text-sm text-neutral-500">No internal notes yet.</p>
+          {notes.length === 0 && hcpNotes.length === 0 ? (
+            <p className="text-sm text-neutral-500">No internal notes yet — here or in HCP.</p>
           ) : (
             <ul className="space-y-2">
               {notes.map((n) => (
                 <li key={n.id} className="rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm text-neutral-800">
                   <span className="whitespace-pre-wrap">{n.body}</span>
                   <span className="ml-2 text-xs text-neutral-500">— {n.author_email.split("@")[0]}, {fmtDay(n.created_at)}</span>
+                </li>
+              ))}
+              {hcpNotes.map((n) => (
+                <li key={n.key} className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
+                  <span className="whitespace-pre-wrap">{n.body}</span>
+                  <span className="ml-2 text-xs text-neutral-500">
+                    — HCP note{" "}
+                    {n.href ? (
+                      <Link href={n.href} className="text-brand-700 hover:underline">({n.label}{n.ts ? `, ${fmtDay(n.ts)}` : ""})</Link>
+                    ) : (
+                      <>({n.label})</>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        <Section
+          title="Tech notes & recordings"
+          description="Tap, talk, walk away — recordings attach to this customer and transcribe automatically on our own hardware."
+        >
+          {me.canWrite && est.hcp_customer_id ? (
+            <div className="mb-3">
+              <VoiceNoteRecorder hcpCustomerId={est.hcp_customer_id} defaultIntentTag="estimate-context" />
+            </div>
+          ) : null}
+          {recordings.length === 0 ? (
+            <p className="text-sm text-neutral-500">No recordings for this customer yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {recordings.map((r) => (
+                <li key={r.id} className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm">
+                  <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-neutral-500">
+                    <span>🎙️ {r.tech_short_name ?? r.user_email?.split("@")[0] ?? "?"}</span>
+                    <span>{fmtDate(r.ts)}</span>
+                    {r.audio_duration_seconds ? <span>{Math.round(r.audio_duration_seconds)}s</span> : null}
+                    {r.intent_tag ? <span className="rounded bg-neutral-100 px-1.5">{r.intent_tag}</span> : null}
+                    <Link href={`/voice-notes/${r.id}`} className="ml-auto text-brand-700 hover:underline">open / play ↗</Link>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-neutral-800">
+                    {r.transcript?.trim()
+                      ? r.transcript
+                      : r.transcription_status === "pending_local"
+                        ? <span className="italic text-neutral-400">transcribing…</span>
+                        : <span className="italic text-neutral-400">no transcript</span>}
+                  </p>
                 </li>
               ))}
             </ul>

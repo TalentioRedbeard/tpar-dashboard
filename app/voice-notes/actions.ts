@@ -289,6 +289,17 @@ export async function listVoiceNotesForJob(hcpJobId: string) {
   return data ?? [];
 }
 
+export async function listVoiceNotesForCustomer(hcpCustomerId: string) {
+  const supa = db();
+  const { data } = await supa
+    .from("tech_voice_notes")
+    .select("id, ts, source, tech_short_name, user_email, hcp_job_id, transcript, transcription_status, audio_duration_seconds, intent_tag")
+    .eq("hcp_customer_id", hcpCustomerId)
+    .order("ts", { ascending: false })
+    .limit(20);
+  return data ?? [];
+}
+
 export async function listRecentVoiceNotes(limit = 30) {
   const supa = db();
   const { data } = await supa
