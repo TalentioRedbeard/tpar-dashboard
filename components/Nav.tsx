@@ -69,6 +69,7 @@ const TOOL_ITEMS = [
 // Visible to admin + manager + production_manager — leadership review surfaces.
 // (SalesAsk removed 2026-06-20 — integration retired; route left in place.)
 const LEADERSHIP_ITEMS = [
+  { href: "/manage",          label: "Manage", icon: "🧰" },
   { href: "/studio",          label: "Studio", icon: "🎬" },
   { href: "/attach",          label: "Attach", icon: "📧" },
   { href: "/admin/leads",     label: "Leads", icon: "🎯" },

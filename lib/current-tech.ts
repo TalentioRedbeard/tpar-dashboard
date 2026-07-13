@@ -293,6 +293,26 @@ export async function requireScheduler(): Promise<
 }
 
 /**
+ * Management gate — the /manage control panel and every mutating server
+ * action under it (build plan 2026-07-13, section 2.1). Admin + manager tier
+ * (isManager already covers production_manager). Impersonation is EXPLICITLY
+ * blocked: view-as downgrades the session to tech so the panel naturally
+ * vanishes, and this check guarantees no management write can ever run while
+ * viewing-as (the audit trail must name the real actor acting as themselves).
+ */
+export async function requireManagement(): Promise<
+  | { ok: true; email: string; role: "admin" | "manager" }
+  | { ok: false; error: string }
+> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  if (me.isImpersonating) return { ok: false, error: "Exit view-as to use management tools." };
+  if (me.isAdmin) return { ok: true, email: me.email, role: "admin" };
+  if (me.isManager) return { ok: true, email: me.email, role: "manager" };
+  return { ok: false, error: "Management access only." };
+}
+
+/**
  * Owner-only server-action gate. Stricter than requireWriter() — passes only
  * for the owner account, not other admins. Use for capabilities reserved to
  * the owner (e.g. editing the global "?" help content).
