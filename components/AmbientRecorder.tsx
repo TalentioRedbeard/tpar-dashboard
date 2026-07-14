@@ -315,7 +315,7 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
           title="Stop + save this conversation (transcribed + speaker-separated on-prem)"
           className="flex items-center gap-1.5 rounded-full border border-red-500 bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow"
         >
-          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-white" /> Stop conversation
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-white" /> ⏹ Stop &amp; save conversation
         </button>
       ) : (
         <>
@@ -327,7 +327,7 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
               className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow ${noSignal ? "border-red-500 bg-red-600 text-white" : "border-red-400 bg-red-50 text-red-700"}`}
             >
               <span className={`inline-block h-2 w-2 rounded-full ${noSignal ? "bg-white" : "animate-pulse bg-red-600"}`} />
-              {noSignal ? "Recording — NO INPUT" : "Recording office"}
+              {noSignal ? "🏢 Office capture — NO INPUT" : "🏢 Office capture ON (always-on)"}
             </button>
           ) : (
             <button
@@ -336,7 +336,7 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
               title="Start always-on office capture (5-min transcripts → office_notes)"
               className="flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-500 shadow hover:bg-neutral-50"
             >
-              <span className="inline-block h-2 w-2 rounded-full border border-neutral-400" /> Office capture off
+              <span className="inline-block h-2 w-2 rounded-full border border-neutral-400" /> 🏢 Office capture OFF — always-on lane
             </button>
           )}
           <button
@@ -345,7 +345,7 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
             title="Record a conversation — transcribed + speaker-separated on-prem"
             className="flex items-center gap-1.5 rounded-full border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-600 shadow hover:bg-blue-50"
           >
-            🎙️ Start conversation
+            🎙️ Record a conversation (start/stop)
           </button>
         </>
       )}
