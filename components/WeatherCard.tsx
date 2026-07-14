@@ -66,8 +66,11 @@ export async function WeatherCard() {
   const cur = data.current;
   const curWx = wx(cur.weather_code);
 
-  // Hourly: from the current hour, next 24.
-  const nowIso = new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago" }).slice(0, 13);
+  // Hourly: from the current hour, next 24. NOTE the separator normalization:
+  // sv-SE renders "2026-07-14 13:…" (space) while Open-Meteo uses
+  // "2026-07-14T13:00" — 'T' sorts above ' ', so an un-normalized comparison
+  // matches MIDNIGHT and labels it "Now" (Danny's 7/14 screenshot).
+  const nowIso = new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago" }).slice(0, 13).replace(" ", "T");
   let startIdx = data.hourly.time.findIndex((t) => t.slice(0, 13) >= nowIso);
   if (startIdx < 0) startIdx = 0;
   const hours = data.hourly.time.slice(startIdx, startIdx + 24).map((t, i) => ({
@@ -101,6 +104,20 @@ export async function WeatherCard() {
     });
   }
 
+  // Per-day hourlies for the clickable day rows (Danny 7/14) — the payload
+  // already carries all 7 days × 24h, so expansion costs no extra fetch.
+  const hoursByDay = new Map<string, Array<{ t: string; temp: number; pop: number; code: number }>>();
+  data.hourly.time.forEach((t, i) => {
+    const day = t.slice(0, 10);
+    if (!hoursByDay.has(day)) hoursByDay.set(day, []);
+    hoursByDay.get(day)!.push({
+      t,
+      temp: Math.round(data.hourly!.temperature_2m[i]),
+      pop: data.hourly!.precipitation_probability[i] ?? 0,
+      code: data.hourly!.weather_code[i],
+    });
+  });
+
   const days = data.daily.time.map((t, i) => ({
     t,
     label: dayLabel(t, i),
@@ -108,6 +125,9 @@ export async function WeatherCard() {
     hi: Math.round(data.daily!.temperature_2m_max[i]),
     lo: Math.round(data.daily!.temperature_2m_min[i]),
     pop: data.daily!.precipitation_probability_max[i] ?? 0,
+    // Today expands from the current hour (matching the top strip); other
+    // days show their full 24.
+    hours: (hoursByDay.get(t) ?? []).filter((h) => t !== nowIso.slice(0, 10) || h.t.slice(0, 13) >= nowIso),
   }));
 
   return (
@@ -147,20 +167,42 @@ export async function WeatherCard() {
         </div>
       </div>
 
-      {/* 7-day */}
+      {/* 7-day — every day expands to its own hourly report (Danny 7/14).
+          Native <details>: zero client JS, works inside a server component. */}
       <div className="mt-2 divide-y divide-neutral-100 border-t border-neutral-100">
         {days.map((d) => (
-          <div key={d.t} className="flex items-center gap-3 py-1.5 text-sm">
-            <span className="w-12 shrink-0 font-medium text-neutral-800">{d.label}</span>
-            <span className="w-6 text-center" aria-hidden>{wx(d.code).e}</span>
-            <span className={`w-10 text-right text-xs ${d.pop >= 40 ? "font-semibold text-sky-600" : "text-neutral-400"}`}>
-              {d.pop >= 20 ? `${d.pop}%` : ""}
-            </span>
-            <span className="ml-auto flex items-center gap-2 tabular-nums">
-              <span className={`${d.lo <= 32 ? "font-semibold text-sky-600" : "text-neutral-400"}`}>{d.lo}°</span>
-              <span className="font-semibold text-neutral-900">{d.hi}°</span>
-            </span>
-          </div>
+          <details key={d.t} className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-3 py-1.5 text-sm transition hover:bg-neutral-50 [&::-webkit-details-marker]:hidden">
+              <span className="w-12 shrink-0 font-medium text-neutral-800">{d.label}</span>
+              <span className="w-6 text-center" aria-hidden>{wx(d.code).e}</span>
+              <span className={`w-10 text-right text-xs ${d.pop >= 40 ? "font-semibold text-sky-600" : "text-neutral-400"}`}>
+                {d.pop >= 20 ? `${d.pop}%` : ""}
+              </span>
+              <span className="ml-auto flex items-center gap-2 tabular-nums">
+                <span className={`${d.lo <= 32 ? "font-semibold text-sky-600" : "text-neutral-400"}`}>{d.lo}°</span>
+                <span className="font-semibold text-neutral-900">{d.hi}°</span>
+              </span>
+              <span className="w-4 shrink-0 text-center text-[10px] text-neutral-300 transition group-open:rotate-90">▶</span>
+            </summary>
+            {d.hours.length > 0 ? (
+              <div className="overflow-x-auto pb-1">
+                <div className="flex gap-1">
+                  {d.hours.map((h) => (
+                    <div key={h.t} className="flex w-12 shrink-0 flex-col items-center rounded-lg py-1.5 text-center odd:bg-neutral-50">
+                      <span className="text-[10px] font-medium text-neutral-500">{hourLabel(h.t)}</span>
+                      <span className="text-base leading-tight" aria-hidden>{wx(h.code).e}</span>
+                      <span className={`text-xs font-semibold ${h.temp <= 32 ? "text-sky-600" : "text-neutral-900"}`}>{h.temp}°</span>
+                      <span className={`text-[9px] ${h.pop >= 40 ? "font-semibold text-sky-600" : "text-neutral-300"}`}>
+                        {h.pop >= 20 ? `${h.pop}%` : " "}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="pb-2 text-xs text-neutral-400">Hourly detail not available this far out.</p>
+            )}
+          </details>
         ))}
       </div>
     </section>
