@@ -27,6 +27,7 @@ import { MessageOfficeCard } from "../../components/MessageOfficeCard";
 import { TodaysOneThing } from "../../components/TodaysOneThing";
 import { WhiteboardPanel } from "../../components/WhiteboardPanel";
 import { DannysDayCard } from "../../components/DannysDayCard";
+import { WeatherCard } from "../../components/WeatherCard";
 import { ExpectationsPanel } from "../../components/ExpectationsPanel";
 import { getCurrentState as getClockState } from "../time/actions";
 import { getUnreviewedBriefingJobs } from "../job/[id]/briefing-actions";
@@ -475,6 +476,13 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           <DannysDayCard />
         </Suspense>
       ) : null}
+
+      {/* Local weather — 7-day + hourly (Danny 2026-07-14): keeps weather in
+          the planning picture (freezes + rain windows matter in plumbing).
+          Ungated — weather is universal; Suspense so the API can't slow /me. */}
+      <Suspense fallback={null}>
+        <WeatherCard />
+      </Suspense>
 
       {/* Quick-action tiles for capture surfaces. Linked surfaces have the
           same gestures available standalone (without an active appointment) —
