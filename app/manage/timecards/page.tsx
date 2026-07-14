@@ -11,6 +11,7 @@
 import Link from "next/link";
 import { db } from "../../../lib/supabase";
 import { PageShell } from "../../../components/PageShell";
+import { ConflictVerbs, WeekReviewedButton } from "./TimecardVerbs";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Timecards · Manage · TPAR-DB" };
@@ -22,6 +23,7 @@ type HcpPair = { in: string | null; out: string | null };
 type ConflictItem = { entry_id?: string; kind?: string; app_ts_chicago?: string; reason?: string };
 type SyncDay = {
   tech_short_name: string;
+  hcp_employee_id: string;
   work_date: string;
   status: string;
   hcp_pairs: HcpPair[] | null;
@@ -30,6 +32,13 @@ type SyncDay = {
   updated_n: number;
   voided_n: number;
   synced_at: string;
+};
+type Review = {
+  hcp_employee_id: string;
+  work_date: string;
+  entry_id: string;
+  decision: string;
+  decided_by: string;
 };
 type SyncState = {
   tech_short_name: string;
@@ -96,16 +105,25 @@ export default async function ManageTimecardsPage({
   const currentWeek = weekSundayOf(chiToday());
 
   const supa = db();
-  const [daysRes, stateRes] = await Promise.all([
+  const [daysRes, stateRes, reviewsRes, weekRevRes] = await Promise.all([
     supa
       .from("timecard_sync_days")
-      .select("tech_short_name, work_date, status, hcp_pairs, conflicts, inserted_n, updated_n, voided_n, synced_at")
+      .select("tech_short_name, hcp_employee_id, work_date, status, hcp_pairs, conflicts, inserted_n, updated_n, voided_n, synced_at")
       .gte("work_date", weekStart)
       .lte("work_date", weekEnd)
       .order("work_date", { ascending: true }),
     supa.from("timecard_sync_state").select("tech_short_name, last_synced_at, last_ok, last_error"),
+    supa
+      .from("timecard_reviews")
+      .select("hcp_employee_id, work_date, entry_id, decision, decided_by")
+      .gte("work_date", weekStart)
+      .lte("work_date", weekEnd),
+    supa.from("timecard_week_reviews").select("week_start, reviewed_by, reviewed_at").eq("week_start", weekStart).maybeSingle(),
   ]);
   const rows = (daysRes.data ?? []) as SyncDay[];
+  const reviews = (reviewsRes.data ?? []) as Review[];
+  const reviewByKey = new Map(reviews.map((r) => [`${r.hcp_employee_id}|${r.work_date}|${r.entry_id}`, r]));
+  const weekReview = weekRevRes.data as { reviewed_by: string; reviewed_at: string } | null;
   const states = ((stateRes.data ?? []) as SyncState[]).sort((a, b) =>
     a.tech_short_name.localeCompare(b.tech_short_name),
   );
@@ -148,6 +166,14 @@ export default async function ManageTimecardsPage({
           </span>
         ))}
         <span className="ml-auto flex items-center gap-2">
+          {weekReview ? (
+            <span className="rounded-md bg-emerald-50 px-2 py-1 font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-200" title={new Date(weekReview.reviewed_at).toLocaleString("en-US", { timeZone: CHI })}>
+              ✍️ Week reviewed — {weekReview.reviewed_by.split("@")[0]},{" "}
+              {new Date(weekReview.reviewed_at).toLocaleDateString("en-US", { timeZone: CHI, month: "short", day: "numeric" })}
+            </span>
+          ) : (
+            <WeekReviewedButton weekStart={weekStart} />
+          )}
           <Link href={`/manage/timecards?week=${addDays(weekStart, -7)}`} className="rounded-md border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-700 hover:bg-neutral-50">← prev week</Link>
           {weekStart !== currentWeek ? (
             <Link href="/manage/timecards" className="rounded-md border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-700 hover:bg-neutral-50">this week</Link>
@@ -208,13 +234,32 @@ export default async function ManageTimecardsPage({
                               {(row.hcp_pairs ?? []).length ? (row.hcp_pairs ?? []).map(fmtPair).join(", ") : "no punches"}
                             </div>
                             {isConflict ? (
-                              <div className="mt-1 space-y-0.5">
-                                {(row.conflicts ?? []).map((c, i) => (
-                                  <div key={i}>
-                                    <span className="font-medium">App {c.kind ?? "?"} {c.app_ts_chicago ?? "?"}:</span> {c.reason ?? "unmatched"}
-                                  </div>
-                                ))}
-                                <div className="mt-1 font-medium">→ Bring to Danny with this side-by-side.</div>
+                              <div className="mt-1 space-y-1">
+                                {(row.conflicts ?? []).map((c, i) => {
+                                  const review = c.entry_id
+                                    ? reviewByKey.get(`${row.hcp_employee_id}|${row.work_date}|${c.entry_id}`)
+                                    : undefined;
+                                  const hcpSide = (row.hcp_pairs ?? []).map(fmtPair).join(", ") || "no punches";
+                                  return (
+                                    <div key={i}>
+                                      <span className="font-medium">App {c.kind ?? "?"} {c.app_ts_chicago ?? "?"}:</span>{" "}
+                                      {c.reason ?? "unmatched"}
+                                      {review ? (
+                                        <div className="mt-0.5 text-[10px] font-semibold text-emerald-700">
+                                          ✓ {review.decision === "accept_hcp" ? "HCP accepted" : "app entry kept"} — {review.decided_by.split("@")[0]}
+                                        </div>
+                                      ) : (
+                                        <ConflictVerbs
+                                          hcpEmployeeId={row.hcp_employee_id}
+                                          techShortName={row.tech_short_name}
+                                          workDate={row.work_date}
+                                          entryId={c.entry_id ?? null}
+                                          summary={`${row.tech_short_name} ${row.work_date} — HCP: ${hcpSide} · app ${c.kind ?? "?"} ${c.app_ts_chicago ?? "?"} (${c.reason ?? "unmatched"})`}
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : null}
                             {row.inserted_n + row.updated_n + row.voided_n > 0 ? (
@@ -255,8 +300,8 @@ export default async function ManageTimecardsPage({
       {conflictDays.length > 0 ? (
         <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
           <span className="font-semibold">{conflictDays.length} conflict day{conflictDays.length > 1 ? "s" : ""} this week:</span>{" "}
-          {conflictDays.map((c) => `${c.tech_short_name} ${c.work_date}`).join(" · ")} — conflicts route to Danny with the
-          side-by-side; adjudication verbs land here in the next phase.
+          {conflictDays.map((c) => `${c.tech_short_name} ${c.work_date}`).join(" · ")} — open the cell for the side-by-side
+          and rule on it: Accept HCP · Keep app · Bring to Danny.
         </div>
       ) : null}
     </PageShell>
