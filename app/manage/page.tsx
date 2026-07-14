@@ -254,11 +254,15 @@ export default async function ManagePage() {
           🕐 Timecard review →
         </Link>
         <span className="mx-2">·</span>
+        <Link href="/manage/sends" className="hover:underline">
+          📨 Sends ledger →
+        </Link>
+        <span className="mx-2">·</span>
         <Link href="/admin/data-health" className="hover:underline">
           System data health (engineer view) →
         </Link>
         <span className="mx-2">·</span>
-        Coming to this panel: send ledger, campaign batch review.
+        Coming to this panel: campaign batch review.
       </section>
     </PageShell>
   );
