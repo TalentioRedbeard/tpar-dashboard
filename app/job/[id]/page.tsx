@@ -34,7 +34,9 @@ import { RecordingPlayer } from "../../../components/RecordingPlayer";
 import { LogReceiptForm } from "../../../components/LogReceiptForm";
 import { EditJobPanel } from "../../../components/EditJobPanel";
 import { JobMediaGallery } from "../../../components/JobMediaGallery";
-import { JobSiteCard } from "../../../components/JobSiteCard";
+import { EstimateSiteCard } from "../../../components/EstimateSiteCard";
+import { CallContactButton } from "../../../components/CallContactButton";
+import { EntityPageShell, EntityChecklist, RailCard, type ChecklistItem } from "../../../components/EntityPageShell";
 import { WorklistCard } from "../../../components/WorklistCard";
 import { MaterialsUsedCard } from "../../../components/MaterialsUsedCard";
 import { getJobTasks } from "../../../lib/job-tasks";
@@ -188,6 +190,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     }
   }
 
+  // Typed money BEFORE the untyped cast (job_360 revenue/due are DOLLARS).
+  const revenueDollars = jobRow ? jobRevenueDollars(jobRow) : null;
+  const dueDollars = jobRow ? jobDueDollars(jobRow) : null;
   const j = jobRow as Record<string, unknown>;
   const customerId = j.hcp_customer_id as string | null;
 
@@ -396,10 +401,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     : null;
 
   const addressLine = [j.street as string, j.city as string].filter(Boolean).join(", ");
-  // Turn-by-turn deep link (free Maps URL, not the paid Directions API).
-  const directionsUrl = addressLine
-    ? `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(addressLine)}`
-    : null;
+  // Turn-by-turn directions now render inside the rail's site card.
 
   // Job-site geo (map pin + Street View) + client phone (gated click-to-call).
   const [siteRes, phoneRes, apptRes] = await Promise.all([
@@ -442,6 +444,38 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     : null;
   const callEnabled = process.env.CUSTOMER_VOICE_CALL_ENABLED === "true";
 
+  // ── Lifecycle checklist strip (display-only — TriggerForms stays the
+  // actuator). Done-logic mirrors TriggerForms exactly (fired trigger number
+  // OR HCP-implied) so the strip and the buttons can never disagree; Schedule
+  // additionally derives from the appointment itself (HCP-booked jobs never
+  // fire trigger #8), Collect from the money (due $0 on a >$0 job).
+  const hcpStatusLower = (jobRaw?.status ?? "").toLowerCase();
+  const jobCanceled = hcpStatusLower.includes("cancel");
+  const firedSet = new Set(firedTriggers.map((t) => t.trigger_number));
+  const impliedDone = new Set<number>(
+    hcpStatusLower.includes("complete") ? [8, 2, 3, 5, 9, 7, 6]
+    : hcpStatusLower.includes("progress") ? [8, 2, 3]
+    : hcpStatusLower.includes("scheduled") ? [8]
+    : [],
+  );
+  const stepStates: Array<[string, boolean]> = [
+    ["Schedule", apptStart != null || firedSet.has(8) || impliedDone.has(8)],
+    ["On My Way", firedSet.has(2) || impliedDone.has(2)],
+    ["Start", firedSet.has(3) || impliedDone.has(3)],
+    ["Presentation", firedSet.has(5) || impliedDone.has(5)],
+    ["Perform Work", firedSet.has(9) || impliedDone.has(9)],
+    ["Collect", firedSet.has(7) || impliedDone.has(7) || (dueDollars === 0 && (revenueDollars ?? 0) > 0)],
+    ["Finish", firedSet.has(6) || impliedDone.has(6)],
+  ];
+  let nowMarked = false;
+  const jobChecklist: ChecklistItem[] = stepStates.map(([label, done]) => {
+    if (jobCanceled) return { label, state: done ? ("done" as const) : ("dead" as const) };
+    if (done) return { label, state: "done" as const };
+    if (!nowMarked) { nowMarked = true; return { label, state: "now" as const }; }
+    return { label, state: "todo" as const };
+  });
+  if (jobCanceled) jobChecklist.push({ label: jobRaw?.status ?? "canceled", state: "dead" });
+
   // Worklist (task distribution) + materials-used. Resolve the crew's short names
   // (job_360 carries FULL names) for the lead's assignment dropdown.
   const [jobTasks, materialsUsed] = await Promise.all([
@@ -481,25 +515,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   }>;
   const lineItemsTotal = lineItems.reduce((s, li) => s + (Number(li.line_amount) || 0), 0);
   const lineItemInvoices = Array.from(new Set(lineItems.map((li) => li.invoice_number).filter(Boolean)));
+  // Header slims to identity — address/schedule/directions live in the rail
+  // now, in the same place on every job (layout B, Danny's pick 2026-07-13).
   const description = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      {addressLine ? <span>{addressLine}</span> : null}
-      {apptWhen ? (
-        <span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-800" title="Scheduled appointment time (HCP)">
-          📅 {apptWhen}
-        </span>
-      ) : null}
-      {directionsUrl ? (
-        <a
-          href={directionsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 rounded-md border border-teal-300 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-800 transition hover:bg-teal-100"
-          title="Open turn-by-turn directions to the job site"
-        >
-          🧭 Directions
-        </a>
-      ) : null}
       <span className="font-mono text-xs text-neutral-500">{id}</span>
       {customerId ? (
         <Link href={`/customer/${customerId}`} className="text-brand-700 hover:underline">
@@ -562,10 +581,100 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       }
     >
       <EntityFlags entityType="job" entityId={id} />
-      <JobBriefingCard hcpJobId={id} briefing={briefing} pinnedEmails={pinnedForJob} />
-      <div className="space-y-10">
+      <EntityPageShell
+        checklist={<EntityChecklist items={jobChecklist} />}
+        // Triggers stay ON TOP on phones too (Danny 2026-06-15) — the facts
+        // rail stacks below the working column on mobile.
+        mobileRailLast
+        rail={
+          <>
+            <RailCard label="Customer">
+              <div className="text-sm font-semibold text-neutral-900">
+                {customerId ? (
+                  <Link href={`/customer/${customerId}`} className="hover:underline">
+                    {(j.customer_name as string) ?? "Unknown customer"}
+                  </Link>
+                ) : (
+                  (j.customer_name as string) ?? "Unknown customer"
+                )}
+              </div>
+              {addressLine ? <div className="mt-0.5 text-xs text-neutral-600">{addressLine}</div> : null}
+              {clientPhone10 ? (
+                <div className="mt-1.5 flex items-center gap-2 text-xs text-neutral-600">
+                  <span>📞 {clientPhone10}</span>
+                  <CallContactButton
+                    phone={clientPhone10}
+                    name={(j.customer_name as string) ?? "Client"}
+                    kind="customer"
+                    hcpCustomerId={customerId ?? undefined}
+                    hcpJobId={id}
+                    enabled={callEnabled}
+                  />
+                </div>
+              ) : null}
+            </RailCard>
+            <EstimateSiteCard
+              addressLine={addressLine || null}
+              lat={siteLat}
+              lng={siteLng}
+              customerName={(j.customer_name as string) ?? null}
+            />
+            <RailCard label="Money">
+              <div className="text-lg font-bold text-emerald-700">{fmtMoney(j.revenue)}</div>
+              <div className="text-xs">
+                {dueDollars != null && dueDollars > 0 ? (
+                  <span className="font-semibold text-red-600">{fmtDollars(dueDollars)} due</span>
+                ) : dueDollars === 0 && (revenueDollars ?? 0) > 0 ? (
+                  <span className="text-neutral-500">paid</span>
+                ) : (
+                  <span className="text-neutral-400">not invoiced</span>
+                )}
+              </div>
+              {canEdit ? (
+                <dl className="mt-2 space-y-0.5 border-t border-neutral-100 pt-2 text-xs text-neutral-600">
+                  <div className="flex justify-between gap-2"><dt className="text-neutral-400">Materials</dt><dd>{fmtMoney(j.materials_cost)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-neutral-400">Receipts</dt><dd>{fmtMoney(j.receipts_cost)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-neutral-400">Margin</dt><dd>{j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}</dd></div>
+                </dl>
+              ) : null}
+            </RailCard>
+            <RailCard label="Status">
+              <div className="text-sm font-semibold text-neutral-900">
+                {(j.appointment_status as string) ?? (j.status as string) ?? "—"}
+              </div>
+              <dl className="mt-1.5 space-y-0.5 text-xs text-neutral-600">
+                <div className="flex justify-between gap-2"><dt className="text-neutral-400">Date</dt><dd>{(j.job_date as string) ?? "—"}</dd></div>
+                {apptWhen ? (
+                  <div className="flex justify-between gap-2"><dt className="text-neutral-400">Scheduled</dt><dd>📅 {apptWhen}</dd></div>
+                ) : null}
+                <div className="flex justify-between gap-2">
+                  <dt className="text-neutral-400">Tech</dt>
+                  <dd><TechName name={j.tech_primary_name as string | null} formerSet={formerSet} /></dd>
+                </div>
+                {Number(j.crew_size) > 1 ? (
+                  <div className="flex justify-between gap-2"><dt className="text-neutral-400">Crew</dt><dd>{String(j.crew_size)}</dd></div>
+                ) : null}
+                {jobRaw?.status ? (
+                  <div className="flex justify-between gap-2"><dt className="text-neutral-400">HCP</dt><dd>{jobRaw.status}</dd></div>
+                ) : null}
+                {j.invoice_number ? (
+                  <div className="flex justify-between gap-2"><dt className="text-neutral-400">Invoice</dt><dd className="font-mono">{String(j.invoice_number)}</dd></div>
+                ) : null}
+                {linkedEstimateId ? (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-neutral-400">Estimate</dt>
+                    <dd><Link href={`/estimate/${linkedEstimateId}`} className="text-brand-700 hover:underline">view →</Link></dd>
+                  </div>
+                ) : null}
+              </dl>
+            </RailCard>
+          </>
+        }
+      >
+        <JobBriefingCard hcpJobId={id} briefing={briefing} pinnedEmails={pinnedForJob} />
         {/* Lifecycle trigger bar — ON TOP per Danny 2026-06-15. The 7-step bar
-            (Schedule · On My Way · Start · Presentation · Perform Work · Collect · Finish). */}
+            (Schedule · On My Way · Start · Presentation · Perform Work · Collect · Finish).
+            The checklist strip above is display-only; THESE are the buttons. */}
         <Section
           title="Lifecycle triggers"
           description="Fire a trigger as you progress through the job. Records timestamp + form data + your attribution."
@@ -639,19 +748,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             ) : null}
           </div>
         ) : null}
-        {/* Job site — Street View + map pin + directions + (gated) call the client */}
-        <JobSiteCard
-          customerName={(j.customer_name as string) ?? null}
-          street={(j.street as string) ?? null}
-          city={(j.city as string) ?? null}
-          lat={siteLat}
-          lng={siteLng}
-          directionsUrl={directionsUrl}
-          customerPhone={clientPhone10}
-          callEnabled={callEnabled}
-          hcpJobId={id}
-          hcpCustomerId={customerId}
-        />
+        {/* Job site (Street View + map + directions + call) lives in the rail now. */}
 
         {/* Worklist — lead lists + distributes tasks to the crew (Danny+Cody 2026-06-15) */}
         <Section
@@ -684,30 +781,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
         {canEdit ? <AddJobLineItem hcpJobId={id} /> : null}
 
+        {/* Identity + money facts moved to the rail (same place every time);
+            what stays here is performance + context. */}
         <Section title="At a glance">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard label="Date" value={(j.job_date as string) ?? "—"} />
-            <StatCard label="Tech" value={<TechName name={j.tech_primary_name as string | null} formerSet={formerSet} />} />
-            <StatCard label="Status" value={(j.appointment_status as string) ?? (j.status as string) ?? "—"} />
-            <StatCard label="Crew size" value={(j.crew_size as number) ?? "—"} />
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard label="Revenue" value={fmtMoney(j.revenue)} tone="brand" />
-            {canEdit ? (
-              <>
-                <StatCard label="Materials" value={fmtMoney(j.materials_cost)} />
-                <StatCard
-                  label="Gross margin"
-                  value={j.gross_margin_pct != null ? `${Number(j.gross_margin_pct).toFixed(0)}%` : "—"}
-                  tone={Number(j.gross_margin_pct) >= 50 ? "green" : Number(j.gross_margin_pct) < 30 ? "amber" : "neutral"}
-                />
-                <StatCard label="Receipts cost" value={fmtMoney(j.receipts_cost)} />
-              </>
-            ) : null}
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatCard label="GPS matched" value={j.gps_matched ? "yes" : "no"} tone={j.gps_matched ? "green" : "neutral"} />
             <StatCard
               label="On time"
@@ -1159,7 +1236,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         </Section>
 
         <ProvenanceCard items={provenanceItems} />
-      </div>
+      </EntityPageShell>
     </PageShell>
   );
 }

@@ -40,22 +40,27 @@ export function EntityChecklist({ items }: { items: ChecklistItem[] }) {
 }
 
 // The two-lane body: sticky facts rail + scrolling working column.
-// On phones the rail stacks on top (the mockup's stated tradeoff).
+// On phones the rail stacks on top by default (the mockup's stated tradeoff).
+// mobileRailLast flips that for pages where the column's first control is
+// doctrine — the job page's trigger bar stays on top on a phone (Danny
+// 2026-06-15), with the facts rail below it.
 export function EntityPageShell({
   checklist,
   rail,
   children,
+  mobileRailLast = false,
 }: {
   checklist?: ReactNode;
   rail: ReactNode;
   children: ReactNode;
+  mobileRailLast?: boolean;
 }) {
   return (
     <div>
       {checklist}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="flex flex-col gap-3 self-start lg:sticky lg:top-4">{rail}</aside>
-        <div className="flex min-w-0 flex-col gap-4">{children}</div>
+        <aside className={`flex flex-col gap-3 self-start lg:sticky lg:top-4 ${mobileRailLast ? "order-2 lg:order-1" : ""}`}>{rail}</aside>
+        <div className={`flex min-w-0 flex-col gap-4 ${mobileRailLast ? "order-1 lg:order-2" : ""}`}>{children}</div>
       </div>
     </div>
   );
