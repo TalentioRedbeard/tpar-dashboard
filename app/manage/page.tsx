@@ -54,7 +54,7 @@ export default async function ManagePage() {
   const today = chiToday();
   const weekStart = chiWeekStartIso();
 
-  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes, flagRes] = await Promise.all([
+  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes, flagRes, captureRes, ownerCtxRes, custCtxRes, dailyRevRes] = await Promise.all([
     // Tile 1: today's board — jobs today vs techs clocked in.
     supa
       .from("appointments_master")
@@ -98,6 +98,14 @@ export default async function ManagePage() {
       .in("status", ["open", "in_review"])
       .order("created_at", { ascending: true })
       .limit(200),
+    // Office capture state (plan section 11.7) — the watchdog DMs on death;
+    // this is the always-visible mirror of the same condition view.
+    supa.from("office_capture_health_v").select("state, minutes_since_last").maybeSingle(),
+    // Review backlogs (plan section 11.4): counts + oldest age ONLY. The
+    // owner_context CONTENT stays behind isOwner — never rendered here.
+    supa.from("owner_context").select("created_at", { count: "exact" }).eq("status", "pending_review").order("created_at", { ascending: true }).limit(1),
+    supa.from("customer_context").select("created_at", { count: "exact" }).eq("status", "pending_review").order("created_at", { ascending: true }).limit(1),
+    supa.from("daily_reviews").select("created_at", { count: "exact" }).order("created_at", { ascending: true }).limit(1),
   ]);
 
   const jobsToday = apptRes.count ?? 0;
@@ -113,6 +121,14 @@ export default async function ManagePage() {
   const conflicts = (conflictRes.data ?? []) as Array<{ tech_short_name: string; work_date: string; conflicts: unknown }>;
   const sendFails = (sendFailRes.data ?? []) as Array<{ hcp_estimate_id: string; to_email: string | null; status: string; sent_at: string | null }>;
   const openFlags = (flagRes.data ?? []) as Array<{ id: number; entity_label: string | null; entity_id: string; flag_type: string; created_by: string; created_at: string; status: string }>;
+  const capture = captureRes.data as { state: string; minutes_since_last: number | null } | null;
+  const ageOf = (iso: string | undefined | null) =>
+    iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000))) : null;
+  const backlogs = [
+    { label: "Customer context proposals", count: custCtxRes.count ?? 0, oldest: ageOf((custCtxRes.data?.[0] as { created_at?: string } | undefined)?.created_at), href: "/context" as string | null },
+    { label: "Owner context (owner-only)", count: ownerCtxRes.count ?? 0, oldest: ageOf((ownerCtxRes.data?.[0] as { created_at?: string } | undefined)?.created_at), href: null },
+    { label: "Daily reviews", count: dailyRevRes.count ?? 0, oldest: ageOf((dailyRevRes.data?.[0] as { created_at?: string } | undefined)?.created_at), href: null },
+  ];
 
   const dayMs = 24 * 60 * 60 * 1000;
   const exceptions: Exception[] = [
@@ -137,6 +153,16 @@ export default async function ManagePage() {
       ageDays: Math.max(0, Math.floor((Date.now() - new Date(f.created_at).getTime()) / dayMs)),
       href: "/manage/flags",
     })),
+    // Office recorder down = an exception someone can fix in 10 seconds.
+    ...(capture && (capture.state === "stopped" || capture.state === "no_data")
+      ? [{
+          kind: "Recorder down",
+          label: `Office capture ${capture.state === "no_data" ? "has no data" : `stopped ${capture.minutes_since_last ?? "?"} min ago`}`,
+          detail: "The recorder tab likely died — reopen it on the office machine. (Watchdog DMs Danny too.)",
+          ageDays: 0,
+          href: "#",
+        }]
+      : []),
   ].sort((a, b) => b.ageDays - a.ageDays);
 
   const stamp = asOf();
@@ -243,6 +269,38 @@ export default async function ManagePage() {
             </ul>
           </div>
         )}
+      </section>
+
+      {/* Review backlogs (plan section 11.4): the 70b's output waiting for
+          eyes — counts + oldest age only; owner-context CONTENT never renders
+          here. Capture state chip = the watchdog's always-visible mirror. */}
+      <section className="mb-6">
+        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-600">Review backlogs</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {backlogs.map((b) => {
+            const chip = (
+              <span className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm ${b.count > 0 ? "border-amber-200 bg-amber-50 text-amber-900" : "border-neutral-200 bg-white text-neutral-500"}`}>
+                <span className="font-bold">{b.count}</span>
+                <span>{b.label}</span>
+                {b.oldest != null && b.count > 0 ? <span className="text-xs opacity-70">· oldest {b.oldest}d</span> : null}
+              </span>
+            );
+            return b.href && b.count > 0 ? (
+              <Link key={b.label} href={b.href} className="transition hover:opacity-80">{chip}</Link>
+            ) : (
+              <span key={b.label}>{chip}</span>
+            );
+          })}
+          {capture ? (
+            <span className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm ${
+              capture.state === "capturing" ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : capture.state === "silent" ? "border-neutral-200 bg-white text-neutral-600"
+              : "border-red-200 bg-red-50 text-red-800"
+            }`}>
+              🎙️ Office capture: <span className="font-semibold">{capture.state}</span>
+            </span>
+          ) : null}
+        </div>
       </section>
 
       <section className="text-xs text-neutral-500">
