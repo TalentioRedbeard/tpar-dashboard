@@ -9,7 +9,7 @@
 // job-scoped (an HCP estimate attaches to a customer + address, not a job).
 
 import { revalidatePath } from "next/cache";
-import { requireWriter } from "./current-tech";
+import { requireWriter, requireSender } from "./current-tech";
 import { db } from "./supabase";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -265,9 +265,10 @@ export async function createMultiOptionEstimate(input: CreateMultiOptionInput): 
 // Phase 1 spine reconnect: after the builder pushes + persists, the operator can
 // send the branded, tracked Resend email in ONE more click — no detour through
 // /estimate/[id]. Calls the proven send-estimate edge fn keyed by the HCP
-// estimate id (service-role lane; the fn does its own service-role auth). The /e
-// hosted view + open/click tracking + the follow-up engine all key off the
-// estimate_sends row this creates. Writer-gated (admin/tech; managers blocked).
+// estimate id (service-role lane; the fn does its own service-role auth).
+// Sender-gated per decision #4 (2026-07-13): managers/admin send anything; a
+// tech only work they're scheduled to (job linkage resolved via the bid row);
+// a customer-only estimate with no job = manager/admin only.
 export type TrackedSendResult =
   | { ok: true; view_url: string | null }
   | { ok: false; error: string };
@@ -276,15 +277,36 @@ export async function sendBuilderEstimateTracked(
   hcpEstimateId: string,
   input?: { toEmail?: string; message?: string }
 ): Promise<TrackedSendResult> {
-  const writer = await requireWriter();
-  if (!writer.ok) return { ok: false, error: writer.error };
-  if (!SUPABASE_URL || !SERVICE_KEY) {
-    return { ok: false, error: "Server isn't configured to send yet (missing SUPABASE_URL / service-role key)." };
-  }
   const id = String(hcpEstimateId ?? "").trim();
   if (!id) return { ok: false, error: "No HCP estimate id to send." };
 
-  const body: Record<string, unknown> = { hcp_estimate_id: id, created_by: writer.email };
+  // Resolve job linkage so a tech standing on the job passes the schedule
+  // match: the bid row first, then job_estimate_links (written independently
+  // of the best-effort persist RPC — if persist failed there's no bid row but
+  // the link row usually exists; review finding 2026-07-14).
+  const supa = db();
+  const { data: bid } = await supa
+    .from("bid_estimates")
+    .select("hcp_job_id")
+    .eq("hcp_estimate_id", id)
+    .maybeSingle();
+  let hcpJobId = (bid?.hcp_job_id as string | null) ?? null;
+  if (!hcpJobId) {
+    const { data: link } = await supa
+      .from("job_estimate_links")
+      .select("hcp_job_id")
+      .eq("hcp_estimate_id", id)
+      .limit(1)
+      .maybeSingle();
+    hcpJobId = (link?.hcp_job_id as string | null) ?? null;
+  }
+  const sender = await requireSender({ hcpJobId, hcpEstimateId: id });
+  if (!sender.ok) return { ok: false, error: sender.error };
+  if (!SUPABASE_URL || !SERVICE_KEY) {
+    return { ok: false, error: "Server isn't configured to send yet (missing SUPABASE_URL / service-role key)." };
+  }
+
+  const body: Record<string, unknown> = { hcp_estimate_id: id, created_by: sender.email };
   if (input?.message && input.message.trim()) body.message = input.message.trim().slice(0, 8000);
   if (input?.toEmail && input.toEmail.trim()) body.to_email = input.toEmail.trim();
 

@@ -57,7 +57,7 @@ const TERMINAL_DEAD = new Set(["user canceled", "pro canceled"]);
 
 export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech }) {
   const supa = db();
-  const [rawRes, pipeRes, apptRes] = await Promise.all([
+  const [rawRes, pipeRes, apptRes, apprRes] = await Promise.all([
     supa.from("hcp_estimates_raw").select("hcp_estimate_id, hcp_customer_id, raw, hcp_notes").eq("hcp_estimate_id", id).maybeSingle(),
     supa.from("estimate_pipeline_v").select("*").eq("hcp_estimate_id", id).maybeSingle(),
     supa
@@ -67,6 +67,9 @@ export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech 
       .order("scheduled_start", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // Online approval from the hosted /e page (estimate_approvals) — the
+    // checklist and status rail must see it, not just HCP-side approvals.
+    supa.from("estimate_approvals").select("option_name, total_dollars, created_at").eq("hcp_estimate_id", id).maybeSingle(),
   ]);
 
   const est = rawRes.data as { hcp_estimate_id: string; hcp_customer_id: string | null; raw: Record<string, unknown>; hcp_notes: string | null } | null;
@@ -110,11 +113,13 @@ export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech 
     .map((e) => [e["first_name"], e["last_name"]].map((s) => (typeof s === "string" ? s : "")).filter(Boolean).join(" "))
     .filter(Boolean);
 
+  const onlineApproval = apprRes.data as { option_name: string | null; total_dollars: number | null; created_at: string } | null;
   const dead = workStatus !== null && TERMINAL_DEAD.has(workStatus);
   const sent = !!pipe.last_sent_at;
   const viewed = !!(pipe.viewed_at || pipe.clicked_at);
   const approved = workStatus === "created job from estimate"
-    || options.some((o) => o.approval_status === "approved" || o.approval_status === "pro approved");
+    || options.some((o) => o.approval_status === "approved" || o.approval_status === "pro approved")
+    || onlineApproval !== null;
   const jobCreated = workStatus === "created job from estimate";
 
   // The lifecycle checklist (element 0, always on top). "dead" = canceled.
@@ -285,6 +290,13 @@ export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech 
                 {stage ? <Pill tone={stageTone(stage)}>{stage}</Pill> : null}
                 <span className="text-xs text-neutral-600">{workStatus ?? "—"}</span>
               </div>
+              {onlineApproval ? (
+                <div className="mt-1.5 rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-200">
+                  ✓ Approved online{onlineApproval.option_name ? ` — ${onlineApproval.option_name}` : ""}
+                  {onlineApproval.total_dollars != null ? ` ($${Math.round(Number(onlineApproval.total_dollars)).toLocaleString()})` : ""},{" "}
+                  {fmtDay(onlineApproval.created_at)}
+                </div>
+              ) : null}
               <dl className="mt-2 space-y-0.5 text-xs text-neutral-600">
                 <div className="flex justify-between gap-2"><dt className="text-neutral-400">Created</dt><dd>{fmtDay(raw["created_at"] as string | null)}</dd></div>
                 <div className="flex justify-between gap-2"><dt className="text-neutral-400">Age</dt><dd>{pipe.age_days != null ? `${pipe.age_days}d` : "—"}</dd></div>
