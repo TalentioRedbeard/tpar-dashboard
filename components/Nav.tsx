@@ -82,6 +82,7 @@ const LEADERSHIP_ITEMS = [
 // Admin-only — Danny tools (alarms / laptop snap / admin index page).
 const ADMIN_ITEMS = [
   { href: "/owner",              label: "Owner Control", icon: "🎛️" },
+  { href: "/office",             label: "TPAR Office", icon: "🗄️" },
   { href: "/conversation",       label: "Conversation", icon: "💬" },
   { href: "/context",            label: "Context", icon: "🤝" },
   { href: "/bom",                label: "Service BOMs", icon: "🔧" },
