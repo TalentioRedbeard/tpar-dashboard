@@ -19,6 +19,8 @@ import { isAdmin } from "@/lib/admin";
 import { db } from "@/lib/supabase";
 import { getFollowupConfig } from "@/app/dispatch/followup-actions";
 import { FollowupConfigPanel } from "@/components/FollowupConfigPanel";
+import { DevInboxCard } from "@/components/DevInboxCard";
+import type { DevInboxRow } from "@/lib/dev-inbox-actions";
 import {
   AddImprovementNoteForm,
   ImprovementNoteControls,
@@ -85,7 +87,7 @@ export default async function OwnerPage() {
   const wrapsCutoff = new Date(Date.parse(todayChi) - 21 * 86_400_000).toISOString().slice(0, 10);
 
   const [
-    pulseRes, recKindRes, wrapsRes, notesRes, jobsRes, doctrineRes, flagsRes, followup,
+    pulseRes, recKindRes, wrapsRes, notesRes, jobsRes, doctrineRes, flagsRes, followup, devInboxRes,
   ] = await Promise.all([
     db().from("owner_activity_pulse_v").select("*"),
     db().from("recordings").select("target_kind").gte("created_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),
@@ -95,6 +97,8 @@ export default async function OwnerPage() {
     db().from("field_doctrine").select("id, section, title, rule, audience_risk, risk_note, provenance").eq("approved", false).eq("active", true).order("section").order("ord"),
     db().from("app_flags").select("key, enabled, updated_by, updated_at").order("key"),
     getFollowupConfig(),
+    db().from("dev_voice_inbox").select("id, source, call_sid, transcript, reply, status, created_at")
+      .in("status", ["new", "picked", "replied"]).order("created_at", { ascending: false }).limit(40),
   ]);
 
   const pulse = (pulseRes.data ?? []) as PulseRow[];
@@ -121,6 +125,7 @@ export default async function OwnerPage() {
   }
 
   const notes = (notesRes.data ?? []) as NoteRow[];
+  const devInbox = (devInboxRes.data ?? []) as DevInboxRow[];
   const jobs = (jobsRes.data ?? []) as JobRow[];
   const doctrine = (doctrineRes.data ?? []) as DoctrineRow[];
   const flags = (flagsRes.data ?? []) as FlagRow[];
@@ -202,6 +207,15 @@ export default async function OwnerPage() {
             );
           })}
         </div>
+      </section>
+
+      {/* 1.5 — Dev inbox (phone→dev tether Rung 1) */}
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold text-neutral-900">🛠️ Dev inbox</h2>
+          <span className="text-[11px] text-neutral-400">spoken on walks & calls · “dev note …” forces the lane</span>
+        </div>
+        <DevInboxCard rows={devInbox} />
       </section>
 
       {/* 2 — Requirement queue */}
