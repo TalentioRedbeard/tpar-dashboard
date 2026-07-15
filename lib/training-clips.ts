@@ -4,7 +4,8 @@
 // are HOSTED in the public Supabase Storage bucket `training-clips` — they are
 // NOT in git. To update a chapter: re-render, then re-upload to the SAME object
 // name (see training/videos + the one-time uploader). Bucket created + all 7
-// uploaded/verified 2026-07-07.
+// uploaded 2026-07-07; re-shot from Chaunce Honeycutt's view (view-as, populated
+// pages) + dead-air-tightened and re-uploaded 2026-07-15.
 //
 // Public URL form: {SUPABASE_URL}/storage/v1/object/public/training-clips/<file>
 
@@ -27,17 +28,20 @@ export type TrainingClip = {
 
 const BUCKET_BASE =
   "https://bwpoqsfrygyopwxmegax.supabase.co/storage/v1/object/public/training-clips";
+// Bump when a clip is re-uploaded — busts the storage CDN cache so techs get the
+// new cut immediately instead of a stale copy (2026-07-15: Chaunce re-shoot).
+const V = "?v=20260715";
 
 export const TRAINING_CLIPS: TrainingClip[] = [
   {
     n: 1,
     slug: "intro",
     emoji: "👋",
-    title: "Welcome — the one-minute map",
-    desc: "The whole app in a minute: what it does, why it's here, and how your day flows through it.",
-    runtime: "3:36",
-    runtimeSec: 216,
-    url: `${BUCKET_BASE}/intro.mp4`,
+    title: "Welcome — the whole-app map",
+    desc: "The whole app in one pass: what it does, why it's here, and how your day flows through it.",
+    runtime: "3:25",
+    runtimeSec: 205,
+    url: `${BUCKET_BASE}/intro.mp4${V}`,
   },
   {
     n: 2,
@@ -45,9 +49,9 @@ export const TRAINING_CLIPS: TrainingClip[] = [
     emoji: "☀️",
     title: "My Day — your home base",
     desc: "The one screen you open every morning: your jobs, your clock, your numbers, all in order.",
-    runtime: "1:42",
-    runtimeSec: 102,
-    url: `${BUCKET_BASE}/my-day.mp4`,
+    runtime: "1:37",
+    runtimeSec: 97,
+    url: `${BUCKET_BASE}/my-day.mp4${V}`,
   },
   {
     n: 3,
@@ -55,9 +59,9 @@ export const TRAINING_CLIPS: TrainingClip[] = [
     emoji: "⏱️",
     title: "Clocking in + your status bar",
     desc: "Clock in, and let the status bar keep the office, the schedule, and the customer in sync for you.",
-    runtime: "1:11",
-    runtimeSec: 71,
-    url: `${BUCKET_BASE}/clocking-in.mp4`,
+    runtime: "1:08",
+    runtimeSec: 68,
+    url: `${BUCKET_BASE}/clocking-in.mp4${V}`,
   },
   {
     n: 4,
@@ -65,9 +69,9 @@ export const TRAINING_CLIPS: TrainingClip[] = [
     emoji: "🌙",
     title: "Your Daily Wrap",
     desc: "End the day in half a minute — a quick spoken wrap so nothing important lives only in your head.",
-    runtime: "0:57",
-    runtimeSec: 57,
-    url: `${BUCKET_BASE}/daily-wrap.mp4`,
+    runtime: "0:48",
+    runtimeSec: 48,
+    url: `${BUCKET_BASE}/daily-wrap.mp4${V}`,
   },
   {
     n: 5,
@@ -75,9 +79,9 @@ export const TRAINING_CLIPS: TrainingClip[] = [
     emoji: "🏷️",
     title: "Building an estimate + Price it with me",
     desc: "Turn what you found into good / better / best options, and let “Price it with me” scope and price it.",
-    runtime: "2:13",
-    runtimeSec: 133,
-    url: `${BUCKET_BASE}/estimate-piwm.mp4`,
+    runtime: "2:01",
+    runtimeSec: 121,
+    url: `${BUCKET_BASE}/estimate-piwm.mp4${V}`,
   },
   {
     n: 6,
@@ -85,9 +89,9 @@ export const TRAINING_CLIPS: TrainingClip[] = [
     emoji: "✨",
     title: "Ask + the Field Guide",
     desc: "Ask the app anything in plain English, and lean on the Field Guide when a job gets tricky.",
-    runtime: "1:20",
-    runtimeSec: 80,
-    url: `${BUCKET_BASE}/ask-field-guide.mp4`,
+    runtime: "1:11",
+    runtimeSec: 71,
+    url: `${BUCKET_BASE}/ask-field-guide.mp4${V}`,
   },
   {
     n: 7,
@@ -95,9 +99,9 @@ export const TRAINING_CLIPS: TrainingClip[] = [
     emoji: "📷",
     title: "Receipts + photos",
     desc: "Snap receipts and job photos so costs land on the right job and your arrival shots protect you.",
-    runtime: "1:01",
-    runtimeSec: 61,
-    url: `${BUCKET_BASE}/receipts.mp4`,
+    runtime: "0:52",
+    runtimeSec: 52,
+    url: `${BUCKET_BASE}/receipts.mp4${V}`,
   },
 ];
 
