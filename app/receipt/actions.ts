@@ -75,10 +75,15 @@ export async function uploadReceipt(formData: FormData): Promise<UploadReceiptRe
     .insert({
       // The 6 NOT-NULL columns receipts_master requires — omitting these is what
       // failed every dashboard receipt with 23502 (audit 2026-06-12).
+      // source_file must be UNIQUE per submission: receipts_master_dedup_idx is
+      // UNIQUE(source_file, source_section, source_row_index), and the old
+      // static "dashboard:receipt" value let exactly ONE dashboard receipt ever
+      // exist — every later one 23505'd and the tech's receipt was lost
+      // (Landon, 2026-07-16). The photo path is unique per upload AND lineage.
       week_label: wk.label,
       week_start: wk.start,
       week_end: wk.end,
-      source_file: "dashboard:receipt",
+      source_file: `dashboard:${path}`,
       source_row_index: 0,
       source_section: "dashboard-receipt-page",
       source: "dashboard",
@@ -98,6 +103,9 @@ export async function uploadReceipt(formData: FormData): Promise<UploadReceiptRe
   if (insErr || !row) {
     // Don't leave the just-uploaded photo orphaned in the bucket if the row failed.
     await supabase.storage.from("job-photos").remove([path]).catch(() => {});
+    if ((insErr as { code?: string } | null)?.code === "23505") {
+      return { ok: false, error: "That receipt looks already logged (same photo). Check with the office before re-submitting." };
+    }
     return { ok: false, error: insErr?.message ?? "Insert failed" };
   }
 
@@ -161,10 +169,15 @@ export async function finalizeReceipt(input: {
     .insert({
       // The 6 NOT-NULL columns receipts_master requires — omitting these is what
       // failed every dashboard receipt with 23502 (audit 2026-06-12).
+      // source_file must be UNIQUE per submission: receipts_master_dedup_idx is
+      // UNIQUE(source_file, source_section, source_row_index), and the old
+      // static "dashboard:receipt" value let exactly ONE dashboard receipt ever
+      // exist — every later one 23505'd and the tech's receipt was lost
+      // (Landon, 2026-07-16). The photo path is unique per upload AND lineage.
       week_label: wk.label,
       week_start: wk.start,
       week_end: wk.end,
-      source_file: "dashboard:receipt",
+      source_file: `dashboard:${path}`,
       source_row_index: 0,
       source_section: "dashboard-receipt-page",
       source: "dashboard",
@@ -184,6 +197,9 @@ export async function finalizeReceipt(input: {
   if (insErr || !row) {
     // Don't leave the just-uploaded photo orphaned in the bucket if the row failed.
     await supabase.storage.from("job-photos").remove([path]).catch(() => {});
+    if ((insErr as { code?: string } | null)?.code === "23505") {
+      return { ok: false, error: "That receipt looks already logged (same photo). Check with the office before re-submitting." };
+    }
     return { ok: false, error: insErr?.message ?? "Insert failed" };
   }
 

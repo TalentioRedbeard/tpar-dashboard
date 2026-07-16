@@ -47,12 +47,21 @@ export async function logReceipt(formData: FormData): Promise<{ ok: true } | { o
     invoice_number: invoice,
     is_overhead: false,
     has_paper_receipt: false,
-    source_file: `dashboard:job/${jobId || invoice}`,
+    // Unique per submission — receipts_master_dedup_idx is UNIQUE(source_file,
+    // source_section, source_row_index); the old `dashboard:job/<id>` value
+    // capped each job at ONE logged receipt ever (same bug class as the
+    // /receipt page, fixed 2026-07-16).
+    source_file: `dashboard:job/${jobId || invoice}/${now.getTime()}`,
     source_row_index: 0,
     source_section: "dashboard-job-page",
     tech_name: me.tech?.tech_short_name ?? me.email,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    if ((error as { code?: string }).code === "23505") {
+      return { ok: false, error: "That receipt looks already logged for this job." };
+    }
+    return { ok: false, error: error.message };
+  }
   if (jobId) revalidatePath(`/job/${jobId}`);
   return { ok: true };
 }

@@ -1,5 +1,6 @@
 // Per-customer 360 view
 import { db } from "@/lib/supabase";
+import { assignedHasEmployee } from "@/lib/assigned-employees";
 import Link from "next/link";
 import { NoteForm } from "../../../components/NoteForm";
 import { QuickText } from "../../../components/QuickText";
@@ -52,17 +53,21 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
   // Tech scope auth: techs only see customers they've worked for (#130).
   // Admin/manager/production_manager bypass.
-  // Note: job_360.tech_primary_name + tech_all_names store FULL names
-  // (e.g., "Omar Fernandez"), not the short name.
+  // Rebased onto jobs_master + hcp_employee_id (2026-07-16, Landon's report):
+  // job_360 is a WINDOWED subset (~350 rows vs ~11k jobs), so the old
+  // name-match-in-360 gate denied techs most customers they'd legitimately
+  // worked for (Landon: 60 reachable vs 284 real). Same rebase the gallery
+  // needed; id-matching also kills the second-Chris name-collision class.
   if (me && me.dashboardRole === "tech" && me.tech) {
-    const techFullName = me.tech.hcp_full_name ?? me.tech.tech_short_name;
-    const { data: scope } = await supabase
-      .from("job_360")
-      .select("hcp_job_id")
+    const empId = me.tech.hcp_employee_id;
+    const { data: scopeJobs } = await supabase
+      .from("jobs_master")
+      .select("assigned_employees")
       .eq("hcp_customer_id", id)
-      .or(`tech_primary_name.eq.${techFullName},tech_all_names.cs.{${techFullName}}`)
-      .limit(1);
-    if (!scope || scope.length === 0) {
+      .limit(500);
+    const inScope = !!empId &&
+      (scopeJobs ?? []).some((j) => assignedHasEmployee(j.assigned_employees as string | null, empId));
+    if (!inScope) {
       return (
         <PageShell kicker="Customer" title="Outside your scope" backHref="/" backLabel="Today">
           <EmptyState
