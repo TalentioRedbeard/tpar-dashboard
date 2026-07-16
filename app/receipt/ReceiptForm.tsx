@@ -5,15 +5,25 @@ import { createReceiptUpload, finalizeReceipt } from "./actions";
 import { browserClient } from "@/lib/supabase-browser";
 import { AppGuide } from "../../components/AppGuide";
 
+// Non-job PO categories (SPEC_2026-07-16): the counter PO is sometimes a word.
+const CATEGORY_CHIPS = [
+  { token: "gas", label: "Gas", icon: "⛽" },
+  { token: "tools", label: "Tools", icon: "🔧" },
+  { token: "office", label: "Office", icon: "🏢" },
+  { token: "dining", label: "Dining", icon: "🍽" },
+  { token: "other", label: "Other", icon: "❓" },
+] as const;
+
 export function ReceiptForm({ techShortName, canWrite }: { techShortName: string; canWrite: boolean }) {
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [category, setCategory] = useState<string | null>(null); // overhead chip (mutually exclusive with job #)
   const [amount, setAmount] = useState("");
   const [vendor, setVendor] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ receipt_id: number; photo_url: string; amount: string; vendor: string; invoice: string; notes: string; localPreview: string | null } | null>(null);
+  const [success, setSuccess] = useState<{ receipt_id: number; photo_url: string; amount: string; vendor: string; invoice: string; category: string | null; notes: string; localPreview: string | null } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   if (!canWrite) {
@@ -28,7 +38,12 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
     // Prefer the local data-URL preview for instant render (no network roundtrip);
     // fall back to the public Supabase URL. Both should produce the same image.
     const inlineSrc = success.localPreview ?? success.photo_url;
-    const jobLabel = success.invoice ? `Job #${success.invoice}` : "Overhead";
+    const catChip = success.category ? CATEGORY_CHIPS.find((c) => c.token === success.category) : null;
+    const jobLabel = success.invoice
+      ? `Job #${success.invoice}`
+      : catChip
+        ? `Overhead — ${catChip.icon} ${catChip.label}`
+        : "(unassigned — office will sort it)";
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-6">
@@ -74,7 +89,7 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
           <button
             onClick={() => {
               setSuccess(null); setPhoto(null); setPhotoPreview(null);
-              setInvoiceNumber(""); setAmount(""); setVendor(""); setNotes("");
+              setInvoiceNumber(""); setCategory(null); setAmount(""); setVendor(""); setNotes("");
             }}
             className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
@@ -104,6 +119,7 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
         onSelect={(cand) => {
           if (cand.invoice_number) {
             setInvoiceNumber(cand.invoice_number);
+            setCategory(null);
             if (typeof document !== "undefined") {
               const el = document.querySelector('input[type="file"]') as HTMLElement | null;
               el?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -125,6 +141,7 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
             amount: amount.trim(),
             vendor: vendor.trim(),
             invoice: invoiceNumber.trim(),
+            category,
             notes: notes.trim(),
             localPreview: photoPreview,
           };
@@ -139,7 +156,7 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
                 .from("job-photos")
                 .uploadToSignedUrl(slot.path, slot.token, file, { contentType: file.type || "application/octet-stream" });
               if (upErr) { setError(`Upload failed: ${upErr.message}. Your receipt wasn't saved — try again.`); return; }
-              const res = await finalizeReceipt({ path: slot.path, invoice_number: invoiceNumber, amount, vendor, notes });
+              const res = await finalizeReceipt({ path: slot.path, invoice_number: invoiceNumber, amount, vendor, notes, category });
               if (res.ok) setSuccess({ receipt_id: res.receipt_id, photo_url: res.photo_url, ...snapshot });
               else setError(res.error);
             } catch (err) {
@@ -174,17 +191,45 @@ export function ReceiptForm({ techShortName, canWrite }: { techShortName: string
         ) : null}
       </section>
 
+      {/* Charge to — a job # OR one overhead chip, mutually exclusive (SPEC_2026-07-16).
+       *  Numeric keyboard stays: this field is ONLY ever a job/invoice number now. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-700">Invoice / job # (optional)</label>
+          <label className="mb-1 block text-sm font-medium text-neutral-700">Charge to — invoice / job # (optional)</label>
           <input
             type="text"
             value={invoiceNumber}
-            onChange={(e) => setInvoiceNumber(e.target.value)}
+            onChange={(e) => {
+              setInvoiceNumber(e.target.value);
+              if (e.target.value.trim()) setCategory(null);
+            }}
             placeholder="e.g., 27691201"
             inputMode="numeric"
             className="block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-neutral-500">or overhead:</span>
+            {CATEGORY_CHIPS.map((c) => {
+              const active = category === c.token;
+              return (
+                <button
+                  key={c.token}
+                  type="button"
+                  onClick={() => {
+                    if (active) { setCategory(null); return; }
+                    setCategory(c.token);
+                    setInvoiceNumber("");
+                  }}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${active ? "bg-brand-700 text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"}`}
+                >
+                  {c.icon} {c.label}
+                </button>
+              );
+            })}
+          </div>
+          {category === "other" ? (
+            <p className="mt-1 text-xs text-amber-700">A word in Notes helps the office sort “Other”.</p>
+          ) : null}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-neutral-700">Amount (optional)</label>

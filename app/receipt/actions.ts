@@ -29,6 +29,27 @@ export type UploadReceiptResult =
   | { ok: true; receipt_id: number; photo_url: string }
   | { ok: false; error: string };
 
+// Non-job PO categories (SPEC_2026-07-16_RECEIPT_PO_CATEGORIES): the counter
+// PO isn't always a job number — gas/tools/office/dining/other are first-class.
+// Category → is_overhead + raw_po token + checked overhead_category column.
+const OVERHEAD_CATEGORIES = new Set(["gas", "tools", "office", "dining", "other"]);
+
+function resolveChargeTo(
+  invoiceNumber: string | null,
+  category: string | null,
+):
+  | { ok: true; fields: { invoice_number: string | null; is_overhead: boolean; raw_po: string | null; overhead_category: string | null } }
+  | { ok: false; error: string } {
+  const cat = category?.trim().toLowerCase() || null;
+  if (cat && !OVERHEAD_CATEGORIES.has(cat)) return { ok: false, error: "Unknown overhead category." };
+  if (cat && invoiceNumber) return { ok: false, error: "Pick a job # OR an overhead category — not both." };
+  if (cat) {
+    return { ok: true, fields: { invoice_number: null, is_overhead: true, raw_po: cat, overhead_category: cat } };
+  }
+  // Job # or neither — unchanged behavior (blank stays legal; sorted later).
+  return { ok: true, fields: { invoice_number: invoiceNumber, is_overhead: false, raw_po: null, overhead_category: null } };
+}
+
 export async function uploadReceipt(formData: FormData): Promise<UploadReceiptResult> {
   const me = await getCurrentTech();
   if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
@@ -38,6 +59,8 @@ export async function uploadReceipt(formData: FormData): Promise<UploadReceiptRe
   const amountStr = (formData.get("amount") as string | null)?.trim() || null;
   const vendor = (formData.get("vendor") as string | null)?.trim() || null;
   const notes = (formData.get("notes") as string | null)?.trim() || null;
+  const chargeTo = resolveChargeTo(invoiceNumber, (formData.get("category") as string | null) ?? null);
+  if (!chargeTo.ok) return { ok: false, error: chargeTo.error };
 
   if (!photo || photo.size === 0) {
     return { ok: false, error: "Photo is required." };
@@ -90,7 +113,7 @@ export async function uploadReceipt(formData: FormData): Promise<UploadReceiptRe
       transaction_date: today,
       amount,
       vendor_description: vendor,
-      invoice_number: invoiceNumber,
+      ...chargeTo.fields,
       tech_name: me.tech?.tech_short_name ?? null,
       photo_url: publicUrl.publicUrl,
       notes,
@@ -141,6 +164,7 @@ export async function finalizeReceipt(input: {
   amount?: string | null;
   vendor?: string | null;
   notes?: string | null;
+  category?: string | null;
 }): Promise<UploadReceiptResult> {
   const me = await getCurrentTech();
   if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
@@ -148,6 +172,8 @@ export async function finalizeReceipt(input: {
   if (!path) return { ok: false, error: "Missing upload path." };
 
   const invoiceNumber = input.invoice_number?.trim() || null;
+  const chargeTo = resolveChargeTo(invoiceNumber, input.category ?? null);
+  if (!chargeTo.ok) return { ok: false, error: chargeTo.error };
   const amountStr = input.amount?.trim() || null;
   const vendor = input.vendor?.trim() || null;
   const notes = input.notes?.trim() || null;
@@ -184,7 +210,7 @@ export async function finalizeReceipt(input: {
       transaction_date: today,
       amount,
       vendor_description: vendor,
-      invoice_number: invoiceNumber,
+      ...chargeTo.fields,
       tech_name: me.tech?.tech_short_name ?? null,
       photo_url: publicUrl.publicUrl,
       notes,
