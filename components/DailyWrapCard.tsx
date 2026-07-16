@@ -167,8 +167,9 @@ export function DailyWrapCard({ tech, wrappedAt }: {
         ) : (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
+              {/* Danny's 3×2 frame (7/16): job / app / company × worked / frustrated / want. */}
               <p className="text-xs text-neutral-600">
-                How&apos;d the day go, what fought you, what should the app do better?
+                The job, the app, the company — what worked, what frustrated you, what do you want?
               </p>
             </div>
             <button

@@ -50,6 +50,43 @@ function resolveChargeTo(
   return { ok: true, fields: { invoice_number: invoiceNumber, is_overhead: false, raw_po: null, overhead_category: null } };
 }
 
+// B1 (2026-07-16): gas receipts carry vehicle_id + odometer_miles. Server-side
+// re-validation: only persisted when the resolved category is gas; vehicle must
+// be a real, active, shared vehicle; odometer a sane integer.
+async function resolveVehicleFields(
+  overheadCategory: string | null,
+  vehicleId: string | null | undefined,
+  odometerStr: string | null | undefined,
+): Promise<
+  | { ok: true; fields: { vehicle_id: string | null; odometer_miles: number | null } }
+  | { ok: false; error: string }
+> {
+  if (overheadCategory !== "gas") return { ok: true, fields: { vehicle_id: null, odometer_miles: null } };
+  let vehicle_id: string | null = null;
+  const vid = vehicleId?.trim() || null;
+  if (vid) {
+    const { data: v } = await db()
+      .from("vehicles_master")
+      .select("id")
+      .eq("id", vid)
+      .eq("is_active", true)
+      .eq("owner_only", false)
+      .maybeSingle();
+    if (!v) return { ok: false, error: "That vehicle isn't in the active fleet — pick one from the list." };
+    vehicle_id = vid;
+  }
+  let odometer_miles: number | null = null;
+  const os = odometerStr?.trim() || null;
+  if (os) {
+    const n = Math.round(Number(os.replace(/[^0-9.]/g, "")));
+    if (!Number.isFinite(n) || n < 0 || n >= 2_000_000) {
+      return { ok: false, error: "Odometer should be a mileage number (or leave it blank)." };
+    }
+    odometer_miles = n;
+  }
+  return { ok: true, fields: { vehicle_id, odometer_miles } };
+}
+
 export async function uploadReceipt(formData: FormData): Promise<UploadReceiptResult> {
   const me = await getCurrentTech();
   if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
@@ -114,6 +151,7 @@ export async function uploadReceipt(formData: FormData): Promise<UploadReceiptRe
       amount,
       vendor_description: vendor,
       ...chargeTo.fields,
+      // Legacy path takes no vehicle input; the live upload-first path does.
       tech_name: me.tech?.tech_short_name ?? null,
       photo_url: publicUrl.publicUrl,
       notes,
@@ -165,6 +203,8 @@ export async function finalizeReceipt(input: {
   vendor?: string | null;
   notes?: string | null;
   category?: string | null;
+  vehicle_id?: string | null;
+  odometer_miles?: string | null;
 }): Promise<UploadReceiptResult> {
   const me = await getCurrentTech();
   if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
@@ -174,6 +214,8 @@ export async function finalizeReceipt(input: {
   const invoiceNumber = input.invoice_number?.trim() || null;
   const chargeTo = resolveChargeTo(invoiceNumber, input.category ?? null);
   if (!chargeTo.ok) return { ok: false, error: chargeTo.error };
+  const vehicle = await resolveVehicleFields(chargeTo.fields.overhead_category, input.vehicle_id, input.odometer_miles);
+  if (!vehicle.ok) return { ok: false, error: vehicle.error };
   const amountStr = input.amount?.trim() || null;
   const vendor = input.vendor?.trim() || null;
   const notes = input.notes?.trim() || null;
@@ -211,6 +253,8 @@ export async function finalizeReceipt(input: {
       amount,
       vendor_description: vendor,
       ...chargeTo.fields,
+      // B1: gas-only vehicle/odometer tether (null for every other category).
+      ...vehicle.fields,
       tech_name: me.tech?.tech_short_name ?? null,
       photo_url: publicUrl.publicUrl,
       notes,

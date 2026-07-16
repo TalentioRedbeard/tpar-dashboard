@@ -10,6 +10,7 @@ import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { getCurrentTech } from "../../lib/current-tech";
+import { ScheduleRequests } from "./ScheduleRequests";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Manage · TPAR-DB" };
@@ -54,7 +55,7 @@ export default async function ManagePage() {
   const today = chiToday();
   const weekStart = chiWeekStartIso();
 
-  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes, flagRes, captureRes, ownerCtxRes, custCtxRes, dailyRevRes, staleRegRes] = await Promise.all([
+  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes, flagRes, captureRes, ownerCtxRes, custCtxRes, dailyRevRes, staleRegRes, schedReqRes] = await Promise.all([
     // Tile 1: today's board — jobs today vs techs clocked in.
     supa
       .from("appointments_master")
@@ -110,6 +111,13 @@ export default async function ManagePage() {
     supa.from("product_registrations").select("id, brand, model, created_at").eq("status", "pending")
       .lt("created_at", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
       .order("created_at", { ascending: true }).limit(20),
+    // B2: wrap-sourced schedule requests awaiting ack/decline (auto-created by
+    // tech-wrap-distill, assigned to the scheduler — this is their only surface).
+    supa.from("tasks").select("id, title, detail, assigned_to, created_at")
+      .eq("ref_kind", "wrap_schedule_request")
+      .in("status", ["open", "in_progress"])
+      .order("created_at", { ascending: true })
+      .limit(50),
   ]);
 
   const jobsToday = apptRes.count ?? 0;
@@ -127,6 +135,15 @@ export default async function ManagePage() {
   const openFlags = (flagRes.data ?? []) as Array<{ id: number; entity_label: string | null; entity_id: string; flag_type: string; created_by: string; created_at: string; status: string }>;
   const capture = captureRes.data as { state: string; minutes_since_last: number | null } | null;
   const staleRegs = (staleRegRes.data ?? []) as Array<{ id: number; brand: string | null; model: string | null; created_at: string }>;
+  const schedReqs = ((schedReqRes.data ?? []) as Array<{ id: string; title: string; detail: string | null; assigned_to: string | null; created_at: string }>)
+    .map((t) => ({
+      id: t.id,
+      title: t.title,
+      detail: t.detail,
+      assignedTo: t.assigned_to,
+      createdAt: t.created_at,
+      ageDays: Math.max(0, Math.floor((Date.now() - new Date(t.created_at).getTime()) / (24 * 60 * 60 * 1000))),
+    }));
   const ageOf = (iso: string | undefined | null) =>
     iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000))) : null;
   const backlogs = [
@@ -252,6 +269,10 @@ export default async function ManagePage() {
           </Link>
         ))}
       </section>
+
+      {/* B2: schedule requests sit ABOVE the exception rail — they're asks
+          with a person waiting, not anomalies. */}
+      <ScheduleRequests rows={schedReqs} />
 
       <section id="exceptions" className="mb-6">
         <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-600">
