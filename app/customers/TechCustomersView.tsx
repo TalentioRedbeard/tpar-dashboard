@@ -11,6 +11,7 @@ import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { assignedHasEmployee } from "@/lib/assigned-employees";
+import { TechCustomersList } from "./TechCustomersList";
 
 const CHI = "America/Chicago";
 
@@ -112,32 +113,19 @@ export async function TechCustomersView({ hcpEmployeeId, shortName }: { hcpEmplo
           No customers found for your work yet. <Link href="/schedule" className="underline">My schedule →</Link>
         </div>
       ) : (
-        <>
-          <div className="mb-3 text-xs text-neutral-500">{ids.length} customer{ids.length === 1 ? "" : "s"} from your work</div>
-          <ul className="space-y-2">
-            {ids.map((id) => {
-              const c = byId.get(id);
-              const name = c?.name ?? nameByCust.get(id) ?? "—";
-              const phone = fmtPhone(c?.phone_mobile10 ?? c?.phone10 ?? null);
-              const rawPhone = String(c?.phone_mobile10 ?? c?.phone10 ?? "").replace(/\D/g, "");
-              const n = apptCount.get(id) ?? 0;
-              const seen = lastSeen.get(id);
-              return (
-                <li key={id} className="flex items-start justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-3 py-2.5">
-                  <div className="min-w-0">
-                    <Link href={`/customer/${id}`} className="truncate text-sm font-medium text-neutral-900 hover:underline">{name}</Link>
-                    <div className="mt-0.5 text-xs text-neutral-500">
-                      {n > 0 ? `${n} appointment${n === 1 ? "" : "s"} with you` : "from your job history"}{seen ? ` · latest ${fmtDay(seen)}` : ""}
-                    </div>
-                  </div>
-                  {phone ? (
-                    <a href={`tel:${rawPhone}`} className="shrink-0 whitespace-nowrap rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-neutral-50">📞 {phone}</a>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </>
+        <TechCustomersList
+          rows={ids.map((id) => {
+            const c = byId.get(id);
+            return {
+              id,
+              name: c?.name ?? nameByCust.get(id) ?? "—",
+              phone: fmtPhone(c?.phone_mobile10 ?? c?.phone10 ?? null),
+              rawPhone: String(c?.phone_mobile10 ?? c?.phone10 ?? "").replace(/\D/g, ""),
+              apptCount: apptCount.get(id) ?? 0,
+              lastSeen: lastSeen.get(id) ?? null,
+            };
+          })}
+        />
       )}
     </PageShell>
   );
