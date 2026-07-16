@@ -9,7 +9,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  markRegistered, markNotNeeded,
+  markRegistered, markNotNeeded, setOneKeyRegistered,
   type PendingRegistration, type Manufacturer, type TparCompany,
 } from "@/lib/registration-actions";
 
@@ -70,23 +70,40 @@ export function PendingRegistrations({
     });
   };
 
-  // The manufacturer's field order (the Bosch card is the template).
-  const payloadFields = (r: PendingRegistration): Array<[string, string | null]> => [
-    ["Install date", r.install_date],
-    ["Start-up date", r.startup_date],
-    ["Model", r.model],
-    ["Serial number", r.serial_number],
-    ["Energy type", r.energy_type],
-    ["Installer name", r.installed_by],
-    ["Customer name", r.customer_name],
-    ["Customer address", r.job_address],
-    ["Company name", company.name],
-    ["Company address", company.address],
-    ["City", company.city],
-    ["State", company.state],
-    ["ZIP", company.zip],
-    ["Company phone", company.phone],
-  ];
+  // The manufacturer's field order (the Bosch card is the template). Company
+  // tools (B4) drop the customer/date fields and carry owner/One-Key instead —
+  // the registered owner IS the company.
+  const payloadFields = (r: PendingRegistration): Array<[string, string | null]> =>
+    r.kind === "company_tool"
+      ? [
+          ["Model", r.model],
+          ["Serial number", r.serial_number],
+          ["Assigned to", r.assigned_to ?? "shop / shared"],
+          ["Logged by", r.installed_by],
+          ["One-Key", r.one_key_registered ? "registered" : "NOT registered"],
+          ["Company name", company.name],
+          ["Company address", company.address],
+          ["City", company.city],
+          ["State", company.state],
+          ["ZIP", company.zip],
+          ["Company phone", company.phone],
+        ]
+      : [
+          ["Install date", r.install_date],
+          ["Start-up date", r.startup_date],
+          ["Model", r.model],
+          ["Serial number", r.serial_number],
+          ["Energy type", r.energy_type],
+          ["Installer name", r.installed_by],
+          ["Customer name", r.customer_name],
+          ["Customer address", r.job_address],
+          ["Company name", company.name],
+          ["Company address", company.address],
+          ["City", company.city],
+          ["State", company.state],
+          ["ZIP", company.zip],
+          ["Company phone", company.phone],
+        ];
 
   if (rows.length === 0) {
     return <p className="text-sm text-neutral-500">Nothing pending — every logged product is registered or closed.</p>;
@@ -119,7 +136,14 @@ export function PendingRegistrations({
                       className="flex w-full items-center justify-between gap-3 text-left">
                       <span className="min-w-0 truncate">
                         <span className="font-medium text-navy-900">{r.model ?? "model?"}</span>
-                        {" · "}{r.customer_name ?? (r.hcp_job_id ? r.hcp_job_id : <span className="rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800">no job tether</span>)}
+                        {r.kind === "company_tool" ? (
+                          <>
+                            {" "}<span className="rounded bg-brand-100 px-1.5 text-xs font-medium text-brand-800">🧰 tool · {r.assigned_to ?? "shop"}</span>
+                            {r.one_key_registered === false ? <span className="ml-1 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800">One-Key ✗</span> : null}
+                          </>
+                        ) : (
+                          <>{" · "}{r.customer_name ?? (r.hcp_job_id ? r.hcp_job_id : <span className="rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800">no job tether</span>)}</>
+                        )}
                         {r.installed_by ? ` · ${r.installed_by}` : ""}
                       </span>
                       <span className={`shrink-0 text-xs ${ageDays(r.created_at) > 14 ? "font-semibold text-red-700" : "text-neutral-500"}`}>
@@ -153,6 +177,14 @@ export function PendingRegistrations({
                             className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">
                             ✓ Mark registered
                           </button>
+                          {r.kind === "company_tool" && !r.one_key_registered ? (
+                            // One-Key ≠ warranty registration — separate verb by design.
+                            <button type="button" disabled={pending}
+                              onClick={() => act(() => setOneKeyRegistered({ id: r.id, value: true }))}
+                              className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-50">
+                              🔑 One-Key done
+                            </button>
+                          ) : null}
                           <input value={why} onChange={(e) => setWhy(e.target.value)}
                             placeholder="why not needed?"
                             className="w-40 rounded-md border border-neutral-300 px-2.5 py-1.5 text-xs" />

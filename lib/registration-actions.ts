@@ -32,6 +32,9 @@ export async function tparCompany(): Promise<TparCompany> { return TPAR_COMPANY;
 export type Manufacturer = { brand: string; url: string; phone: string };
 const MANUFACTURERS: Manufacturer[] = [
   { brand: "Bosch", url: "https://www.boschprohvac.com/register", phone: "1-800-283-3787" },
+  // B4: company tools — One-Key is Milwaukee's tracking platform; warranty
+  // registration is separate (both live behind the same login).
+  { brand: "Milwaukee", url: "https://onekey.milwaukeetool.com", phone: "1-800-729-3878" },
 ];
 export async function manufacturerRegistry(): Promise<Manufacturer[]> { return MANUFACTURERS; }
 export async function manufacturerFor(brand: string | null): Promise<Manufacturer | null> {
@@ -136,6 +139,7 @@ export async function tetherJob(input: { invoiceOrJobId: string }): Promise<
 // ── Save: the row + auto-notes on BOTH profiles ──────────────────────────────
 export async function saveRegistration(input: {
   photoPath: string | null;
+  kind?: "customer_product" | "company_tool";
   hcpJobId?: string | null;
   hcpCustomerId?: string | null;
   brand?: string | null;
@@ -144,6 +148,8 @@ export async function saveRegistration(input: {
   energyType?: string | null;
   installDate?: string | null;
   startupDate?: string | null;
+  assignedTo?: string | null;         // company_tool only
+  oneKeyRegistered?: boolean | null;  // company_tool only
   notes?: string | null;
   extracted?: unknown;
 }): Promise<{ ok: true; id: number; noted: boolean } | { ok: false; error: string }> {
@@ -151,6 +157,8 @@ export async function saveRegistration(input: {
   if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
   const supa = db();
 
+  const kind = input.kind === "company_tool" ? "company_tool" : "customer_product";
+  const isTool = kind === "company_tool";
   const energy = input.energyType && ENERGY_TYPES.has(input.energyType) ? input.energyType : null;
   const photoUrl = input.photoPath
     ? supa.storage.from("job-photos").getPublicUrl(input.photoPath).data.publicUrl
@@ -160,14 +168,19 @@ export async function saveRegistration(input: {
   const { data: row, error } = await supa
     .from("product_registrations")
     .insert({
-      hcp_job_id: input.hcpJobId?.trim() || null,
-      hcp_customer_id: input.hcpCustomerId?.trim() || null,
+      kind,
+      // Company tools never tether to customer work — even if a job id sneaks
+      // in (bought FOR a job), the tool is ours, not the customer's record.
+      hcp_job_id: isTool ? null : input.hcpJobId?.trim() || null,
+      hcp_customer_id: isTool ? null : input.hcpCustomerId?.trim() || null,
       brand: input.brand?.trim() || null,
       model: input.model?.trim() || null,
       serial_number: input.serialNumber?.trim() || null,
-      energy_type: energy,
-      install_date: input.installDate || null,
-      startup_date: input.startupDate || input.installDate || null,
+      energy_type: isTool ? null : energy,
+      install_date: isTool ? null : input.installDate || null,
+      startup_date: isTool ? null : input.startupDate || input.installDate || null,
+      assigned_to: isTool ? input.assignedTo?.trim() || null : null,
+      one_key_registered: isTool ? input.oneKeyRegistered ?? false : null,
       installed_by: installedBy,
       photo_url: photoUrl,
       extracted: input.extracted ?? null,
@@ -182,8 +195,10 @@ export async function saveRegistration(input: {
   // people already open years later). Direct inserts with the same shape
   // notes-actions uses: requireWriter would refuse managers, but this is
   // operational capture (the receipts manager carve-out class, 2026-06-18).
+  // Gated on kind, not just presence of ids: a company tool must NEVER note a
+  // customer profile.
   let noted = false;
-  if (input.hcpJobId?.trim() || input.hcpCustomerId?.trim()) {
+  if (!isTool && (input.hcpJobId?.trim() || input.hcpCustomerId?.trim())) {
     const body =
       `🏷️ Product installed: ${input.brand ?? "unknown brand"} ${input.model ?? ""}`.trim() +
       `${input.serialNumber ? `, serial ${input.serialNumber}` : ""}` +
@@ -209,8 +224,10 @@ export async function saveRegistration(input: {
 // ── Batch (leadership): pending list + verbs ─────────────────────────────────
 export type PendingRegistration = {
   id: number; hcp_job_id: string | null; hcp_customer_id: string | null;
+  kind: "customer_product" | "company_tool";
   brand: string | null; model: string | null; serial_number: string | null;
   energy_type: string | null; install_date: string | null; startup_date: string | null;
+  assigned_to: string | null; one_key_registered: boolean | null;
   installed_by: string | null; photo_url: string | null; notes: string | null;
   customer_name: string | null; job_address: string | null; created_at: string;
 };
@@ -224,7 +241,7 @@ export async function listPendingRegistrations(): Promise<
   const supa = db();
   const { data, error } = await supa
     .from("product_registrations")
-    .select("id, hcp_job_id, hcp_customer_id, brand, model, serial_number, energy_type, install_date, startup_date, installed_by, photo_url, notes, created_at")
+    .select("id, hcp_job_id, hcp_customer_id, kind, brand, model, serial_number, energy_type, install_date, startup_date, assigned_to, one_key_registered, installed_by, photo_url, notes, created_at")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
     .limit(200);
@@ -296,6 +313,22 @@ export async function markRegistered(input: { id: number; confirmationRef?: stri
     `Registration ✅ ${new Date().toISOString().slice(0, 10)}${input.confirmationRef?.trim() ? ` (conf: ${input.confirmationRef.trim()})` : ""}`,
     gate.email,
   );
+  revalidatePath("/shopping");
+  return { ok: true };
+}
+
+// B4: One-Key (Milwaukee tracking) is a SEPARATE state from manufacturer
+// warranty registration — folding it into markRegistered would lose the
+// saw-died-unregistered lesson. Management-gated like the other batch verbs.
+export async function setOneKeyRegistered(input: { id: number; value: boolean }): Promise<{ ok: boolean; error?: string }> {
+  const gate = await requireManagement();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { error } = await db()
+    .from("product_registrations")
+    .update({ one_key_registered: input.value, updated_at: new Date().toISOString() })
+    .eq("id", input.id)
+    .eq("kind", "company_tool");
+  if (error) return { ok: false, error: error.message };
   revalidatePath("/shopping");
   return { ok: true };
 }

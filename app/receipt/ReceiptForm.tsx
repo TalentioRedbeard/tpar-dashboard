@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createReceiptUpload, finalizeReceipt } from "./actions";
+import { createReceiptUpload, finalizeReceipt, probeReceiptExtraction } from "./actions";
 import { browserClient } from "@/lib/supabase-browser";
 import { AppGuide } from "../../components/AppGuide";
 
@@ -36,6 +36,12 @@ export function ReceiptForm({
 }) {
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  // B5 OCR-at-snap: the photo uploads the moment it's picked (upload-first
+  // still — browser → Storage direct) so the vision probe can prefill
+  // amount/vendor while the tech is still standing at the counter.
+  const [uploadedPath, setUploadedPath] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+  const [prefilled, setPrefilled] = useState<string[]>([]);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [category, setCategory] = useState<string | null>(null); // overhead chip (mutually exclusive with job #)
   const [amount, setAmount] = useState("");
@@ -116,6 +122,7 @@ export function ReceiptForm({
               setSuccess(null); setPhoto(null); setPhotoPreview(null);
               setInvoiceNumber(""); setCategory(null); setAmount(""); setVendor(""); setNotes("");
               setVehicleId(""); setOdometer(""); setOdometerEdited(false);
+              setUploadedPath(null); setPrefilled([]);
             }}
             className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
@@ -173,17 +180,22 @@ export function ReceiptForm({
           };
           startTransition(async () => {
             try {
-              // Upload-first: PUT the photo straight to Storage (no Vercel body cap),
-              // then record the receipts_master row.
-              const slot = await createReceiptUpload({ filename: file.name });
-              if (!slot.ok) { setError(slot.error); return; }
-              const supa = browserClient();
-              const { error: upErr } = await supa.storage
-                .from("job-photos")
-                .uploadToSignedUrl(slot.path, slot.token, file, { contentType: file.type || "application/octet-stream" });
-              if (upErr) { setError(`Upload failed: ${upErr.message}. Your receipt wasn't saved — try again.`); return; }
+              // Upload-first: the snap handler usually uploaded already (B5) —
+              // reuse that path; otherwise PUT straight to Storage now (no
+              // Vercel body cap), then record the receipts_master row.
+              let path = uploadedPath;
+              if (!path) {
+                const slot = await createReceiptUpload({ filename: file.name });
+                if (!slot.ok) { setError(slot.error); return; }
+                const supa = browserClient();
+                const { error: upErr } = await supa.storage
+                  .from("job-photos")
+                  .uploadToSignedUrl(slot.path, slot.token, file, { contentType: file.type || "application/octet-stream" });
+                if (upErr) { setError(`Upload failed: ${upErr.message}. Your receipt wasn't saved — try again.`); return; }
+                path = slot.path;
+              }
               const res = await finalizeReceipt({
-                path: slot.path,
+                path,
                 invoice_number: invoiceNumber,
                 amount,
                 vendor,
@@ -211,16 +223,57 @@ export function ReceiptForm({
           onChange={(e) => {
             const f = e.target.files?.[0] ?? null;
             setPhoto(f);
-            if (f) {
-              const reader = new FileReader();
-              reader.onload = () => setPhotoPreview(reader.result as string);
-              reader.readAsDataURL(f);
-            } else {
-              setPhotoPreview(null);
-            }
+            setUploadedPath(null);
+            setPrefilled([]);
+            if (!f) { setPhotoPreview(null); return; }
+            const reader = new FileReader();
+            reader.onload = () => setPhotoPreview(reader.result as string);
+            reader.readAsDataURL(f);
+            // B5: upload NOW (browser → Storage direct), then probe the vision
+            // lane and prefill still-empty fields. Any failure falls back to
+            // the plain manual flow silently — never block the tech.
+            void (async () => {
+              setReading(true);
+              try {
+                const slot = await createReceiptUpload({ filename: f.name });
+                if (!slot.ok) return;
+                const supa = browserClient();
+                const { error: upErr } = await supa.storage
+                  .from("job-photos")
+                  .uploadToSignedUrl(slot.path, slot.token, f, { contentType: f.type || "application/octet-stream" });
+                if (upErr) return;
+                setUploadedPath(slot.path);
+                const probe = await probeReceiptExtraction({ path: slot.path });
+                if (!probe.ok || !probe.probe.is_receipt) return;
+                // Only into EMPTY fields — never clobber what the tech typed
+                // during the read. Set-based flag stays idempotent under
+                // StrictMode's double-invoked updaters; the timeout reads it
+                // after React flushes them.
+                const filled = new Set<string>();
+                setAmount((cur) => {
+                  if (cur.trim() || probe.probe.total == null) return cur;
+                  filled.add("amount");
+                  return probe.probe.total.toFixed(2);
+                });
+                setVendor((cur) => {
+                  if (cur.trim() || !probe.probe.vendor) return cur;
+                  filled.add("vendor");
+                  return probe.probe.vendor;
+                });
+                setTimeout(() => { if (filled.size) setPrefilled([...filled]); }, 0);
+              } finally {
+                setReading(false);
+              }
+            })();
           }}
           className="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-brand-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700"
         />
+        {reading ? <p className="mt-1 text-xs text-brand-700">📖 Reading the receipt…</p> : null}
+        {prefilled.length > 0 && !reading ? (
+          <p className="mt-1 text-xs text-neutral-500">
+            Auto-read from the photo ({prefilled.join(" + ")}) — check it before you submit.
+          </p>
+        ) : null}
         {photoPreview ? (
           <img src={photoPreview} alt="receipt preview" className="mt-3 max-h-64 rounded-2xl border border-neutral-200 object-contain" />
         ) : null}

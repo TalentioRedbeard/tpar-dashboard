@@ -4,6 +4,7 @@
 
 import { redirect } from "next/navigation";
 import { getCurrentTech } from "@/lib/current-tech";
+import { db } from "@/lib/supabase";
 import { PageShell } from "@/components/PageShell";
 import { Section } from "@/components/ui/Section";
 import { Pill } from "@/components/ui/Pill";
@@ -122,13 +123,16 @@ export default async function ShoppingPage({
   ]);
 
   // Product registration data (SPEC_2026-07-16): pending batch is leadership;
-  // the registry/company constants ride along for the copy panel.
-  const [pendingRes, mfrRegistry, company] = await Promise.all([
+  // the registry/company constants ride along for the copy panel. Tech roster
+  // feeds the tool-mode "assigned to" picker (B4 — display labels, not scope).
+  const [pendingRes, mfrRegistry, company, rosterRes] = await Promise.all([
     me.isAdmin || me.isManager ? listPendingRegistrations() : Promise.resolve(null),
     manufacturerRegistry(),
     tparCompany(),
+    db().from("tech_directory").select("tech_short_name").eq("is_active", true).order("tech_short_name"),
   ]);
   const pendingRegs: PendingRegistration[] = pendingRes && pendingRes.ok ? pendingRes.rows : [];
+  const techNames = ((rosterRes.data ?? []) as Array<{ tech_short_name: string }>).map((t) => t.tech_short_name);
 
   // Load any existing research results for the open needs (parallel)
   const researchByNeedId = new Map<string, ResearchResult[]>();
@@ -266,10 +270,10 @@ export default async function ShoppingPage({
       {me.canWrite || me.isManager ? (
         <>
           <Section
-            title="📋 Register a product"
-            description="Installed a unit? Snap the plate or registration card — the job tether fills the rest. The office registers it with the manufacturer in the weekly batch."
+            title="📋 Register a product or tool"
+            description="Installed a unit or bought a tool? Snap the plate — for customer products the job tether fills the rest; for company tools just say whose it is. The office registers everything in the weekly batch."
           >
-            <RegisterProductForm techShortName={me.tech?.tech_short_name ?? ""} />
+            <RegisterProductForm techShortName={me.tech?.tech_short_name ?? ""} techNames={techNames} />
           </Section>
           <div className="my-6" />
         </>

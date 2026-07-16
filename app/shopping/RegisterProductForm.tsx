@@ -16,7 +16,15 @@ import {
 
 const ENERGY_OPTIONS = ["", "NG", "LP", "Oil", "Electric"] as const;
 
-export function RegisterProductForm({ techShortName }: { techShortName: string }) {
+export function RegisterProductForm({ techShortName, techNames = [] }: { techShortName: string; techNames?: string[] }) {
+  // B4: the same capture flow also logs COMPANY TOOLS (the Milwaukee saw died
+  // unregistered because registering was one more thing — "later at a desk"
+  // is the entire fix). Tool mode drops the customer/job tether + dates and
+  // adds assigned-to + One-Key.
+  const [kind, setKind] = useState<"customer_product" | "company_tool">("customer_product");
+  const isTool = kind === "company_tool";
+  const [assignedTo, setAssignedTo] = useState("");
+  const [oneKey, setOneKey] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
@@ -88,24 +96,36 @@ export function RegisterProductForm({ techShortName }: { techShortName: string }
     setPhoto(null); setPhotoPreview(null); setPhotoPath(null); setExtract(null);
     setJobQuery(""); setTether(null); setBrand(""); setModel(""); setSerial("");
     setEnergy(""); setInstallDate(""); setStartupDate(""); setNotes("");
+    setAssignedTo(""); setOneKey(false);
     setError(null); setSuccess(null);
   }
 
   if (success) {
     return (
       <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-5">
-        <h3 className="text-lg font-bold text-emerald-900">✅ Product logged — registration pending</h3>
+        <h3 className="text-lg font-bold text-emerald-900">
+          {isTool ? "✅ Tool logged — registration pending" : "✅ Product logged — registration pending"}
+        </h3>
         <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-emerald-900 sm:max-w-md">
-          <dt className="font-medium">Product</dt><dd>{brand} {model}</dd>
+          <dt className="font-medium">{isTool ? "Tool" : "Product"}</dt><dd>{brand} {model}</dd>
           <dt className="font-medium">Serial</dt><dd>{serial || "—"}</dd>
-          <dt className="font-medium">Job</dt><dd>{tether ? `${tether.customer_name ?? tether.hcp_job_id}` : "no job tether"}</dd>
-          <dt className="font-medium">Noted on profiles</dt>
-          <dd>{tether ? (success.noted ? "customer + job ✓" : "⚠️ note failed — tell the office") : "n/a (no job)"}</dd>
+          {isTool ? (
+            <>
+              <dt className="font-medium">Assigned to</dt><dd>{assignedTo || "shop"}</dd>
+              <dt className="font-medium">One-Key</dt><dd>{oneKey ? "registered ✓" : "not yet — office handles it"}</dd>
+            </>
+          ) : (
+            <>
+              <dt className="font-medium">Job</dt><dd>{tether ? `${tether.customer_name ?? tether.hcp_job_id}` : "no job tether"}</dd>
+              <dt className="font-medium">Noted on profiles</dt>
+              <dd>{tether ? (success.noted ? "customer + job ✓" : "⚠️ note failed — tell the office") : "n/a (no job)"}</dd>
+            </>
+          )}
         </dl>
         <p className="mt-2 text-xs text-emerald-800">The office registers it with the manufacturer in the weekly batch below.</p>
         <button type="button" onClick={reset}
           className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">
-          Log another product
+          Log another
         </button>
       </div>
     );
@@ -113,6 +133,17 @@ export function RegisterProductForm({ techShortName }: { techShortName: string }
 
   return (
     <div className="space-y-4">
+      {/* Kind toggle: customer product (warranty for them) vs company tool
+          (warranty + One-Key for us). */}
+      <div className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-sm sm:max-w-sm">
+        {([["customer_product", "🏠 Customer product"], ["company_tool", "🧰 Company tool"]] as const).map(([k, label]) => (
+          <button key={k} type="button" onClick={() => setKind(k)}
+            className={`flex-1 rounded-md px-3 py-1.5 font-medium transition ${kind === k ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-900">{error}</div> : null}
 
       <div>
@@ -131,30 +162,48 @@ export function RegisterProductForm({ techShortName }: { techShortName: string }
         {photoPreview ? <img src={photoPreview} alt="plate preview" className="mt-2 max-h-48 rounded-xl border border-neutral-200 object-contain" /> : null}
       </div>
 
-      <AppGuide
-        label="Which job was this installed on?"
-        placeholder='"trotzuk" / "1342 east 25th" / "current" / leave empty for today'
-        actions={["use"]}
-        compact
-        showAmbient={false}
-        onSelect={(cand) => { if (cand.invoice_number) void pickJob(cand.invoice_number); }}
-      />
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <input
-          type="text" value={jobQuery} inputMode="numeric"
-          onChange={(e) => setJobQuery(e.target.value)}
-          onBlur={() => { if (jobQuery.trim()) void pickJob(jobQuery); }}
-          placeholder="or type invoice / job #"
-          className="w-44 rounded-md border border-neutral-300 px-3 py-2"
-        />
-        {tether ? (
-          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800">
-            ⛓ {tether.customer_name ?? tether.hcp_job_id}{tether.address ? ` · ${tether.address}` : ""}
-          </span>
-        ) : (
-          <span className="text-xs text-neutral-500">no job tether — dates/customer won&apos;t auto-fill</span>
-        )}
-      </div>
+      {!isTool ? (
+        <>
+          <AppGuide
+            label="Which job was this installed on?"
+            placeholder='"trotzuk" / "1342 east 25th" / "current" / leave empty for today'
+            actions={["use"]}
+            compact
+            showAmbient={false}
+            onSelect={(cand) => { if (cand.invoice_number) void pickJob(cand.invoice_number); }}
+          />
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <input
+              type="text" value={jobQuery} inputMode="numeric"
+              onChange={(e) => setJobQuery(e.target.value)}
+              onBlur={() => { if (jobQuery.trim()) void pickJob(jobQuery); }}
+              placeholder="or type invoice / job #"
+              className="w-44 rounded-md border border-neutral-300 px-3 py-2"
+            />
+            {tether ? (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800">
+                ⛓ {tether.customer_name ?? tether.hcp_job_id}{tether.address ? ` · ${tether.address}` : ""}
+              </span>
+            ) : (
+              <span className="text-xs text-neutral-500">no job tether — dates/customer won&apos;t auto-fill</span>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+          <label className="block text-sm">
+            <span className="mb-1 block text-neutral-600">Assigned to</span>
+            <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2">
+              <option value="">— shop / shared —</option>
+              {techNames.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+          <label className="flex items-end gap-2 pb-2 text-sm text-neutral-700">
+            <input type="checkbox" checked={oneKey} onChange={(e) => setOneKey(e.target.checked)} className="h-4 w-4" />
+            Already in One-Key
+          </label>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <label className="block text-sm">
@@ -169,20 +218,24 @@ export function RegisterProductForm({ techShortName }: { techShortName: string }
           <span className="mb-1 block text-neutral-600">Serial #</span>
           <input value={serial} onChange={(e) => setSerial(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2" />
         </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-neutral-600">Energy</span>
-          <select value={energy} onChange={(e) => setEnergy(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2">
-            {ENERGY_OPTIONS.map((o) => <option key={o} value={o}>{o || "—"}</option>)}
-          </select>
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-neutral-600">Install date</span>
-          <input type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2" />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-neutral-600">Start-up date</span>
-          <input type="date" value={startupDate} onChange={(e) => setStartupDate(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2" />
-        </label>
+        {!isTool ? (
+          <>
+            <label className="block text-sm">
+              <span className="mb-1 block text-neutral-600">Energy</span>
+              <select value={energy} onChange={(e) => setEnergy(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2">
+                {ENERGY_OPTIONS.map((o) => <option key={o} value={o}>{o || "—"}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-neutral-600">Install date</span>
+              <input type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2" />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-neutral-600">Start-up date</span>
+              <input type="date" value={startupDate} onChange={(e) => setStartupDate(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2" />
+            </label>
+          </>
+        ) : null}
       </div>
       <label className="block text-sm">
         <span className="mb-1 block text-neutral-600">Notes (optional)</span>
@@ -198,10 +251,13 @@ export function RegisterProductForm({ techShortName }: { techShortName: string }
           startTransition(async () => {
             const r = await saveRegistration({
               photoPath,
-              hcpJobId: tether?.hcp_job_id ?? null,
-              hcpCustomerId: tether?.hcp_customer_id ?? null,
-              brand, model, serialNumber: serial, energyType: energy || null,
-              installDate: installDate || null, startupDate: startupDate || null,
+              kind,
+              hcpJobId: isTool ? null : tether?.hcp_job_id ?? null,
+              hcpCustomerId: isTool ? null : tether?.hcp_customer_id ?? null,
+              brand, model, serialNumber: serial, energyType: isTool ? null : energy || null,
+              installDate: isTool ? null : installDate || null, startupDate: isTool ? null : startupDate || null,
+              assignedTo: isTool ? assignedTo || null : null,
+              oneKeyRegistered: isTool ? oneKey : null,
               notes: notes || null, extracted: extract,
             });
             if (r.ok) setSuccess({ id: r.id, noted: r.noted });
@@ -210,7 +266,7 @@ export function RegisterProductForm({ techShortName }: { techShortName: string }
         }}
         className="rounded-md bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-50"
       >
-        {isPending ? "Saving…" : `📋 Log product${techShortName ? ` as ${techShortName}` : ""}`}
+        {isPending ? "Saving…" : `📋 Log ${isTool ? "tool" : "product"}${techShortName ? ` as ${techShortName}` : ""}`}
       </button>
     </div>
   );

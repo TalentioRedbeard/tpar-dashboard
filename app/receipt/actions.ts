@@ -9,6 +9,7 @@
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 // Mon–Sun week containing `now`. receipts_master requires week_label/week_start/
 // week_end + source_file/source_row_index/source_section (all NOT NULL, no
@@ -196,6 +197,59 @@ export async function createReceiptUpload(input: { filename?: string }): Promise
   return { ok: true, path: signed.path ?? path, token: signed.token };
 }
 
+// ── B5: OCR-at-snap (2026-07-16) ─────────────────────────────────────────────
+// Probe the vision lane the moment the photo uploads and prefill amount/vendor
+// (editable). label-photo's probe:true mode extracts WITHOUT a receipt_id and
+// writes nothing — the authority extraction still runs at finalize (below).
+export type ReceiptProbe = {
+  vendor: string | null;
+  total: number | null;      // dollars
+  date: string | null;
+  confidence: string | null;
+  is_receipt: boolean;
+};
+
+export async function probeReceiptExtraction(input: { path: string }): Promise<
+  | { ok: true; probe: ReceiptProbe }
+  | { ok: false; error: string }
+> {
+  const me = await getCurrentTech();
+  if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
+  const path = String(input.path ?? "").trim();
+  if (!path) return { ok: false, error: "Missing upload path." };
+  const { data: pub } = db().storage.from("job-photos").getPublicUrl(path);
+  let r: Response;
+  try {
+    r = await fetch(`${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/label-photo`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ kind: "receipt", probe: true, url: pub.publicUrl }),
+      signal: AbortSignal.timeout(45_000),
+    });
+  } catch (e) {
+    return { ok: false, error: `probe failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  const j = await r.json().catch(() => null) as {
+    ok?: boolean; error?: string;
+    vendor?: string | null; total?: number | null; date?: string | null;
+    confidence?: string | null; is_receipt?: boolean;
+  } | null;
+  if (!r.ok || !j?.ok) return { ok: false, error: j?.error ?? `probe failed (${r.status})` };
+  return {
+    ok: true,
+    probe: {
+      vendor: j.vendor ?? null,
+      total: typeof j.total === "number" && Number.isFinite(j.total) ? j.total : null,
+      date: j.date ?? null,
+      confidence: j.confidence ?? null,
+      is_receipt: j.is_receipt !== false,
+    },
+  };
+}
+
 export async function finalizeReceipt(input: {
   path: string;
   invoice_number?: string | null;
@@ -273,6 +327,29 @@ export async function finalizeReceipt(input: {
     return { ok: false, error: insErr?.message ?? "Insert failed" };
   }
 
+  // B5: the AUTHORITY extraction — writes receipt_extractions with
+  // vendor_match/total_match. The dashboard lane had 0 extractions ever
+  // (RECEIPTS_CATALOG_STATE 7/07: "no extraction trigger exists on this
+  // path"); slack-receipt + pull-receipt-emails already fire theirs inline.
+  // after() so it never races the revalidate (the 2026-06-17 incident class).
+  const receiptId = row.id as number;
+  const photoPublicUrl = publicUrl.publicUrl;
+  after(async () => {
+    try {
+      await fetch(`${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/label-photo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({ kind: "receipt", receipt_id: receiptId, url: photoPublicUrl }),
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch {
+      // Guide surface, never load-bearing — the receipt row is already saved.
+    }
+  });
+
   revalidatePath("/receipt");
-  return { ok: true, receipt_id: row.id as number, photo_url: publicUrl.publicUrl };
+  return { ok: true, receipt_id: receiptId, photo_url: photoPublicUrl };
 }
