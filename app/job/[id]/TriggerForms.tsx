@@ -16,6 +16,7 @@ import {
 import { markBriefingReviewed, type Briefing } from "./briefing-actions";
 import { getOpenJobForTech, type OpenJob } from "@/lib/omw-guard-actions";
 import { OmwGuardModal } from "@/components/OmwGuardModal";
+import { OnSiteElapsedChip } from "@/components/OnSiteElapsedChip";
 
 const DISPOSITION_OPTIONS: Array<{ value: CustomerDisposition; label: string; emoji: string }> = [
   { value: "approved_now",       label: "Approved — pay now",      emoji: "✅" },
@@ -70,15 +71,30 @@ export function TriggerForms({
   const [lightPending, setLightPending] = useState<number | null>(null);
   const [lightError, setLightError] = useState<string | null>(null);
   const [, startLight] = useTransition();
+  // On-site elapsed chip: seed from the latest stored Start event (prefer a
+  // real press over hcp_derived rows when both exist), set optimistically the
+  // instant Start is tapped so the press visibly "took".
+  const storedStartAt = (() => {
+    const starts = firedTriggers.filter((t) => t.trigger_number === 3);
+    if (starts.length === 0) return null;
+    const pressed = starts.filter((t) => t.origin !== "hcp_derived");
+    const pool = pressed.length > 0 ? pressed : starts;
+    return pool.reduce((m, t) => (t.fired_at > m ? t.fired_at : m), pool[0].fired_at);
+  })();
+  const [startedAt, setStartedAt] = useState<string | null>(storedStartAt);
 
   // One-tap fire for the light, log-only buttons (Schedule #8, Start #3, Perform Work #9).
   const fireLight = (n: 3 | 8 | 9) => {
     setLightError(null);
     setLightPending(n);
+    if (n === 3 && !startedAt) setStartedAt(new Date().toISOString());
     startLight(async () => {
       const fn = n === 8 ? fireSchedule : n === 3 ? fireStart : firePerformWork;
       const res = await fn({ hcp_job_id: hcpJobId, hcp_customer_id: hcpCustomerId });
-      if (!res.ok) setLightError(res.error);
+      if (!res.ok) {
+        setLightError(res.error);
+        if (n === 3) setStartedAt(storedStartAt);
+      }
       setLightPending(null);
     });
   };
@@ -118,6 +134,10 @@ export function TriggerForms({
           HCP status: <span className="font-medium">{hcpWorkStatus}</span>
           {canceled ? " — job canceled in HCP" : impliedDone.size > 0 ? " — steps below reflect HCP progress" : ""}
         </p>
+      ) : null}
+      {/* Live on-site timer once Start fired; gone when work is finished/done. */}
+      {startedAt && !isDone(6) && !isDone(7) && !canceled ? (
+        <OnSiteElapsedChip startedAt={startedAt} />
       ) : null}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">

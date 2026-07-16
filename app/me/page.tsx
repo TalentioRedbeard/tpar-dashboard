@@ -438,6 +438,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
           />
           {/* Phase 1: reconcile the button with HCP's live status (kills the blip) */}
           <HcpClockSync />
+          {/* Read-only week view of the synced HCP punches (Anthony's ask, 7/16) */}
+          <Link href="/me/timecard" className="mt-2 inline-block text-sm text-brand-700 hover:underline">
+            🕐 My week (timecard) →
+          </Link>
         </section>
       ) : null}
 
@@ -705,6 +709,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       destLng={a.cust_lng as number | null}
                       ppSubmitted={ppSubmittedJobs.has(jobId)}
                       eojSubmitted={eojSubmittedJobs.has(jobId)}
+                      startFiredAt={firedAtByJobTrigger.get(`${jobId}::3`) ?? null}
                     />
                   )}
                   {/* Photo nudge (Phase 1b): no photos on this job yet — prompt the

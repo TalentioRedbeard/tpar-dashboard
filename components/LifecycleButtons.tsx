@@ -8,6 +8,7 @@ import { getOpenJobForTech, type OpenJob } from "@/lib/omw-guard-actions";
 import { OmwGuardModal } from "./OmwGuardModal";
 import { PostPresentationChecklist } from "./PostPresentationChecklist";
 import { EndOfJobChecklist } from "./EndOfJobChecklist";
+import { OnSiteElapsedChip } from "./OnSiteElapsedChip";
 
 type Props = {
   hcpJobId: string;
@@ -33,6 +34,9 @@ type Props = {
   // post-trigger prompt: show the form, or a "✓ on file" chip.
   ppSubmitted?: boolean;
   eojSubmitted?: boolean;
+  // Stored fired_at of this job's Start trigger (3), threaded from /me's
+  // lifecycle query so the on-site elapsed chip survives reloads.
+  startFiredAt?: string | null;
 };
 
 type TriggerNum = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -86,11 +90,16 @@ function resolveFix(): Promise<{ lat: number; lng: number; accuracyM: number | n
 
 type MirrorEntry = { firedAt: string; status: HcpMirrorStatus };
 
-export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors, destAddress, destLat, destLng, ppSubmitted, eojSubmitted }: Props) {
+export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors, destAddress, destLat, destLng, ppSubmitted, eojSubmitted, startFiredAt }: Props) {
   const [pending, startTransition] = useTransition();
   const [firing, setFiring] = useState<TriggerNum | null>(null);
   const [lastFired, setLastFired] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // On-site elapsed chip: seeded from the stored Start fired_at (reload-safe),
+  // set optimistically the instant Start is pressed so the press visibly
+  // "took" — the confusion this fixes: "we thought we were hitting start
+  // drawing" (Anthony/Landon, 7/16).
+  const [startedAt, setStartedAt] = useState<string | null>(startFiredAt ?? null);
   // OMW-without-Finish guard: a prior open job to resolve before On-My-Way fires.
   const [guardJob, setGuardJob] = useState<OpenJob | null>(null);
   // Seed mirror state from server-rendered initialMirrors so pills survive
@@ -195,8 +204,12 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     });
     if (!res.ok) {
       setError(res.error);
+      // Roll the optimistic on-site chip back to the stored truth.
+      if (triggerNumber === 3) setStartedAt(startFiredAt ?? null);
       return;
     }
+    // Adopt the server's fired_at for the chip (was set optimistically on press).
+    if (triggerNumber === 3) setStartedAt(res.fired_at);
     setLastFired(triggerNumber);
     // "Build estimate" → open the 4-question builder for this job once the
     // trigger is logged (in-app route push, not a new tab; only on success).
@@ -219,6 +232,10 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     if (triggerNumber === 2 && directionsUrl && typeof window !== "undefined") {
       window.open(directionsUrl, "_blank", "noopener,noreferrer");
     }
+    // Optimistic on-site chip: appears the instant Start is pressed (before the
+    // GPS fix + server round-trip), so the press visibly "took". runFire adopts
+    // the server timestamp on success and rolls back on failure.
+    if (triggerNumber === 3 && !startedAt) setStartedAt(new Date().toISOString());
     setFiring(triggerNumber);
     startTransition(async () => {
       try {
@@ -259,8 +276,17 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
   // disables) the off-path buttons and strengthens the call-to-action one.
   const nextTrigger = [2, 3, 4, 5, 6, 7].find((t) => !(firedTriggers.includes(t) || lastFired === t)) ?? 7;
 
+  // On-site chip visibility: Start pressed, work not yet finished/done.
+  const workEnded = [6, 7].some((t) => firedTriggers.includes(t) || lastFired === t);
+  const showOnSite = !!startedAt && !workEnded;
+
   return (
     <div className="mt-2.5">
+      {showOnSite ? (
+        <div className="mb-1.5">
+          <OnSiteElapsedChip startedAt={startedAt} />
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-1.5">
         {directionsUrl ? (
           <a
