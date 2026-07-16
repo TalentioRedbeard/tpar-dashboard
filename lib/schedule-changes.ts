@@ -192,6 +192,11 @@ export async function applyJobMove(input: {
   const claimId = row.id as string;
   const fail = async (error: string): Promise<Res> => {
     await supa.from("schedule_change_requests").update({ status: "dismissed" }).eq("id", claimId);
+    // A failed drag must leave a trace (the chip is gone in 8s).
+    await supa.from("maintenance_logs").insert({
+      source: "applyJobMove", level: "warn", message: "drag move failed",
+      context: { id: claimId, hcp_job_id: hcpJobId, kind, error: error.slice(0, 300) },
+    }).then(() => {}, () => {});
     return { ok: false, error };
   };
 
