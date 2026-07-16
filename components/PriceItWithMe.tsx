@@ -133,6 +133,20 @@ function feeToBuilderLine(f: ProposedFee): Line {
   };
 }
 
+// B3 (2026-07-16): preset "job conditions" chips — first-class toggles over the
+// EXISTING modifier engine (price_modifiers rows; zero backend changes). A chip
+// merges its key into every injected line's modifierKeys; the builder's
+// computeOption then does the real math (rate premium on lines, permit /
+// equipment as once-per-option transparent extra lines at submit). Keys not in
+// the live modifier map render greyed "not priced yet" — never improvise rates.
+const PRESET_CHIPS = [
+  { key: "gas_rate_premium", label: "Gas work", emoji: "⛽", kind: "rate" },
+  { key: "permit_city", label: "Permit", emoji: "📋", kind: "permit" },
+  { key: "trench_box", label: "Trench box", emoji: "🕳️", kind: "equipment" },
+  { key: "excavator_daily", label: "Excavator", emoji: "🚜", kind: "equipment" },
+  { key: "cart_jetter", label: "Cart jetter", emoji: "💦", kind: "equipment" },
+] as const;
+
 function feeEmoji(kind: string): string {
   if (kind === "permit") return "📋";
   if (kind === "equipment") return "🚜";
@@ -225,6 +239,8 @@ export function PriceItWithMe({
   const [proposal, setProposal] = useState<ProposedOption[]>([]);
   const [target, setTarget] = useState(0);
   const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
+  // B3: active preset modifier keys per proposed-option index.
+  const [presets, setPresets] = useState<Record<number, Set<string>>>({});
 
   const [extracting, startExtract] = useTransition();
   const [proposing, startPropose] = useTransition();
@@ -304,11 +320,35 @@ export function PriceItWithMe({
       if (!res.ok) { setErr(friendlyErr(res.error)); return; }
       setProposal(res.options);
       setAddedKeys(new Set());
+      setPresets({});
       setPhase("proposed");
     });
   }
 
   const canAdd = !disabled && pricebook !== null;
+
+  // B3: the preset keys active for a proposed option, filtered to keys the
+  // builder's live modifier map actually has (toBuilderLine drops unknowns).
+  const activePresets = (oi: number): string[] =>
+    [...(presets[oi] ?? new Set<string>())].filter((k) => !!modifiers[k]);
+
+  function togglePreset(oi: number, key: string) {
+    setPresets((prev) => {
+      const next = new Set(prev[oi] ?? []);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return { ...prev, [oi]: next };
+    });
+  }
+
+  // Merge active presets into an injected line. Clearing priceOverride is
+  // load-bearing: toBuilderLine carries the backend sell as an override when
+  // engine math mismatches, and lineSellPrice lets that override BEAT modifier
+  // math — a chip would be silently invisible without this.
+  function withPresets(line: Line, oi: number): Line {
+    const active = activePresets(oi);
+    if (active.length === 0) return line;
+    return { ...line, modifierKeys: [...new Set([...line.modifierKeys, ...active])], priceOverride: "" };
+  }
 
   // Single injection path for proposed lines AND option fees (both arrive as
   // ready builder Lines).
@@ -319,8 +359,8 @@ export function PriceItWithMe({
     notifyAdded(`Added ${builderLines.length} line${builderLines.length === 1 ? "" : "s"} to ${targetLabel} — review the numbers before sending.`);
   }
 
-  function addLines(lines: ProposedLine[], keys: string[]) {
-    inject(lines.map((l) => toBuilderLine(l, pricebook ?? [], modifiers)), keys);
+  function addLines(lines: ProposedLine[], keys: string[], oi: number) {
+    inject(lines.map((l) => withPresets(toBuilderLine(l, pricebook ?? [], modifiers), oi)), keys);
   }
 
   // "Add all" = every proposed line + every ADDABLE fee (positive amounts —
@@ -330,7 +370,7 @@ export function PriceItWithMe({
     const builderLines: Line[] = [];
     const keys: string[] = [];
     opt.lineItems.forEach((l, li) => {
-      builderLines.push(toBuilderLine(l, pricebook ?? [], modifiers));
+      builderLines.push(withPresets(toBuilderLine(l, pricebook ?? [], modifiers), oi));
       keys.push(`${oi}-${li}`);
     });
     opt.feeLines.forEach((f, fi) => {
@@ -342,11 +382,41 @@ export function PriceItWithMe({
     inject(builderLines, keys);
   }
 
+  // Visible preset math for one option (the package's "modifiers line"):
+  // engine-recomputed over the PROPOSED lines only — labeled preview because
+  // the builder recomputes over everything in the target option (equipment
+  // fees size off option TOTAL hours).
+  function presetImpact(opt: ProposedOption, oi: number): {
+    active: string[];
+    parts: string[];
+    total: number;
+  } | null {
+    const active = activePresets(oi);
+    if (active.length === 0) return null;
+    const mk = (extra: string[]) =>
+      opt.lineItems.map((l) => ({
+        hours: l.laborHours,
+        crew: l.crewSize,
+        materials: l.materialsCostDollars,
+        modifierKeys: [...new Set([...l.modifiersApplied.filter((k) => !!modifiers[k]), ...extra])],
+      }));
+    const base = applyOptionModifiers(mk([]), modifiers);
+    const withP = applyOptionModifiers(mk(active), modifiers);
+    const lineDelta = withP.lines.reduce((s, l) => s + l.price, 0) - base.lines.reduce((s, l) => s + l.price, 0);
+    const parts: string[] = [];
+    if (Math.abs(lineDelta) >= 1) parts.push(`${lineDelta >= 0 ? "+" : "−"}${money(Math.abs(lineDelta))} on the labor lines`);
+    const baseFeeKeys = new Set(base.extraLines.map((e) => e.modifierKey));
+    for (const e of withP.extraLines) {
+      if (!baseFeeKeys.has(e.modifierKey)) parts.push(`+${money(e.price)} ${e.name}`);
+    }
+    return { active, parts, total: withP.optionTotal };
+  }
+
   function reset() {
     setPhase("idle");
     setConversation([]); setNarration(""); setMoreText(""); setScopeStale(false);
     setChips([]); setRawScopeItems([]); setQuestions([]); setAnswers({});
-    setProposal([]); setAddedKeys(new Set()); setErr(null); setAdded(null);
+    setProposal([]); setAddedKeys(new Set()); setPresets({}); setErr(null); setAdded(null);
   }
 
   const inputCls = "w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
@@ -529,6 +599,59 @@ export function PriceItWithMe({
                 </button>
               </div>
               {opt.description ? <p className="mb-1.5 text-xs text-neutral-500">{opt.description}</p> : null}
+
+              {/* B3: job-condition preset chips — toggles over the live modifier
+                  engine. A chip rides every line added from this option; the
+                  builder's own math then applies it for real. */}
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-medium text-neutral-500">Job conditions:</span>
+                {PRESET_CHIPS.map((c) => {
+                  const live = !!modifiers[c.key];
+                  const on = live && (presets[oi]?.has(c.key) ?? false);
+                  // Suppress when the backend already priced the same condition
+                  // into this option (double-count guard).
+                  const alreadyFee = live && c.kind !== "rate" && opt.feeLines.some((f) => f.kind === c.kind);
+                  const alreadyOnLines = live && c.kind === "rate" && opt.lineItems.every((l) => l.modifiersApplied.includes(c.key)) && opt.lineItems.length > 0;
+                  const blocked = alreadyFee || alreadyOnLines;
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      disabled={!live || blocked}
+                      onClick={() => togglePreset(oi, c.key)}
+                      title={!live
+                        ? `${c.label} isn't priced in the modifier list yet — ask Danny to set the rate.`
+                        : blocked
+                          ? `Already in this proposal (${alreadyFee ? "as an option fee" : "on every line"}) — no double-charging.`
+                          : modifiers[c.key].name}
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset transition disabled:cursor-not-allowed ${
+                        on
+                          ? "bg-brand-700 text-white ring-brand-700"
+                          : blocked
+                            ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                            : live
+                              ? "bg-white text-neutral-700 ring-neutral-300 hover:bg-brand-50"
+                              : "bg-neutral-50 text-neutral-400 ring-neutral-200"
+                      }`}
+                    >
+                      {c.emoji} {c.label}{blocked ? " ✓" : !live ? " (not priced yet)" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+              {(() => {
+                const impact = presetImpact(opt, oi);
+                if (!impact) return null;
+                return (
+                  <div className="mb-2 rounded-md border border-brand-200 bg-brand-50/60 px-3 py-1.5 text-[11px] text-brand-900">
+                    <span className="font-semibold">Modifiers:</span>{" "}
+                    {impact.parts.length > 0 ? impact.parts.join(" · ") : "no dollar change on these lines"}
+                    {" → "}option w/ modifiers <span className="font-semibold">{money(impact.total)}</span>
+                    <span className="text-brand-700"> (preview — the builder recomputes over everything in {targetLabel})</span>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {opt.lineItems.map((l, li) => {
                   const key = `${oi}-${li}`;
@@ -562,7 +685,7 @@ export function PriceItWithMe({
                           <span className="text-[10px] text-amber-600" title="The pricebook item couldn't be matched in this builder's cascade — it'll be added as a Custom line with the price carried.">→ adds as Custom</span>
                         ) : null}
                         <button type="button" disabled={!canAdd}
-                          onClick={() => addLines([l], [key])}
+                          onClick={() => addLines([l], [key], oi)}
                           className={"ml-auto rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-50 " + (wasAdded ? "border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "bg-brand-700 text-white hover:bg-brand-800")}>
                           {wasAdded ? "✓ Added (again?)" : `+ Add to ${targetLabel}`}
                         </button>
