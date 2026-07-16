@@ -115,6 +115,17 @@ export default async function NewMultiOptionEstimatePage({
       description="Each option is built with the 4-question pricebook cascade (Type → Category → Work type → Item) + hours/crew/materials. The customer picks an option. Creates the estimate after you review (synced to Housecall Pro)."
       backHref={backHref}
       backLabel="Back"
+      help={{
+        intent: "Build a multi-option estimate. Each option gets priced by the 4-question cascade; the customer picks one.",
+        actions: [
+          "🧮 Price it with me: describe the work, answer its questions, and it drafts the lines — you still review every number.",
+          "Or build manually: Type → Category → Work type → Item, then hours / crew / materials.",
+          "Name options by what they ARE (\"PVC bypass — code compliant\"); good/better/best rank is optional.",
+          "Create estimate makes it real (syncs to Housecall Pro). Nothing goes to the customer until you hit send.",
+          "After create: open it in the app, or send it tracked — we see delivered / opened / clicked.",
+        ],
+        stuck: <>Price feels wrong mid-build? Check the line&apos;s price-book match instead of guessing — or create it and 🚩 flag it for a price check.</>,
+      }}
     >
       {canWrite ? (
         <MultiOptionEstimateBuilder initialCustomer={initialCustomer} initialJob={initialJob} backHref={backHref} autoSeed={autoSeed} />

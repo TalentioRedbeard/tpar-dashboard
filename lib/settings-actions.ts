@@ -95,7 +95,11 @@ export async function getMySettings(): Promise<MySettings | null> {
     default_landing: (row?.default_landing as string | null) ?? null,
     techShortName: (row?.tech_short_name as string | null) ?? me.tech?.tech_short_name ?? null,
     detail_level: DETAIL_LEVELS.includes(prefs.detail_level as DetailLevel) ? (prefs.detail_level as DetailLevel) : "standard",
-    simple_mode: prefs.simple_mode === true,
+    // Mirror toPrefs' role-aware default (A9): an untouched tech shows the
+    // EFFECTIVE state (on). Without this, /settings would show OFF while /me
+    // renders simple — and the next incidental Save (SettingsForm always sends
+    // simple_mode) would write false and silently kill the default.
+    simple_mode: typeof prefs.simple_mode === "boolean" ? prefs.simple_mode : me.dashboardRole === "tech",
     wrap_reminder: prefs.wrap_reminder === true,
     processing_notes: typeof prefs.processing_notes === "string" ? prefs.processing_notes : "",
     smsMaster,

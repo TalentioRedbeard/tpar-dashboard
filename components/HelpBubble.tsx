@@ -14,9 +14,10 @@
 // is short, casual, one-glance.
 
 import { useState, useEffect, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { getPageHelp, savePageHelp, type PageHelpData } from "../app/help/actions";
 import { helpKeyForPath } from "../lib/help-key";
+import { ASK_INPUT_ID, ASK_FOCUS_EVENT } from "./AskBar";
 
 export type HelpContent = {
   /** One-sentence "what is this page for?" — casual, not formal. */
@@ -37,7 +38,21 @@ const GENERIC: HelpContent = {
 
 export function HelpBubble({ content, canEdit = false }: { content?: HelpContent; canEdit?: boolean }) {
   const pathname = usePathname();
+  const router = useRouter();
   const c = content ?? GENERIC;
+
+  // "Didn't answer it? Ask below" — closes the sheet and drops the cursor in
+  // the page's Ask bar. Pages that hideAskBar have no input to focus, so fall
+  // back to /ask (the standalone surface).
+  function askBelow() {
+    setEditing(false);
+    setOpen(false);
+    if (typeof document !== "undefined" && document.getElementById(ASK_INPUT_ID)) {
+      window.dispatchEvent(new CustomEvent(ASK_FOCUS_EVENT));
+    } else {
+      router.push("/ask");
+    }
+  }
 
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -201,8 +216,15 @@ export function HelpBubble({ content, canEdit = false }: { content?: HelpContent
                   </>
                 ) : null}
 
-                <div className="mt-4 border-t border-neutral-100 pt-3 text-xs text-neutral-500">
-                  Type a question on <a href="/ask" className="font-medium underline hover:text-neutral-800">/ask</a> if your situation isn&apos;t covered here. Or text Danny.
+                <div className="mt-4 border-t border-neutral-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={askBelow}
+                    className="w-full rounded-lg bg-brand-50 px-3 py-2 text-sm font-medium text-brand-800 ring-1 ring-inset ring-brand-200 transition hover:bg-brand-100"
+                  >
+                    Didn&apos;t answer it? Ask below ↓
+                  </button>
+                  <p className="mt-1.5 text-center text-[11px] text-neutral-400">Or text Danny.</p>
                 </div>
               </>
             )}

@@ -11,14 +11,32 @@
 // as /ask (appguide-route). The floating "?" HelpBubble stays as the static
 // fallback; this is the live one.
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { usePathname } from "next/navigation";
 import { askBar, type AskBarResult } from "../app/ask/bar-action";
 import { AskResult } from "./AskResult";
 
+// DOM id + focus event contract with HelpBubble's "Didn't answer it? Ask
+// below" button (A8, 2026-07-16). The two are sibling client islands with no
+// shared context, so a CustomEvent keeps them decoupled.
+export const ASK_INPUT_ID = "tpar-ask-input";
+export const ASK_FOCUS_EVENT = "tpar:focus-ask";
+
 export function AskBar({ pageTitle }: { pageTitle: string }) {
   const pathname = usePathname();
   const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const onFocusAsk = () => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus({ preventScroll: true });
+    };
+    window.addEventListener(ASK_FOCUS_EVENT, onFocusAsk);
+    return () => window.removeEventListener(ASK_FOCUS_EVENT, onFocusAsk);
+  }, []);
   const [result, setResult] = useState<AskBarResult | null>(null);
   // What produced the current result — the question + the exact page-context
   // string sent to the brain. Feeds the "Push it to Danny" footer so the
@@ -59,6 +77,8 @@ export function AskBar({ pageTitle }: { pageTitle: string }) {
       >
         <span className="pl-1 text-base leading-none text-brand-600" aria-hidden>✦</span>
         <input
+          id={ASK_INPUT_ID}
+          ref={inputRef}
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

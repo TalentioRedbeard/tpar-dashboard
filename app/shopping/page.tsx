@@ -162,6 +162,16 @@ export default async function ShoppingPage({
           Also captureable from Slack with <code>/need</code>.
         </span>
       }
+      help={{
+        intent: "Need a part or supply? Log it here — the system does the shopping around.",
+        actions: [
+          "Log a need: what it is, how many, how urgent. That's the whole job — buying runs on a cadence per urgency.",
+          "ASAP means a job is blocked TODAY. Use it honestly and it stays meaningful.",
+          "📸 Register a product: snap the data plate on gear you installed — the warranty paperwork happens at a desk later.",
+          "Same list lives in Slack as /need.",
+        ],
+        stuck: <>Not sure if we already have one in the shop? Log it anyway with a note — a duplicate need beats a missing part.</>,
+      }}
     >
       {me.isAdmin || me.isManager ? (
         <>

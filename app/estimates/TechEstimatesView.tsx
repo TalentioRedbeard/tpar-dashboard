@@ -76,12 +76,14 @@ export async function TechEstimatesView({ hcpEmployeeId, shortName }: { hcpEmplo
       title="My estimates"
       description={`Estimates on your customers — full work history · ${shortName}`}
       help={{
-        intent: "Sent HCP estimates on the customers you've worked for, with their pipeline stage (awaiting / won / declined / expired). Tap one to open it.",
+        intent: "Every estimate on your customers — full work history — with where each one stands (awaiting / won / declined / expired).",
         actions: [
-          "Scoped to work you were on (lead or crew), all-time.",
-          "Tap an estimate to open it right here in the app.",
+          "Search by customer name or estimate # — it covers your whole history, not just recent.",
+          "Chips: Awaiting = still with the customer · Last 90 days · A–Z.",
+          "Tap one to open it right here in the app.",
           "New estimate: open the job → Estimate, or My day → Estimate.",
         ],
+        stuck: <>Missing one you swear you wrote? If you weren&apos;t on that customer&apos;s work it&apos;s outside your view — ask Danny.</>,
       }}
     >
       {!hcpEmployeeId ? (

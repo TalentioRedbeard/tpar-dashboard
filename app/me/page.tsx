@@ -378,15 +378,15 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       title={`Hi, ${techName}`}
       description={`${viewingAs ? `(viewing as ${viewingAs}) ` : ""}Your day. ${activeAppts.length} appointment${activeAppts.length === 1 ? "" : "s"} today${dismissedAppts.length ? ` (+${dismissedAppts.length} handled)` : ""}.`}
       help={{
-        intent: "Your home base. Today's jobs in order, plus the buttons you'll hit during a job: clock in, OMW, Start, Finish.",
+        intent: "Your home base. Today's jobs in order, plus everything you do during one: clock in, OMW, Start, Finish.",
         actions: [
-          "Tap a job in your schedule to open it — that's where notes + photos live.",
-          "Hit OMW when you leave the shop / last stop. Customer gets a text automatically.",
-          "Hit Start when you walk in the door. Finish when you leave.",
-          "Snap photos via /receipt for parts receipts — the system figures out which job.",
-          "My coaching shows your recent calls + this week's numbers. Look when you want to.",
+          "Tap a job to open it — notes, photos, and the estimate live there.",
+          "OMW when you leave the shop or your last stop — directions pop up and the customer gets the text automatically.",
+          "Start when you walk in — a green on-site timer appears so you KNOW the press took. Finish when the work's done.",
+          "🕐 My week (under the clock) shows your punches — the same numbers payroll sees. Flag a day if it looks wrong.",
+          "End of the day: hit Daily Wrap and just talk — what worked, what fought you, what you want.",
         ],
-        stuck: <>If a button doesn&apos;t do anything, text Danny. Don&apos;t restart anything — he&apos;ll know what went wrong.</>,
+        stuck: <>Button didn&apos;t seem to do anything? Give it a beat and watch for the pill under it. Still nothing — text Danny. Don&apos;t restart anything; he&apos;ll know what went wrong.</>,
       }}
       actions={
         <div className="flex flex-wrap gap-2">

@@ -45,6 +45,17 @@ export default async function NewEstimatePage({ params }: { params: Promise<{ id
     <PageShell
       title="Build a multi-option estimate"
       description={`${customerName}${job.street ? ` · ${job.street}${job.city ? ", " + job.city : ""}` : ""} — creates the estimate after you review (synced to Housecall Pro).`}
+      help={{
+        intent: "Build this job's estimate as options the customer picks from.",
+        actions: [
+          "✨ Based on a voice note: talk the scope on the job page first and it pre-drafts the options.",
+          "Each line: name, price, quantity — ✨ Generate writes the customer-facing description in Danny's voice.",
+          "Name options by what they ARE (\"PVC bypass — code compliant\"); good/better/best rank is optional.",
+          "Create estimate makes it real (syncs to Housecall Pro). Nothing goes to the customer until you hit send.",
+          "After create: open it in the app, or send it tracked — we see delivered / opened / clicked.",
+        ],
+        stuck: <>Price feels wrong mid-build? Use the 💲 price check on the line instead of guessing — or create it and 🚩 flag it for a price check.</>,
+      }}
     >
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Link href={`/job/${id}`} className="text-xs text-neutral-500 hover:underline">← Back to job</Link>

@@ -52,8 +52,17 @@ export type CurrentTech = {
 };
 
 // Normalize the raw jsonb into an always-an-object TechPrefs.
-function toPrefs(v: unknown): TechPrefs {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as TechPrefs) : {};
+// Role-aware default (A9, Danny 2026-07-16): simple mode is ON for techs who
+// never touched the setting (key absent). Explicit true/false is respected
+// forever — settings-actions only writes booleans, so absent = untouched.
+// Injected in-memory only: updateMySettings merges over a FRESH row read, so
+// this default can never leak into the DB.
+function toPrefs(v: unknown, role?: DashboardRole): TechPrefs {
+  const raw = v && typeof v === "object" && !Array.isArray(v) ? (v as TechPrefs) : {};
+  if (role === "tech" && raw.simple_mode === undefined) {
+    return { ...raw, simple_mode: true };
+  }
+  return raw;
 }
 
 const VIEW_AS_COOKIE = "tpar_view_as";
@@ -148,7 +157,8 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
             gps_prompts_opt_out: !!(targetTech.gps_prompts_opt_out as boolean | null),
             hide_quick_recorder: !!(targetTech.hide_quick_recorder as boolean | null),
             default_landing: (targetTech.default_landing as string | null) ?? null,
-            prefs: toPrefs((targetTech as Record<string, unknown>).prefs),
+            // Impersonation is forced-role 'tech', so preview the tech default.
+            prefs: toPrefs((targetTech as Record<string, unknown>).prefs, "tech"),
           },
         };
       }
@@ -179,7 +189,7 @@ export const getCurrentTech = cache(async function getCurrentTech(): Promise<Cur
       gps_prompts_opt_out: !!(data.gps_prompts_opt_out as boolean | null),
       hide_quick_recorder: !!(data.hide_quick_recorder as boolean | null),
       default_landing: (data.default_landing as string | null) ?? null,
-      prefs: toPrefs(data.prefs),
+      prefs: toPrefs(data.prefs, dashboardRole),
     } : null,
   };
 });
