@@ -37,6 +37,39 @@ export async function techWorkedJob(
   return !!appt;
 }
 
+/** The SET-BUILDER twin of techWorkedCustomer: every hcp_customer_id whose
+ *  work this tech was on (either arm), full history. Third duplication of the
+ *  inline dual-arm scan (TechCustomersView, TechEstimatesView, now comms)
+ *  triggered the extraction — new tech-scoped list surfaces use this. */
+export async function techScopedCustomerIds(
+  empId: string | null | undefined,
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (!empId) return out; // fail closed
+  const supa = db();
+  const [apptRes, jmRes] = await Promise.all([
+    supa
+      .from("appointments_master")
+      .select("hcp_customer_id")
+      .is("deleted_at", null)
+      .contains("tech_all_ids", [empId])
+      .limit(2000),
+    supa
+      .from("jobs_master")
+      .select("hcp_customer_id, assigned_employees")
+      .like("assigned_employees", `%${empId}%`)
+      .not("hcp_customer_id", "is", null)
+      .limit(2000),
+  ]);
+  for (const a of (apptRes.data ?? []) as Array<{ hcp_customer_id: string | null }>) {
+    if (a.hcp_customer_id) out.add(a.hcp_customer_id);
+  }
+  for (const j of (jmRes.data ?? []) as Array<{ hcp_customer_id: string | null; assigned_employees: string | null }>) {
+    if (j.hcp_customer_id && assignedHasEmployee(j.assigned_employees, empId)) out.add(j.hcp_customer_id);
+  }
+  return out;
+}
+
 export async function techWorkedCustomer(
   empId: string | null | undefined,
   hcpCustomerId: string,

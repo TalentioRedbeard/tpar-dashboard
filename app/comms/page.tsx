@@ -61,16 +61,24 @@ export default async function CommsPage({
   // The unified inbox shows every customer's calls/texts/emails company-wide.
   // Gate to admin/manager; techs work their own comms from /me + /job/[id].
   const me = await getCurrentTech().catch(() => null);
-  // Techs get a scoped view — calls/texts for the customers they're scheduled
-  // with ("what pertains to me") — instead of the company-wide inbox. Anyone
-  // who is neither admin/manager nor a tech (office) still goes to /me.
+  const params = await searchParams;
+  // Techs get a scoped view — calls/texts for their own customers ("what
+  // pertains to me") — instead of the company-wide inbox, with the same
+  // search treatment (A7, 2026-07-16). Anyone who is neither admin/manager
+  // nor a tech (office) still goes to /me.
   if (!me?.isAdmin && !me?.isManager) {
     if (me?.tech) {
-      return <TechCommsView fullName={me.tech.hcp_full_name} shortName={me.tech.tech_short_name} />;
+      return (
+        <TechCommsView
+          hcpEmployeeId={me.tech.hcp_employee_id}
+          shortName={me.tech.tech_short_name}
+          q={(params.q ?? "").trim()}
+          channel={(params.channel ?? "").trim()}
+        />
+      );
     }
     redirect("/me");
   }
-  const params = await searchParams;
   const q = (params.q ?? "").trim();
   const channel = (params.channel ?? "").trim();
   const tech = (params.tech ?? "").trim();

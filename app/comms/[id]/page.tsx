@@ -7,6 +7,7 @@ import { redirect, notFound } from "next/navigation";
 import { db } from "../../../lib/supabase";
 import { PageShell } from "../../../components/PageShell";
 import { getCurrentTech } from "../../../lib/current-tech";
+import { techWorkedCustomer, techWorkedJob } from "../../../lib/tech-scope";
 import { ProvenanceCard, type ProvenanceItem } from "../../../components/ui/ProvenanceCard";
 
 export const dynamic = "force-dynamic";
@@ -67,28 +68,18 @@ export default async function CommDetailPage({ params }: { params: Promise<{ id:
   const e = event as CommEvent;
 
   // Tech scope guard: a TECHNICIAN may only open a transcript for a customer or
-  // job on their own schedule — mirrors /comms (TechCommsView) + /job/[id].
-  // Without this a tech could id-walk /comms/<n> and read EVERY customer's call
-  // transcripts + text bodies (db() is service-role, so RLS doesn't gate it).
-  // Admin/manager keep full access. (Audit 2026-06-12.)
+  // job whose work they were on — the canonical rule (lib/tech-scope), full
+  // history, fail closed. (The old name+±90d-window gate would block the
+  // full-history search hits the A7 list now surfaces.) Without this a tech
+  // could id-walk /comms/<n> and read EVERY customer's call transcripts + text
+  // bodies (db() is service-role, so RLS doesn't gate it). Admin/manager keep
+  // full access. (Audit 2026-06-12; rebased 2026-07-16.)
   if (!me.isAdmin && !me.isManager) {
-    const fullName = me.tech?.hcp_full_name ?? null;
+    const empId = me.tech?.hcp_employee_id ?? null;
     let inScope = false;
-    if (fullName && (e.hcp_customer_id || e.hcp_job_id)) {
-      const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
-      const until = new Date(Date.now() + 30 * 86_400_000).toISOString();
-      const { data: appts } = await supa
-        .from("appointments_master")
-        .select("hcp_customer_id, hcp_job_id, tech_primary_name, tech_all_names")
-        .is("deleted_at", null)
-        .gte("scheduled_start", since)
-        .lt("scheduled_start", until);
-      for (const a of (appts ?? []) as { hcp_customer_id: string | null; hcp_job_id: string | null; tech_primary_name: string | null; tech_all_names: string[] | null }[]) {
-        const mine = a.tech_primary_name === fullName || (a.tech_all_names ?? []).includes(fullName);
-        if (!mine) continue;
-        if (e.hcp_customer_id && a.hcp_customer_id === e.hcp_customer_id) { inScope = true; break; }
-        if (e.hcp_job_id && a.hcp_job_id === e.hcp_job_id) { inScope = true; break; }
-      }
+    if (empId) {
+      if (e.hcp_customer_id) inScope = await techWorkedCustomer(empId, e.hcp_customer_id);
+      if (!inScope && e.hcp_job_id) inScope = await techWorkedJob(empId, e.hcp_job_id);
     }
     if (!inScope) {
       return (
