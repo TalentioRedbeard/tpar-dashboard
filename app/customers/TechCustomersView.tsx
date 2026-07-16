@@ -21,11 +21,13 @@ type ApptLite = {
 };
 type Cust = { hcp_customer_id: string; name: string | null; phone10: string | null; phone_mobile10: string | null };
 
-function fmtPhone(p: string | null): string | null {
-  if (!p) return null;
-  const d = p.replace(/\D/g, "");
+function fmtPhone(p: string | number | null): string | null {
+  // customer_360 phone10 arrives as a NUMBER for some (older) rows — the
+  // full-history list surfaced them and `Number.replace` crashed the page.
+  if (p == null || p === "") return null;
+  const d = String(p).replace(/\D/g, "");
   if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-  return p;
+  return String(p);
 }
 function fmtDay(s: string): string {
   return new Date(s).toLocaleDateString("en-US", { timeZone: CHI, month: "short", day: "numeric" });
@@ -117,7 +119,7 @@ export async function TechCustomersView({ hcpEmployeeId, shortName }: { hcpEmplo
               const c = byId.get(id);
               const name = c?.name ?? nameByCust.get(id) ?? "—";
               const phone = fmtPhone(c?.phone_mobile10 ?? c?.phone10 ?? null);
-              const rawPhone = (c?.phone_mobile10 ?? c?.phone10 ?? "").replace(/\D/g, "");
+              const rawPhone = String(c?.phone_mobile10 ?? c?.phone10 ?? "").replace(/\D/g, "");
               const n = apptCount.get(id) ?? 0;
               const seen = lastSeen.get(id);
               return (
