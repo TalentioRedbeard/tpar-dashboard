@@ -54,7 +54,7 @@ export default async function ManagePage() {
   const today = chiToday();
   const weekStart = chiWeekStartIso();
 
-  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes, flagRes, captureRes, ownerCtxRes, custCtxRes, dailyRevRes] = await Promise.all([
+  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes, flagRes, captureRes, ownerCtxRes, custCtxRes, dailyRevRes, staleRegRes] = await Promise.all([
     // Tile 1: today's board — jobs today vs techs clocked in.
     supa
       .from("appointments_master")
@@ -106,6 +106,10 @@ export default async function ManagePage() {
     supa.from("owner_context").select("created_at", { count: "exact" }).eq("status", "pending_review").order("created_at", { ascending: true }).limit(1),
     supa.from("customer_context").select("created_at", { count: "exact" }).eq("status", "pending_review").order("created_at", { ascending: true }).limit(1),
     supa.from("daily_reviews").select("created_at", { count: "exact" }).order("created_at", { ascending: true }).limit(1),
+    // Product registrations rotting past 14 days (SPEC_2026-07-16).
+    supa.from("product_registrations").select("id, brand, model, created_at").eq("status", "pending")
+      .lt("created_at", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+      .order("created_at", { ascending: true }).limit(20),
   ]);
 
   const jobsToday = apptRes.count ?? 0;
@@ -122,6 +126,7 @@ export default async function ManagePage() {
   const sendFails = (sendFailRes.data ?? []) as Array<{ hcp_estimate_id: string; to_email: string | null; status: string; sent_at: string | null }>;
   const openFlags = (flagRes.data ?? []) as Array<{ id: number; entity_label: string | null; entity_id: string; flag_type: string; created_by: string; created_at: string; status: string }>;
   const capture = captureRes.data as { state: string; minutes_since_last: number | null } | null;
+  const staleRegs = (staleRegRes.data ?? []) as Array<{ id: number; brand: string | null; model: string | null; created_at: string }>;
   const ageOf = (iso: string | undefined | null) =>
     iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000))) : null;
   const backlogs = [
@@ -163,6 +168,15 @@ export default async function ManagePage() {
           href: "#",
         }]
       : []),
+    // Product registrations rotting past 14 days (SPEC_2026-07-16 anti-rot:
+    // the existing rail, no new watcher).
+    ...staleRegs.map((r) => ({
+      kind: "Registration pending",
+      label: `${r.brand ?? "unknown brand"} ${r.model ?? ""}`.trim(),
+      detail: "Logged on a job but never registered with the manufacturer — work the Shopping-page batch.",
+      ageDays: Math.max(0, Math.floor((Date.now() - new Date(r.created_at).getTime()) / dayMs)),
+      href: "/shopping",
+    })),
   ].sort((a, b) => b.ageDays - a.ageDays);
 
   const stamp = asOf();

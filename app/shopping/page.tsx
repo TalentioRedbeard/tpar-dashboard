@@ -16,6 +16,9 @@ import { listDistributors } from "./distributor-actions";
 import { DistributorDirectory, type NeedLine } from "@/components/DistributorDirectory";
 import { loadVendorSpend } from "./vendor-spend-actions";
 import { VendorSpendPanel } from "./VendorSpendPanel";
+import { RegisterProductForm } from "./RegisterProductForm";
+import { PendingRegistrations } from "./PendingRegistrations";
+import { listPendingRegistrations, manufacturerRegistry, tparCompany, type PendingRegistration } from "@/lib/registration-actions";
 import { loadPriceIntel } from "./price-intel-actions";
 import { PriceIntelPanel } from "@/components/PriceIntelPanel";
 import { loadReviewQueue } from "./review-queue-actions";
@@ -117,6 +120,15 @@ export default async function ShoppingPage({
     loadDistributorLocations(),
     loadPriceIntel(),
   ]);
+
+  // Product registration data (SPEC_2026-07-16): pending batch is leadership;
+  // the registry/company constants ride along for the copy panel.
+  const [pendingRes, mfrRegistry, company] = await Promise.all([
+    me.isAdmin || me.isManager ? listPendingRegistrations() : Promise.resolve(null),
+    manufacturerRegistry(),
+    tparCompany(),
+  ]);
+  const pendingRegs: PendingRegistration[] = pendingRes && pendingRes.ok ? pendingRes.rows : [];
 
   // Load any existing research results for the open needs (parallel)
   const researchByNeedId = new Map<string, ResearchResult[]>();
@@ -238,6 +250,32 @@ export default async function ShoppingPage({
       </Section>
 
       <div className="my-6" />
+
+      {/* Product registration capture (SPEC_2026-07-16): snap the plate on
+       *  the job; the batch below registers everything at a desk, once. */}
+      {me.canWrite || me.isManager ? (
+        <>
+          <Section
+            title="📋 Register a product"
+            description="Installed a unit? Snap the plate or registration card — the job tether fills the rest. The office registers it with the manufacturer in the weekly batch."
+          >
+            <RegisterProductForm techShortName={me.tech?.tech_short_name ?? ""} />
+          </Section>
+          <div className="my-6" />
+        </>
+      ) : null}
+
+      {me.isAdmin || me.isManager ? (
+        <>
+          <Section
+            title={`Pending registrations${pendingRegs.length ? ` (${pendingRegs.length})` : ""}`}
+            description="Grouped by brand, oldest first. Expand a row for the copy-ready manufacturer payload; items older than 14 days surface on the /manage exception rail."
+          >
+            <PendingRegistrations rows={pendingRegs} registry={mfrRegistry} company={company} />
+          </Section>
+          <div className="my-6" />
+        </>
+      ) : null}
 
       <Section
         title="Open needs"
