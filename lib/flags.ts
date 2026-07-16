@@ -5,20 +5,24 @@ import { db } from "./supabase";
 import type { DataFlag } from "./flag-types";
 
 /** Open + in-review flags for one entity, plus the last 14 days of outcomes —
- *  the flagger sees the resolution on the page they flagged from. */
-export async function getFlagsForEntity(entityType: string, entityId: string): Promise<{
+ *  the flagger sees the resolution on the page they flagged from.
+ *  opts.prefix matches entity_id by prefix instead of equality — for composite
+ *  keys like timecard_day's `${hcp_employee_id}:${work_date}`, where a page
+ *  shows all of one tech's days at once. */
+export async function getFlagsForEntity(entityType: string, entityId: string, opts?: { prefix?: boolean }): Promise<{
   live: DataFlag[];
   recent: DataFlag[];
 }> {
   try {
     const supa = db();
+    const idFilter = opts?.prefix ? { op: "like" as const, val: `${entityId}%` } : { op: "eq" as const, val: entityId };
     const [liveRes, recentRes] = await Promise.all([
       supa.from("data_flags").select("*")
-        .eq("entity_type", entityType).eq("entity_id", entityId)
+        .eq("entity_type", entityType)[idFilter.op]("entity_id", idFilter.val)
         .in("status", ["open", "in_review"])
         .order("created_at", { ascending: true }),
       supa.from("data_flags").select("*")
-        .eq("entity_type", entityType).eq("entity_id", entityId)
+        .eq("entity_type", entityType)[idFilter.op]("entity_id", idFilter.val)
         .in("status", ["resolved", "dismissed", "promoted"])
         .gte("resolved_at", new Date(Date.now() - 14 * 86400_000).toISOString())
         .order("resolved_at", { ascending: false })

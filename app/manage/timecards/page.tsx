@@ -12,14 +12,21 @@ import Link from "next/link";
 import { db } from "../../../lib/supabase";
 import { PageShell } from "../../../components/PageShell";
 import { ConflictVerbs, WeekReviewedButton } from "./TimecardVerbs";
+import {
+  CHI,
+  DOW,
+  type HcpPair,
+  chiToday,
+  weekSundayOf,
+  addDays,
+  pairHours,
+  fmtHours,
+  fmtPair,
+} from "../../../lib/timecard-week";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Timecards · Manage · TPAR-DB" };
 
-const CHI = "America/Chicago";
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-type HcpPair = { in: string | null; out: string | null };
 type ConflictItem = { entry_id?: string; kind?: string; app_ts_chicago?: string; reason?: string };
 type SyncDay = {
   tech_short_name: string;
@@ -46,40 +53,6 @@ type SyncState = {
   last_ok: boolean | null;
   last_error: string | null;
 };
-
-function chiToday(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: CHI });
-}
-function weekSundayOf(iso: string): string {
-  // Sunday-start pay week, matching HCP timecards and the sync.
-  const d = new Date(`${iso}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
-  return d.toISOString().slice(0, 10);
-}
-function addDays(iso: string, n: number): string {
-  const d = new Date(`${iso}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-function pairHours(pairs: HcpPair[] | null): { hours: number; open: boolean } {
-  let mins = 0;
-  let open = false;
-  for (const p of pairs ?? []) {
-    if (!p.in) continue;
-    if (!p.out) { open = true; continue; }
-    const [ih, im] = p.in.split(":").map(Number);
-    const [oh, om] = p.out.split(":").map(Number);
-    const d = oh * 60 + om - (ih * 60 + im);
-    if (Number.isFinite(d) && d > 0) mins += d;
-  }
-  return { hours: mins / 60, open };
-}
-function fmtHours(h: number): string {
-  return h === 0 ? "—" : h.toFixed(h % 1 === 0 ? 0 : 1);
-}
-function fmtPair(p: HcpPair): string {
-  return `${p.in ?? "?"}–${p.out ?? "(open)"}`;
-}
 
 // Status vocabulary is the sync's, rendered dynamically with a fallback so a
 // new status from the timecard session shows up honestly instead of breaking.

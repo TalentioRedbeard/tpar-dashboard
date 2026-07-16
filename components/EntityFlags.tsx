@@ -12,8 +12,8 @@ function ageDays(iso: string): string {
 }
 const who = (email: string | null) => (email ?? "?").split("@")[0];
 
-export async function EntityFlags({ entityType, entityId }: { entityType: string; entityId: string }) {
-  const { live, recent } = await getFlagsForEntity(entityType, entityId);
+export async function EntityFlags({ entityType, entityId, prefix }: { entityType: string; entityId: string; prefix?: boolean }) {
+  const { live, recent } = await getFlagsForEntity(entityType, entityId, { prefix });
   if (live.length === 0 && recent.length === 0) return null;
 
   return (

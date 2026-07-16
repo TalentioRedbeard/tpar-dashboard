@@ -48,6 +48,11 @@ export function flagEntityHref(f: Pick<DataFlag, "entity_type" | "entity_id">): 
     case "job": return `/job/${f.entity_id}`;
     case "estimate": return `/estimate/${f.entity_id}`;
     case "customer": return `/customer/${f.entity_id}`;
+    // entity_id = `${hcp_employee_id}:${work_date}` (manage/timecards convention)
+    case "timecard_day": {
+      const workDate = f.entity_id.split(":")[1];
+      return /^\d{4}-\d{2}-\d{2}$/.test(workDate ?? "") ? `/manage/timecards?week=${workDate}` : "/manage/timecards";
+    }
     default: return null;
   }
 }
