@@ -112,7 +112,7 @@ export default async function NewMultiOptionEstimatePage({
     <PageShell
       kicker="Estimate"
       title="Build a multi-option estimate"
-      description="Each option is built with the 4-question pricebook cascade (Type → Category → Work type → Item) + hours/crew/materials. The customer picks an option. Pushes to HCP after you review."
+      description="Each option is built with the 4-question pricebook cascade (Type → Category → Work type → Item) + hours/crew/materials. The customer picks an option. Creates the estimate after you review (synced to Housecall Pro)."
       backHref={backHref}
       backLabel="Back"
     >

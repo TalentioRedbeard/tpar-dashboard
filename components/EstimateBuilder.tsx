@@ -250,8 +250,8 @@ export function EstimateBuilder({
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-          <h2 className="text-lg font-semibold text-emerald-900">Estimate {result.estimate_number} pushed to HCP</h2>
-          <p className="mt-1 text-sm text-emerald-800">Customer: {customerName}</p>
+          <h2 className="text-lg font-semibold text-emerald-900">Estimate {result.estimate_number} created ✓</h2>
+          <p className="mt-1 text-sm text-emerald-800">Customer: {customerName} · synced to Housecall Pro</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {result.hcp_url ? (
               <a href={result.hcp_url} target="_blank" rel="noreferrer" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">
@@ -279,7 +279,7 @@ export function EstimateBuilder({
         <div className="rounded-2xl border border-neutral-200 bg-white p-5">
           <h3 className="text-base font-semibold text-neutral-900">Send to client</h3>
           <p className="mt-1 text-sm text-neutral-600">
-            Email the estimate to the customer via HCP. Optional: add a personal message shown above the line items.
+            Email the estimate to the customer. Optional: add a personal message shown above the line items.
           </p>
           {sendState !== "sent" ? (
             <>
@@ -408,10 +408,10 @@ export function EstimateBuilder({
                   if (formEl) handlePushSingleOption(optIdx, formEl);
                 }}
                 disabled={isPending || opt.line_items.filter((li) => li.name && Number(li.quantity) > 0).length === 0}
-                title="Pushes just this option as a separate HCP estimate. Prices can be filled in later (in HCP or back here)."
+                title="Creates just this option as its own estimate (synced to Housecall Pro). Prices can be filled in later."
                 className="rounded-md bg-brand-700 px-3 py-1 text-xs font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
               >
-                {pushingOptionIdx === optIdx ? "Pushing…" : "Push this option →"}
+                {pushingOptionIdx === optIdx ? "Creating…" : "Create as its own estimate →"}
               </button>
             </span>
           </div>
@@ -617,15 +617,19 @@ export function EstimateBuilder({
       </div>
 
       <div className="flex flex-wrap items-center gap-3 pt-2">
+        {/* "Create estimate", not "Push to HCP" (Landon → Danny, 2026-07-16):
+         *  the app IS where estimates get made; HCP is the synced system of
+         *  record, not the destination the tech is serving. */}
         <button type="submit" disabled={isPending} className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300">
-          {isPending && pushingOptionIdx === null ? "Pushing all to HCP…" : "Push ALL options as one HCP estimate →"}
+          {isPending && pushingOptionIdx === null ? "Creating estimate…" : "Create estimate →"}
         </button>
         <button type="button" onClick={() => router.back()} disabled={isPending} className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50">
           Cancel
         </button>
         {error ? <span className="text-sm text-red-700">{error}</span> : null}
         <span className="text-xs text-neutral-500">
-          Or push individual options (above) to stage them as separate HCP estimates — useful for diagnostic/phased work.
+          All options become one estimate the customer picks from (syncs to Housecall Pro; nothing sends until you choose).
+          Or create individual options as separate estimates (above) — useful for diagnostic/phased work.
         </span>
       </div>
     </form>
