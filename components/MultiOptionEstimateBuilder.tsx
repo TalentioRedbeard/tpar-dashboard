@@ -471,9 +471,9 @@ export function MultiOptionEstimateBuilder({
     return (
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
         <h2 className="text-lg font-semibold text-emerald-900">
-          Estimate {result.estimate_number || ""} pushed to HCP
+          Estimate {result.estimate_number || ""} created ✓
         </h2>
-        <p className="mt-1 text-sm text-emerald-800">{customer?.name} · {options.length} option{options.length === 1 ? "" : "s"} · {money(grandTotal)}</p>
+        <p className="mt-1 text-sm text-emerald-800">{customer?.name} · {options.length} option{options.length === 1 ? "" : "s"} · {money(grandTotal)} · synced to Housecall Pro</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {result.hcp_url ? (
             <a href={result.hcp_url} target="_blank" rel="noreferrer" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">Open in HCP ↗</a>
@@ -642,7 +642,7 @@ export function MultiOptionEstimateBuilder({
       {/* Auto-seed status — drafting good/better/best from the visit notes */}
       {seeding ? (
         <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-          ✨ Drafting good/better/best from the visit notes… (review everything before pushing)
+          ✨ Drafting good/better/best from the visit notes… (review everything before creating the estimate)
         </div>
       ) : null}
       {seedMsg ? (
@@ -845,18 +845,20 @@ export function MultiOptionEstimateBuilder({
         <div className="text-sm text-neutral-600">Grand total (all options): <span className="text-base font-semibold text-neutral-900">{money(grandTotal)}</span></div>
         {hasValid ? (
           <button type="button" onClick={polishAll} disabled={polishing || pending}
-            title="Rewrite every line's scope into a customer-facing description in Danny's voice (Claude Haiku). Review before pushing."
+            title="Rewrite every line's scope into a customer-facing description in Danny's voice (Claude Haiku). Review before creating the estimate."
             className="rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50">
             {polishing ? "Polishing…" : "✨ Polish all descriptions"}
           </button>
         ) : null}
         <button type="button" onClick={submit} disabled={pending || !hasValid} className="ml-auto rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300">
-          {pending ? "Pushing to HCP…" : `Push ${options.length} option${options.length === 1 ? "" : "s"} as one HCP estimate →`}
+          {/* "Create estimate", not "Push to HCP" (Landon → Danny, 2026-07-16):
+              the app IS where estimates get made; HCP is the synced system of record. */}
+          {pending ? "Creating estimate…" : `Create estimate — ${options.length} option${options.length === 1 ? "" : "s"} →`}
         </button>
         {backHref ? <button type="button" onClick={() => router.push(backHref)} disabled={pending} className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50">Cancel</button> : null}
       </div>
       {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
-      <p className="text-[10px] text-neutral-400">Each option = one HCP estimate option; the customer picks. Materials marked up ×1.3, crew rates 185/250/+85, matching /estimate-draft + Add-line-item.</p>
+      <p className="text-[10px] text-neutral-400">All options become one estimate the customer picks from (syncs to Housecall Pro; nothing sends until you choose). Materials marked up ×1.3, crew rates 185/250/+85, matching /estimate-draft + Add-line-item.</p>
     </div>
   );
 }

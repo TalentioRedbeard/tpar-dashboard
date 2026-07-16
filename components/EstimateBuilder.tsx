@@ -6,7 +6,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createEstimateForJob, sendEstimateToClient, generateLineDescription, lookupPriceForScope, type PriceMatch } from "../lib/estimate-actions";
+import { createEstimateForJob, generateLineDescription, lookupPriceForScope, type PriceMatch } from "../lib/estimate-actions";
+import { sendBuilderEstimateTracked } from "../lib/multi-option-estimate-actions";
 
 type LineItem = {
   name: string;
@@ -96,26 +97,32 @@ export function EstimateBuilder({
   }
 
   // Send-to-client state — separate from create state so the success card
-  // can show both "pushed" and "sent" independently.
+  // can show both "created" and "sent" independently. Tracked lane: the same
+  // send-estimate flow the pipeline uses (Resend email → hosted /e page with
+  // delivered/viewed/clicked tracking), not HCP's mailer (swapped 2026-07-16).
   const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [sendError, setSendError] = useState<string | null>(null);
-  const [sentAt, setSentAt] = useState<string | null>(null);
+  const [sendViewUrl, setSendViewUrl] = useState<string | null>(null);
   const [sendMessage, setSendMessage] = useState("");
+  const [sendToEmail, setSendToEmail] = useState("");
+  const [showSendEmail, setShowSendEmail] = useState(false);
 
   function handleSendToClient(estimateId: string) {
     setSendState("sending");
     setSendError(null);
-    const fd = new FormData();
-    fd.set("estimate_id", estimateId);
-    if (sendMessage.trim()) fd.set("message", sendMessage.trim());
     startTransition(async () => {
-      const res = await sendEstimateToClient(fd);
+      const res = await sendBuilderEstimateTracked(estimateId, {
+        ...(sendMessage.trim() ? { message: sendMessage.trim() } : {}),
+        ...(showSendEmail && sendToEmail.trim() ? { toEmail: sendToEmail.trim() } : {}),
+      });
       if (res.ok) {
-        setSentAt(res.sent_at);
+        setSendViewUrl(res.view_url);
         setSendState("sent");
+        setShowSendEmail(false);
       } else {
         setSendError(res.error);
         setSendState("error");
+        if (/email/i.test(res.error)) setShowSendEmail(true);
       }
     });
   }
@@ -267,7 +274,7 @@ export function EstimateBuilder({
             </button>
             <button
               type="button"
-              onClick={() => { setResult(null); setSendState("idle"); setSendError(null); setSentAt(null); setSendMessage(""); setOptions([blankOption(0)]); setNote(""); setMessage(""); }}
+              onClick={() => { setResult(null); setSendState("idle"); setSendError(null); setSendViewUrl(null); setSendMessage(""); setSendToEmail(""); setShowSendEmail(false); setOptions([blankOption(0)]); setNote(""); setMessage(""); }}
               className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
             >
               Build another
@@ -275,11 +282,16 @@ export function EstimateBuilder({
           </div>
         </div>
 
-        {/* Send to client — separate card, only shown after the push succeeded */}
+        {/* Send to client — separate card, only shown after the create succeeded.
+            Tracked lane (2026-07-16, Danny via Landon: the app is fully
+            functional on estimates — own the send): branded Resend email →
+            hosted /e page, delivered/viewed/clicked tracking + the follow-up
+            engine key off the estimate_sends row. Same flow as the standalone
+            builder + estimate page. */}
         <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-          <h3 className="text-base font-semibold text-neutral-900">Send to client</h3>
+          <h3 className="text-base font-semibold text-neutral-900">Send it to the customer (tracked)</h3>
           <p className="mt-1 text-sm text-neutral-600">
-            Email the estimate to the customer. Optional: add a personal message shown above the line items.
+            Emails a branded estimate page and tracks delivered / viewed / clicked. Optional: add a personal note shown above the line items. You can also send it later from the estimate page.
           </p>
           {sendState !== "sent" ? (
             <>
@@ -292,14 +304,24 @@ export function EstimateBuilder({
                 disabled={sendState === "sending"}
                 className="mt-3 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
+              {showSendEmail ? (
+                <input
+                  type="email"
+                  value={sendToEmail}
+                  onChange={(e) => setSendToEmail(e.target.value)}
+                  placeholder="recipient@email.com"
+                  disabled={sendState === "sending"}
+                  className="mt-2 w-full max-w-xs rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              ) : null}
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={() => handleSendToClient(result.estimate_id)}
-                  disabled={sendState === "sending"}
+                  disabled={sendState === "sending" || (showSendEmail && !sendToEmail.trim())}
                   className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
                 >
-                  {sendState === "sending" ? "Sending…" : "Send estimate to customer"}
+                  {sendState === "sending" ? "Sending…" : "Send to customer (tracked) →"}
                 </button>
                 {sendState === "error" && sendError ? (
                   <span className="text-sm text-red-700">{sendError}</span>
@@ -308,7 +330,12 @@ export function EstimateBuilder({
             </>
           ) : (
             <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              ✓ Sent to customer{sentAt ? ` at ${new Date(sentAt).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}` : ""}.
+              ✓ Sent — we&rsquo;ll track delivery + opens.
+              {sendViewUrl ? (
+                <a href={sendViewUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs font-medium text-brand-700 underline">
+                  View the customer&rsquo;s page ↗
+                </a>
+              ) : null}
             </div>
           )}
         </div>
