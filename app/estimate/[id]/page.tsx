@@ -69,18 +69,19 @@ export default async function EstimateDetailPage({
   }
 
   const canEdit = !!me.isAdmin;
-  // hcp_estimate_id is the csr_* wrapper id, which HCP's web UI rejects.
-  // estimate_pipeline_v computes the working option-id URL (est_*/job_* aware)
-  // — click-bug fix 2026-07-13. Naive construction stays as a last resort.
+  // HCP deep-link is a LEADERSHIP convenience only (A4, 2026-07-16): techs stay
+  // in-app. hcp_estimate_id is the csr_* wrapper id, which HCP's web UI rejects
+  // — estimate_pipeline_v computes the working option-id URL (est_*/job_*
+  // aware, click-bug fix 2026-07-13). No naive fallback: a csr_ URL is a
+  // guaranteed-broken link (field-fix landmine 7/16).
   let hcpUrl: string | null = null;
-  if (est.hcp_estimate_id) {
+  if (est.hcp_estimate_id && (me.isAdmin || me.isManager)) {
     const { data: pipe } = await db()
       .from("estimate_pipeline_v")
       .select("hcp_url")
       .eq("hcp_estimate_id", est.hcp_estimate_id)
       .maybeSingle();
-    hcpUrl = (pipe?.hcp_url as string | undefined)
-      ?? `https://pro.housecallpro.com/app/estimates/${est.hcp_estimate_id}`;
+    hcpUrl = (pipe?.hcp_url as string | null) ?? null;
   }
 
   return (
@@ -205,7 +206,9 @@ export default async function EstimateDetailPage({
       </Section>
 
       <p className="mt-6 text-xs italic text-neutral-500">
-        Line items + pricing live in HCP — use the &ldquo;Open in HCP&rdquo; button above for those edits.
+        {hcpUrl
+          ? <>Line items + pricing live in HCP — use the &ldquo;Open in HCP&rdquo; button above for those edits.</>
+          : <>Line-item + pricing edits are handled by leadership.</>}
       </p>
     </PageShell>
   );

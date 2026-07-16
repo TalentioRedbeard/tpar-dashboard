@@ -56,7 +56,7 @@ export default async function EstimatesPage() {
     <PageShell
       icon="📄"
       title="Estimates"
-      description="Sent HCP estimates by pipeline stage — awaiting a decision, won, declined, or expired. Click a row to open it in HCP (AI-built estimates open in the builder)."
+      description="Sent estimates by pipeline stage — awaiting a decision, won, declined, or expired. Click a row to open it in the app."
     >
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         {STAGES.map((s) => {

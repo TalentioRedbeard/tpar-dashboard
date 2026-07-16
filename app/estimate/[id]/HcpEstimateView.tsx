@@ -231,7 +231,10 @@ export async function HcpEstimateView({ id, me }: { id: string; me: CurrentTech 
               📷 Gallery
             </Link>
           ) : null}
-          {hcpUrl ? (
+          {/* Leadership convenience only (A4, 2026-07-16): techs stay in-app —
+              view-as downgrades isAdmin/isManager, so impersonation previews
+              the tech experience automatically. */}
+          {hcpUrl && (me.isAdmin || me.isManager) ? (
             <a
               href={hcpUrl}
               target="_blank"

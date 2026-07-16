@@ -475,9 +475,12 @@ export function MultiOptionEstimateBuilder({
         </h2>
         <p className="mt-1 text-sm text-emerald-800">{customer?.name} · {options.length} option{options.length === 1 ? "" : "s"} · {money(grandTotal)} · synced to Housecall Pro</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          {result.hcp_url ? (
-            <a href={result.hcp_url} target="_blank" rel="noreferrer" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">Open in HCP ↗</a>
-          ) : null}
+          {/* In-app landing (A3/A4, 2026-07-16): the csr_ id opens the rich
+              /estimate/[id] template page; the HCP tab is retired on tech
+              surfaces (leadership reaches HCP from that page's gated button). */}
+          <button type="button" onClick={() => router.push(`/estimate/${result.estimate_id}`)} className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">
+            View estimate →
+          </button>
           {initialJob?.hcpJobId ? (
             <button type="button" onClick={() => router.push(`/job/${initialJob.hcpJobId}`)} className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800">Back to job →</button>
           ) : null}
@@ -504,12 +507,13 @@ export function MultiOptionEstimateBuilder({
                   className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">
                   {sendPending ? "Sending…" : "Send to customer (tracked) →"}
                 </button>
-                {result.bid_estimate_id ? (
-                  <button type="button" onClick={() => router.push(`/estimate/${result.bid_estimate_id}`)}
-                    className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">
-                    Open estimate →
-                  </button>
-                ) : null}
+                {/* csr_ id → the rich template page (the bid-uuid route is the
+                    sparse legacy edit page; estimate_id is always present while
+                    bid_estimate_id can be null when the persist RPC fails). */}
+                <button type="button" onClick={() => router.push(`/estimate/${result.estimate_id}`)}
+                  className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50">
+                  Open estimate →
+                </button>
               </div>
               {showSendEmail ? (
                 <div className="mt-2 flex items-center gap-2">
@@ -823,11 +827,13 @@ export function MultiOptionEstimateBuilder({
 
       {/* Notes */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <label className="text-xs"><span className="mb-1 block font-medium text-neutral-600">Internal note (HCP Pro Notes)</span>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className={inputCls} placeholder="Scope / internal context (not customer-facing)" /></label>
+        {/* "Private notes", not "HCP Pro Notes" (A5, 2026-07-16) — matches the
+            estimate page's Private notes section. */}
+        <label className="text-xs"><span className="mb-1 block font-medium text-neutral-600">Private note (never shown to the customer)</span>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className={inputCls} placeholder="Scope / internal context — for the crew and the office" /></label>
         <label className="text-xs">
           <span className="mb-1 flex flex-wrap items-center gap-2 font-medium text-neutral-600">
-            Customer-facing message (HCP PDF prose)
+            Customer-facing message
             <button type="button" onClick={genWriteup} disabled={writeupBusy || !hasValid}
               title="Write the full estimate description in Danny's voice — Summary, Work Description, Notes (Claude Sonnet)."
               className="rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50">

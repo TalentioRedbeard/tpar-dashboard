@@ -246,7 +246,7 @@ export function EstimateBuilder({
       const res = await createEstimateForJob(fd);
       if (res.ok) {
         setResult({ estimate_id: res.estimate_id, estimate_number: res.estimate_number, hcp_url: res.hcp_url });
-        // Stay on the page so they can see the success + click through to HCP
+        // Stay on the page so they can see the success + open the estimate in-app
       } else {
         setError(res.error);
       }
@@ -260,11 +260,15 @@ export function EstimateBuilder({
           <h2 className="text-lg font-semibold text-emerald-900">Estimate {result.estimate_number} created ✓</h2>
           <p className="mt-1 text-sm text-emerald-800">Customer: {customerName} · synced to Housecall Pro</p>
           <div className="mt-4 flex flex-wrap gap-2">
-            {result.hcp_url ? (
-              <a href={result.hcp_url} target="_blank" rel="noreferrer" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">
-                Open in HCP
-              </a>
-            ) : null}
+            {/* In-app landing (A3, 2026-07-16): /estimate/[id] resolves the csr_ id
+                to the rich template page — the HCP tab is retired on tech surfaces. */}
+            <button
+              type="button"
+              onClick={() => router.push(`/estimate/${result.estimate_id}`)}
+              className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800"
+            >
+              View estimate →
+            </button>
             <button
               type="button"
               onClick={() => router.push(`/job/${hcpJobId}`)}
@@ -445,18 +449,15 @@ export function EstimateBuilder({
 
           {pushedOptions[optIdx] ? (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs">
-              <span className="font-semibold text-emerald-900">✓ Pushed as estimate {pushedOptions[optIdx].estimate_number}</span>
-              {pushedOptions[optIdx].hcp_url ? (
-                <a
-                  href={pushedOptions[optIdx].hcp_url!}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-md bg-white px-2 py-0.5 font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100"
-                >
-                  Open in HCP →
-                </a>
-              ) : null}
-              <span className="text-emerald-700">— edit + push again to create another estimate.</span>
+              <span className="font-semibold text-emerald-900">✓ Created as estimate {pushedOptions[optIdx].estimate_number}</span>
+              <button
+                type="button"
+                onClick={() => router.push(`/estimate/${pushedOptions[optIdx].estimate_id}`)}
+                className="rounded-md bg-white px-2 py-0.5 font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100"
+              >
+                View estimate →
+              </button>
+              <span className="text-emerald-700">— edit + create again for another estimate.</span>
             </div>
           ) : null}
           {perOptionError[optIdx] ? (
@@ -618,7 +619,10 @@ export function EstimateBuilder({
       {/* Optional notes/message */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <label className="text-xs">
-          <span className="mb-1 block font-medium text-neutral-600">Internal note (HCP Pro UI Notes)</span>
+          {/* "Private notes", not "HCP Pro UI Notes" (A5, 2026-07-16) — matches the
+              estimate page's Private notes section; techs shouldn't need to know
+              where HCP stores it. */}
+          <span className="mb-1 block font-medium text-neutral-600">Private note (never shown to the customer)</span>
           <textarea
             name="note"
             value={note}
@@ -626,11 +630,11 @@ export function EstimateBuilder({
             rows={3}
             disabled={isPending}
             className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            placeholder="Scope of work / internal context (not customer-facing)"
+            placeholder="Scope of work / internal context — for the crew and the office"
           />
         </label>
         <label className="text-xs">
-          <span className="mb-1 block font-medium text-neutral-600">Customer-facing message (HCP PDF prose)</span>
+          <span className="mb-1 block font-medium text-neutral-600">Customer-facing message</span>
           <textarea
             name="message"
             value={message}

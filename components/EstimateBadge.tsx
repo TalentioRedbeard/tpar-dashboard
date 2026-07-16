@@ -5,14 +5,16 @@
 // ties). Mirrors the CellAddMenu dropdown idiom: useState(open) + fixed-inset
 // backdrop + absolute panel, so the host page stays a server component.
 //
-// Data + dedup are done server-side (lib/estimates-for-cards). Link target is the
-// HCP url (the csr_... estimate), opened in a new tab — NOT /estimate/[id], which
-// only resolves bid_estimates UUIDs.
+// Data + dedup are done server-side (lib/estimates-for-cards). Rows link to the
+// IN-APP estimate page — /estimate/[id] resolves csr_/est_ ids to the rich
+// template view (7/13 build); techs never get bounced to HCP from here (A4,
+// 2026-07-16). Leadership reaches HCP via the role-gated button on that page.
 //
 // CRITICAL: cards are wrapped in <Link href="/job/...">, so the badge button must
 // preventDefault()+stopPropagation() or a click navigates instead of opening.
 
 import { useState } from "react";
+import Link from "next/link";
 import type { CardEstimate } from "../lib/estimates-for-cards";
 
 const fmt = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -83,11 +85,9 @@ export function EstimateBadge({
           />
           <div className="absolute right-0 z-50 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-neutral-200 bg-white py-1 text-xs shadow-lg">
             {estimates.map((e) => (
-              <a
+              <Link
                 key={e.hcp_estimate_id}
-                href={e.hcp_url}
-                target="_blank"
-                rel="noreferrer"
+                href={`/estimate/${e.hcp_estimate_id}`}
                 onClick={(ev) => ev.stopPropagation()}
                 className="flex items-start justify-between gap-2 px-3 py-1.5 hover:bg-neutral-50"
               >
@@ -102,7 +102,7 @@ export function EstimateBadge({
                 <span className="shrink-0 font-medium tabular-nums text-neutral-700">
                   {amountLabel(e)}
                 </span>
-              </a>
+              </Link>
             ))}
             {overflow > 0 ? (
               <div className="border-t border-neutral-100 px-3 py-1.5 text-[10px] text-neutral-500">
