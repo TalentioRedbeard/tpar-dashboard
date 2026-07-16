@@ -104,6 +104,202 @@ export async function proposeJobMove(input: {
   return { ok: true };
 }
 
+// Immediate drag-to-move (Danny 2026-07-16, dispatch×schedule merge segment 1):
+// drop → HCP, matching HCP's own drag feel. The propose→review two-step was a
+// deliberate safety hold until the REST write path was proven on a safe job —
+// it has been since 2026-06-01 — and it was the single biggest trust gap
+// keeping Madisson in HCP. Guardrails carried over from applyChangeRequest:
+// an atomic audit row claims the move before the HCP write (double-fire
+// proof), notify_customer stays FALSE (visibility ≠ notification), dispatch
+// audit, sync bounce + revalidates. Undo = the client re-calls this with the
+// slots swapped (time-of-day rides current_start either direction).
+// Multi-appointment jobs are refused server-side: update-hcp-job only moves
+// single-visit jobs; per-visit moves are future work.
+export async function applyJobMove(input: {
+  appointment_id: string;
+  hcp_job_id?: string | null;
+  customer_name?: string | null;
+  current_start: string;   // ISO — the slot being moved FROM (time-of-day source)
+  current_tech: string;    // hcp_full_name
+  current_date: string;    // YYYY-MM-DD (Chicago)
+  new_tech: string;
+  new_date: string;
+}): Promise<Res> {
+  const me = await gate();
+  if (!me) return { ok: false, error: "dispatch role required" };
+  if (!SUPABASE_URL || !SERVICE_KEY) return { ok: false, error: "Server misconfigured — SUPABASE_URL/SERVICE_KEY missing." };
+  if (!input.appointment_id) return { ok: false, error: "no appointment" };
+
+  const techChanged = !!input.new_tech && input.new_tech !== input.current_tech && input.new_tech !== "Unassigned";
+  const dateChanged = !!input.new_date && input.new_date !== input.current_date;
+  if (!techChanged && !dateChanged) return { ok: true }; // dropped in place
+
+  const supa = db();
+
+  // HCP job id (row value, else the job:<id>:... appointment key).
+  let hcpJobId = (input.hcp_job_id ?? "").trim();
+  if (!hcpJobId) {
+    const m = String(input.appointment_id).match(/^job:([^:]+):/);
+    if (m) hcpJobId = m[1];
+  }
+  if (!hcpJobId) return { ok: false, error: "no HCP job id on this appointment" };
+
+  // Multi-visit guard: update-hcp-job reschedules the JOB — on a multi-
+  // appointment job that would move every visit. Refuse honestly.
+  const { count: visitCount } = await supa
+    .from("appointments_master")
+    .select("id", { count: "exact", head: true })
+    .eq("hcp_job_id", hcpJobId)
+    .is("deleted_at", null);
+  if ((visitCount ?? 0) > 1) {
+    return { ok: false, error: "Multi-visit job — move it in HCP for now (per-visit moves are coming)." };
+  }
+
+  // In-flight guard: a jittery drag can fire twice before the first lands.
+  const { data: inflight } = await supa
+    .from("schedule_change_requests")
+    .select("id")
+    .eq("appointment_id", input.appointment_id)
+    .eq("status", "applying")
+    .gte("created_at", new Date(Date.now() - 30_000).toISOString())
+    .limit(1)
+    .maybeSingle();
+  if (inflight) return { ok: false, error: "that move is already in flight" };
+
+  // Preserve the time-of-day (Chicago) of the slot being moved.
+  const proposedTime = new Date(input.current_start).toLocaleTimeString("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hour12: false }).slice(0, 5);
+  const kind = techChanged ? "reassign" : "reschedule";
+
+  // The audit/claim row — immediate moves land as 'applying' → 'applied' so
+  // the same ledger covers both the old review flow and the new direct drag.
+  const { data: row, error: insErr } = await supa
+    .from("schedule_change_requests")
+    .insert({
+      appointment_id: input.appointment_id,
+      hcp_job_id: hcpJobId,
+      kind,
+      current_start: input.current_start,
+      proposed_date: input.new_date,
+      proposed_start_time: proposedTime,
+      proposed_tech: techChanged ? input.new_tech : null,
+      customer_name: input.customer_name ?? null,
+      requested_by: me.tech?.tech_short_name ?? me.email,
+      status: "applying",
+    })
+    .select("id")
+    .single();
+  if (insErr || !row) return { ok: false, error: insErr?.message ?? "could not record the move" };
+  const claimId = row.id as string;
+  const fail = async (error: string): Promise<Res> => {
+    await supa.from("schedule_change_requests").update({ status: "dismissed" }).eq("id", claimId);
+    return { ok: false, error };
+  };
+
+  // Duration from the specific appointment being moved.
+  const { data: appt } = await supa
+    .from("appointments_master")
+    .select("scheduled_start, scheduled_end")
+    .eq("appointment_id", input.appointment_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  const updateBody: Record<string, unknown> = {
+    hcp_job_id: hcpJobId,
+    notify_customer: false, // a silent drag must never text the customer
+    reason: `drag move (immediate) by ${me.email}`,
+  };
+
+  const startUtc = new Date(`${input.new_date}T${proposedTime}:00${formatOffset(chicagoOffsetForDate(input.new_date))}`);
+  if (Number.isNaN(startUtc.getTime())) return fail("invalid target date/time");
+  const sameStart = appt?.scheduled_start && Math.abs(new Date(appt.scheduled_start).getTime() - startUtc.getTime()) < 60_000;
+  if (!sameStart) {
+    let durMs = 120 * 60_000;
+    if (appt?.scheduled_start && appt?.scheduled_end) {
+      const d = new Date(appt.scheduled_end).getTime() - new Date(appt.scheduled_start).getTime();
+      if (d > 0) durMs = d;
+    }
+    updateBody.scheduled_start = startUtc.toISOString();
+    updateBody.scheduled_end = new Date(startUtc.getTime() + durMs).toISOString();
+  }
+
+  if (techChanged) {
+    const { data: tech } = await supa
+      .from("tech_directory")
+      .select("hcp_employee_id")
+      .ilike("hcp_full_name", input.new_tech.trim())
+      .eq("is_active", true)
+      .not("hcp_employee_id", "is", null)
+      .maybeSingle();
+    if (!tech?.hcp_employee_id) return fail(`no active HCP employee for "${input.new_tech}"`);
+    updateBody.assigned_employee_ids = [tech.hcp_employee_id];
+  }
+
+  if (!updateBody.scheduled_start && !updateBody.assigned_employee_ids) {
+    return fail("nothing to apply — the drop matches the current slot");
+  }
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/update-hcp-job`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+      body: JSON.stringify(updateBody),
+    });
+    const json = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok || !json?.ok) {
+      const status = (json?.status as number) ?? res.status;
+      const hint = status === 404 || status === 405
+        ? " — HCP REST rejected the update; the browser-bot path is needed for this field."
+        : "";
+      return fail(String(json?.error ?? `update-hcp-job ${res.status}`) + hint);
+    }
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e));
+  }
+
+  const { error: markErr } = await supa
+    .from("schedule_change_requests")
+    .update({ status: "applied", applied_at: new Date().toISOString() })
+    .eq("id", claimId);
+  if (markErr) {
+    try {
+      await supa.from("maintenance_logs").insert({
+        source: "applyJobMove", level: "error",
+        message: "HCP updated but move row not marked applied — divergence, do NOT re-apply",
+        context: { id: claimId, hcp_job_id: hcpJobId, error: markErr.message },
+      });
+    } catch { /* best-effort */ }
+  }
+
+  await logDispatchAction({
+    action: kind,
+    hcp_job_id: hcpJobId,
+    appointment_id: input.appointment_id,
+    change_request_id: claimId,
+    detail: {
+      via: "drag_immediate",
+      customer_name: input.customer_name ?? null,
+      from: `${input.current_tech} ${input.current_date}`,
+      to: `${input.new_tech} ${input.new_date} ${proposedTime}`,
+      schedule_changed: !!updateBody.scheduled_start,
+      tech_changed: !!updateBody.assigned_employee_ids,
+    },
+  });
+
+  try {
+    const startSync = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const proposedMs = new Date(`${input.new_date}T12:00:00Z`).getTime();
+    const endSync = new Date(Math.max(Date.now(), proposedMs) + 3 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    await fetch(`${SUPABASE_URL}/functions/v1/hcp-sync-appointments?start=${startSync}&end=${endSync}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+    });
+  } catch { /* cron catches up within 30 min */ }
+  revalidatePath("/schedule");
+  revalidatePath("/dispatch");
+  revalidatePath("/me");
+  return { ok: true };
+}
+
 export async function dismissChangeRequest(id: string): Promise<Res> {
   const me = await gate();
   if (!me) return { ok: false, error: "dispatch role required" };

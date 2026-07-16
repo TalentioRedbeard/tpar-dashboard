@@ -17,8 +17,18 @@ export type ApptPayload = {
   currentDate: string;
 };
 
-export function DraggableAppt({ payload, children }: { payload: ApptPayload; children: ReactNode }) {
+export function DraggableAppt({ payload, multiVisit, children }: { payload: ApptPayload; multiVisit?: boolean; children: ReactNode }) {
   if (!payload.apptId) return <>{children}</>;
+  // Multi-visit jobs: update-hcp-job moves the whole JOB, so a per-visit drag
+  // would move every visit. Disabled with the why (v1; per-visit moves are
+  // future work — applyJobMove also refuses server-side).
+  if (multiVisit) {
+    return (
+      <div className="cursor-not-allowed" title="Multi-visit job — move it in HCP for now (per-visit moves coming)">
+        {children}
+      </div>
+    );
+  }
   return (
     <div
       draggable
@@ -27,7 +37,7 @@ export function DraggableAppt({ payload, children }: { payload: ApptPayload; chi
         e.dataTransfer.effectAllowed = "move";
       }}
       className="cursor-grab active:cursor-grabbing"
-      title="Drag to a different tech/day to propose a move"
+      title="Drag to a different tech/day — moves it in HCP immediately (Undo available)"
     >
       {children}
     </div>

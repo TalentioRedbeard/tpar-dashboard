@@ -534,6 +534,15 @@ export default async function SchedulePage({
   // Apply filters
   const appts = applyFilters(rawAppts, filters, nowIso);
 
+  // Multi-visit jobs (>1 appointment in the loaded window): their blocks don't
+  // drag — update-hcp-job moves the whole JOB, so a per-visit drag would move
+  // every visit (segment-1 guard; applyJobMove also refuses server-side).
+  const jobApptCounts = new Map<string, number>();
+  for (const a of rawAppts) {
+    if (a.hcp_job_id) jobApptCounts.set(a.hcp_job_id, (jobApptCounts.get(a.hcp_job_id) ?? 0) + 1);
+  }
+  const multiVisitJobs = new Set([...jobApptCounts.entries()].filter(([, n]) => n > 1).map(([id]) => id));
+
   // Estimate badges: ONE batched RPC for the whole window's distinct job +
   // customer ids, then attach per card (deduped + self-filtered). N+1 guard.
   const estMaps = await getEstimatesForCards(
@@ -1069,6 +1078,7 @@ export default async function SchedulePage({
           dollarsByDay={dollarsByDay}
           color={color}
           todayKey={todayKey}
+          multiVisitJobs={multiVisitJobs}
         />
       )}
 
@@ -1085,7 +1095,8 @@ export default async function SchedulePage({
       )}
 
       <p className="mt-4 text-xs text-neutral-500">
-        v1.5 · read-only · drag-to-reassign coming later. For today's intake/AR/map, use{" "}
+        Drag a job to another tech/day — it moves in HCP immediately (Undo on the chip; customers are never auto-notified).
+        Multi-visit jobs don&apos;t drag yet. For today&apos;s intake/AR/map, use{" "}
         <Link href="/dispatch" className="underline">/dispatch</Link>.
       </p>
     </PageShell>
@@ -1200,7 +1211,7 @@ function DayView({
 // ──────────────────────────────────────────────────────────────────────────────
 
 function WeekView({
-  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey,
+  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey, multiVisitJobs,
 }: {
   windowKeys: string[];
   rowOrder: string[];
@@ -1215,6 +1226,7 @@ function WeekView({
   dollarsByDay: Map<string, number>;
   color: ColorMode;
   todayKey: string;
+  multiVisitJobs: Set<string>;
 }) {
   if (rowOrder.length === 0) {
     return (
@@ -1289,6 +1301,7 @@ function WeekView({
                               <DraggableAppt
                                 key={a.appointment_id ?? a.hcp_job_id ?? Math.random()}
                                 payload={{ apptId: a.appointment_id, hcpJobId: a.hcp_job_id, customerName: a.customer_name, currentStart: a.scheduled_start, currentTech: techFullName, currentDate: dayKey }}
+                                multiVisit={!!a.hcp_job_id && multiVisitJobs.has(a.hcp_job_id)}
                               >
                                 <div className="space-y-0.5">
                                   {assisting ? <span className="block text-[8px] font-semibold uppercase tracking-wide text-sky-600">assisting</span> : null}
