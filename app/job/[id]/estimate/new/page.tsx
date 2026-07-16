@@ -44,7 +44,7 @@ export default async function NewEstimatePage({ params }: { params: Promise<{ id
   return (
     <PageShell
       title="Build a multi-option estimate"
-      description={`${customerName}${job.street ? ` · ${job.street}${job.city ? ", " + job.city : ""}` : ""} — pushes to HCP after review.`}
+      description={`${customerName}${job.street ? ` · ${job.street}${job.city ? ", " + job.city : ""}` : ""} — creates the estimate after you review (synced to Housecall Pro).`}
     >
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Link href={`/job/${id}`} className="text-xs text-neutral-500 hover:underline">← Back to job</Link>
@@ -67,7 +67,7 @@ export default async function NewEstimatePage({ params }: { params: Promise<{ id
       ) : (
         <EmptyState
           title="Manager view — read-only."
-          description="Estimates are pushed to HCP by Danny or a tech. You're seeing the same context they would; the builder UI is hidden because submissions would be blocked server-side."
+          description="Estimates are created by Danny or a tech. You're seeing the same context they would; the builder UI is hidden because submissions would be blocked server-side."
         />
       )}
     </PageShell>

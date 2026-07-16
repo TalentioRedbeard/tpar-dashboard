@@ -146,7 +146,7 @@ export default async function EstimateDetailPage({
               <dd>{est.created_by ?? "—"}</dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-neutral-500">Pushed to HCP</dt>
+              <dt className="text-neutral-500">Synced to HCP</dt>
               <dd>{fmtDate(est.hcp_pushed_at)}</dd>
             </div>
             <div className="flex justify-between gap-3">

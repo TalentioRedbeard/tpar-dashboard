@@ -121,7 +121,7 @@ export default async function NewMultiOptionEstimatePage({
       ) : (
         <EmptyState
           title="Manager view — read-only."
-          description="Estimates are pushed to HCP by Danny or a tech. The builder UI is hidden because submissions would be blocked server-side."
+          description="Estimates are created by Danny or a tech. The builder UI is hidden because submissions would be blocked server-side."
         />
       )}
     </PageShell>
