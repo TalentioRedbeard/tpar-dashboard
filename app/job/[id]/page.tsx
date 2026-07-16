@@ -3,6 +3,7 @@
 // validates the row at the data boundary and surfaces compile-time
 // completion for column access.
 import { db } from "@/lib/supabase";
+import { techWorkedJob } from "@/lib/tech-scope";
 import Link from "next/link";
 import { NoteForm } from "../../../components/NoteForm";
 import { addJobNote } from "../../../lib/notes-actions";
@@ -196,15 +197,13 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const j = jobRow as Record<string, unknown>;
   const customerId = j.hcp_customer_id as string | null;
 
-  // Tech scope auth: techs only see jobs they were on (#130, per Danny 2026-05-04).
-  // Admin/manager/production_manager bypass.
-  // Note: job_360.tech_primary_name + tech_all_names store FULL names
-  // (e.g., "Omar Fernandez"), not the short name.
+  // Tech scope auth: techs see every job they were ON — full history, crew
+  // counts, matched by hcp_employee_id (Danny 2026-07-16; name-matching
+  // invited the second-Chris collision and missed crew rows). Canonical rule
+  // in lib/tech-scope.ts. Admin/manager/production_manager bypass.
   if (me && me.dashboardRole === "tech" && me.tech) {
-    const techFullName = me.tech.hcp_full_name ?? me.tech.tech_short_name;
-    const onPrimary = j.tech_primary_name === techFullName;
-    const onCrew = Array.isArray(j.tech_all_names) && (j.tech_all_names as string[]).includes(techFullName);
-    if (!onPrimary && !onCrew) {
+    const inScope = await techWorkedJob(me.tech.hcp_employee_id, j.hcp_job_id as string);
+    if (!inScope) {
       return (
         <PageShell kicker="Job" title="Outside your scope" backHref="/" backLabel="Today">
           <EmptyState

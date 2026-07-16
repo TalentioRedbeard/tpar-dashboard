@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
+import { assignedHasEmployee } from "@/lib/assigned-employees";
 
 const CHI = "America/Chicago";
 
@@ -53,53 +54,66 @@ function fmtAmount(e: Est): string {
   return fmt(max);
 }
 
-export async function TechEstimatesView({ fullName, shortName }: { fullName: string | null; shortName: string }) {
+export async function TechEstimatesView({ hcpEmployeeId, shortName }: { hcpEmployeeId: string | null; shortName: string }) {
   const supa = db();
-  const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
-  const until = new Date(Date.now() + 30 * 86_400_000).toISOString();
 
+  // Canonical scope rule (Danny 2026-07-16): full work history, crew counts,
+  // matched by hcp_employee_id — appointments ∪ job records (the old view was
+  // name-matched and 90-day-windowed, so techs lost older customers' estimates).
   const custIds = new Set<string>();
-  if (fullName) {
+  if (hcpEmployeeId) {
     const { data: appts } = await supa
       .from("appointments_master")
-      .select("hcp_customer_id, scheduled_start, tech_primary_name, tech_all_names")
+      .select("hcp_customer_id")
       .is("deleted_at", null)
-      .gte("scheduled_start", since)
-      .lt("scheduled_start", until);
-    for (const a of (appts ?? []) as ApptLite[]) {
-      const mine = a.tech_primary_name === fullName || (a.tech_all_names ?? []).includes(fullName);
-      if (mine && a.hcp_customer_id) custIds.add(a.hcp_customer_id);
+      .contains("tech_all_ids", [hcpEmployeeId])
+      .limit(2000);
+    for (const a of (appts ?? []) as Array<{ hcp_customer_id: string | null }>) {
+      if (a.hcp_customer_id) custIds.add(a.hcp_customer_id);
+    }
+    const { data: jmRows } = await supa
+      .from("jobs_master")
+      .select("hcp_customer_id, assigned_employees")
+      .like("assigned_employees", `%${hcpEmployeeId}%`)
+      .not("hcp_customer_id", "is", null)
+      .limit(2000);
+    for (const j of (jmRows ?? []) as Array<{ hcp_customer_id: string | null; assigned_employees: string | null }>) {
+      if (j.hcp_customer_id && assignedHasEmployee(j.assigned_employees, hcpEmployeeId)) custIds.add(j.hcp_customer_id);
     }
   }
   const ids = [...custIds];
 
   let estimates: Est[] = [];
-  if (ids.length) {
+  // Chunked .in() — full-history customer sets run 250+ ids.
+  for (let i = 0; i < ids.length; i += 100) {
     const { data } = await supa
       .from("estimate_pipeline_v")
       .select("hcp_estimate_id, hcp_customer_id, customer_name, estimate_number, stage, total_dollars, min_dollars, option_count, last_activity, is_ai_built, bid_estimate_id, hcp_url")
-      .in("hcp_customer_id", ids)
+      .in("hcp_customer_id", ids.slice(i, i + 100))
       .order("last_activity", { ascending: false, nullsFirst: false })
       .limit(60);
-    estimates = (data ?? []) as Est[];
+    estimates.push(...((data ?? []) as Est[]));
   }
+  estimates = estimates
+    .sort((a, b) => String(b.last_activity ?? "").localeCompare(String(a.last_activity ?? "")))
+    .slice(0, 60);
 
   return (
     <PageShell
       title="My estimates"
-      description={`Sent estimates on your scheduled customers · ${shortName}`}
+      description={`Estimates on your customers — full work history · ${shortName}`}
       help={{
-        intent: "Sent HCP estimates on the customers you're scheduled with, with their pipeline stage (awaiting / won / declined / expired). Tap one to open it.",
+        intent: "Sent HCP estimates on the customers you've worked for, with their pipeline stage (awaiting / won / declined / expired). Tap one to open it.",
         actions: [
-          "Scoped to your scheduled customers (last 3 months + upcoming).",
+          "Scoped to work you were on (lead or crew), all-time.",
           "Tap an estimate to open it in HCP (AI-built ones open in the builder).",
           "New estimate: open the job → Estimate, or My day → Estimate.",
         ],
       }}
     >
-      {!fullName ? (
+      {!hcpEmployeeId ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Your HCP name isn&apos;t linked yet, so we can&apos;t match your customers. Ask Danny to set your HCP name in the tech directory.
+          Your HCP profile isn&apos;t linked yet, so we can&apos;t match your customers. Ask Danny to link your HCP employee id in the tech directory.
         </div>
       ) : estimates.length === 0 ? (
         <div className="rounded-xl border border-neutral-200 bg-white px-4 py-8 text-center text-sm text-neutral-500">

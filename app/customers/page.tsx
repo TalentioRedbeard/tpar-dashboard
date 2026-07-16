@@ -53,7 +53,7 @@ export default async function CustomersListPage({
   // instead of the company list; office users (no tech row) still go to /me.
   if (!me?.isAdmin && !me?.isManager) {
     if (me?.tech) {
-      return <TechCustomersView fullName={me.tech.hcp_full_name} shortName={me.tech.tech_short_name} />;
+      return <TechCustomersView hcpEmployeeId={me.tech.hcp_employee_id} shortName={me.tech.tech_short_name} />;
     }
     redirect("/me");
   }

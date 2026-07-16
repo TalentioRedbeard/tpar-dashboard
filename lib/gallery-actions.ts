@@ -10,6 +10,7 @@ import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { getJobMedia, type MediaFile } from "@/lib/job-media-actions";
 import { assignedHasEmployee } from "@/lib/assigned-employees";
+import { techWorkedJob } from "@/lib/tech-scope";
 import crypto from "node:crypto";
 
 // drive-media proxy signing — serves Drive media to ANY tech (no personal Google session).
@@ -397,9 +398,9 @@ export async function getGalleryPhotos(scope: GalleryScope, id: string): Promise
   const isOffice = !!(me.isAdmin || me.isManager);
   if (!isOffice) {
     if (scope === "customer" || scope === "estimate") return { ok: false, error: "unauthorized" };
-    const { data: ownRow } = await db().from("jobs_master").select("assigned_employees").eq("hcp_job_id", id).maybeSingle();
-    const ae = (ownRow as { assigned_employees?: string | null } | null)?.assigned_employees ?? null;
-    if (!assignedHasEmployee(ae, me.tech?.hcp_employee_id ?? null)) return { ok: false, error: "unauthorized" };
+    // Canonical work-scope rule (lib/tech-scope.ts): job record OR appointment
+    // crew, by hcp_employee_id — full history, crew counts (Danny 2026-07-16).
+    if (!(await techWorkedJob(me.tech?.hcp_employee_id, id))) return { ok: false, error: "unauthorized" };
   }
 
   // Two sources, fetched in parallel: Google Drive (Slack #job-media → Drive, keyed by

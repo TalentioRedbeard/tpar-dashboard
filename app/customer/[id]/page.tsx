@@ -1,6 +1,6 @@
 // Per-customer 360 view
 import { db } from "@/lib/supabase";
-import { assignedHasEmployee } from "@/lib/assigned-employees";
+import { techWorkedCustomer } from "@/lib/tech-scope";
 import Link from "next/link";
 import { NoteForm } from "../../../components/NoteForm";
 import { QuickText } from "../../../components/QuickText";
@@ -51,22 +51,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const formerSet = await getFormerTechNames();
   const supabase = db();
 
-  // Tech scope auth: techs only see customers they've worked for (#130).
-  // Admin/manager/production_manager bypass.
-  // Rebased onto jobs_master + hcp_employee_id (2026-07-16, Landon's report):
-  // job_360 is a WINDOWED subset (~350 rows vs ~11k jobs), so the old
-  // name-match-in-360 gate denied techs most customers they'd legitimately
-  // worked for (Landon: 60 reachable vs 284 real). Same rebase the gallery
-  // needed; id-matching also kills the second-Chris name-collision class.
+  // Tech scope auth: techs see every customer that pertains to work they
+  // were on — full history, crew counts (Danny 2026-07-16). Canonical rule
+  // lives in lib/tech-scope.ts; never gate on job_360 (windowed subset).
   if (me && me.dashboardRole === "tech" && me.tech) {
-    const empId = me.tech.hcp_employee_id;
-    const { data: scopeJobs } = await supabase
-      .from("jobs_master")
-      .select("assigned_employees")
-      .eq("hcp_customer_id", id)
-      .limit(500);
-    const inScope = !!empId &&
-      (scopeJobs ?? []).some((j) => assignedHasEmployee(j.assigned_employees as string | null, empId));
+    const inScope = await techWorkedCustomer(me.tech.hcp_employee_id, id);
     if (!inScope) {
       return (
         <PageShell kicker="Customer" title="Outside your scope" backHref="/" backLabel="Today">

@@ -10,6 +10,7 @@ import { GalleryFilter } from "../../components/GalleryFilter";
 import { getCurrentTech } from "../../lib/current-tech";
 import { db } from "@/lib/supabase";
 import { assignedHasEmployee } from "@/lib/assigned-employees";
+import { techWorkedJob } from "@/lib/tech-scope";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -60,11 +61,13 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
     customerId = row?.hcp_customer_id ?? null;
     title = `Photos · ${row?.customer_name ?? "job"}`;
     backHref = `/job/${id}`;
-    // Tech scope: a tech may only view photos for a job they were on. jobs_master has no
-    // tech_* columns — match the signed-in tech's HCP pro id against the job's crew
-    // (assigned_employees). Deny if unverifiable (null row/crew) — never over-shares.
-    if (!isOffice && !assignedHasEmployee(row?.assigned_employees ?? null, me.tech?.hcp_employee_id ?? null)) {
-      unauthorized = "You can only view photos for jobs you were on.";
+    // Tech scope: a tech may view photos for any job they were on — full
+    // history, crew counts (canonical rule, lib/tech-scope.ts: job record OR
+    // appointment crew by hcp_employee_id). Deny if unverifiable.
+    if (!isOffice) {
+      const onJob = assignedHasEmployee(row?.assigned_employees ?? null, me.tech?.hcp_employee_id ?? null)
+        || await techWorkedJob(me.tech?.hcp_employee_id, id);
+      if (!onJob) unauthorized = "You can only view photos for jobs you were on.";
     }
   } else if (scope === "customer") {
     if (!isOffice) unauthorized = "Customer-wide photo history is office-only.";
