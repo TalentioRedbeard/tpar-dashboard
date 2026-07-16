@@ -53,10 +53,27 @@ export function BasedOnPanel({
   const [generating, setGenerating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Safari reports a failed fetch as the bare string "Load failed" (Chrome:
+  // "Failed to fetch") — techs on cell signal saw it raw (Landon, 7/16).
+  const friendly = (e: unknown) => {
+    const m = e instanceof Error ? e.message : String(e);
+    return /load failed|failed to fetch|network/i.test(m)
+      ? "Network hiccup — check your signal and try again."
+      : m;
+  };
+
   function openPanel() {
     setOpen(true);
     if (sources === null && !loadingSources) {
-      startLoad(async () => { setSources(await fetchBasedOnSources(hcpCustomerId)); });
+      startLoad(async () => {
+        try {
+          setSources(await fetchBasedOnSources(hcpCustomerId));
+          setErr(null);
+        } catch (e) {
+          // Leave sources null so reopening (or the retry below) reloads.
+          setErr(`Couldn't load your sources: ${friendly(e)}`);
+        }
+      });
     }
   }
 
@@ -105,7 +122,7 @@ export function BasedOnPanel({
       setGenerating(false);
       if (res.ok) { onApply(res.options, res.note); setOpen(false); }
       else setErr(res.error);
-    }).catch((e) => { setGenerating(false); setErr(e instanceof Error ? e.message : String(e)); });
+    }).catch((e) => { setGenerating(false); setErr(friendly(e)); });
   }
 
   if (!open) {

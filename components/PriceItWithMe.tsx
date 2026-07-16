@@ -244,11 +244,19 @@ export function PriceItWithMe({
   const targetLabel = optionNames[targetIdx] || `Option ${targetIdx + 1}`;
   const busy = extracting || proposing;
 
+  // Model-format failures are OUR problem, not the tech's — render a plain
+  // retry line instead of "tool output malformed" (Landon, 7/16; the raw
+  // error still lands in maintenance_logs server-side).
+  const friendlyErr = (m: string) =>
+    /malformed|tool-format|did not call/i.test(m)
+      ? "The extractor stumbled on that one — hit Start again (it usually clears on retry). If it keeps failing, text the office."
+      : m;
+
   function runExtract(conv: ConversationTurn[]) {
     setErr(null);
     startExtract(async () => {
       const res = await conversationExtract({ conversation: conv, hcpJobId: hcpJobId ?? undefined });
-      if (!res.ok) { setErr(res.error); return; }
+      if (!res.ok) { setErr(friendlyErr(res.error)); return; }
       setConversation(conv);
       setNarration("");
       setChips(res.scopeItems);
@@ -293,7 +301,7 @@ export function PriceItWithMe({
         answers: ansArr,
         scopeItems: rawScopeItems.length > 0 ? rawScopeItems : undefined,
       });
-      if (!res.ok) { setErr(res.error); return; }
+      if (!res.ok) { setErr(friendlyErr(res.error)); return; }
       setProposal(res.options);
       setAddedKeys(new Set());
       setPhase("proposed");
