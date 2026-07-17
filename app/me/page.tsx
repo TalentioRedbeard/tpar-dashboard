@@ -139,7 +139,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     // testing functionality on his own customer record).
     supa
       .from("appointment_location_v")
-      .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, scheduled_start_chicago, appointment_type, customer_name, street, city, zip, status, total_amount, tech_primary_name, tech_all_names, cust_lat, cust_lng")
+      .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, scheduled_start_chicago, customer_name, street, city, zip, status, total_amount, tech_primary_name, tech_all_names, cust_lat, cust_lng")
       .or(`tech_primary_name.eq."${techFullName ?? techName}",tech_all_names.cs.{"${techFullName ?? techName}"}`)
       .gte("appt_date_chicago", today)
       .lte("appt_date_chicago", today)
@@ -251,7 +251,8 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   const stripAppts = activeAppts.map((a) => ({
     appointment_id: (a.appointment_id as string | null) ?? null,
     hcp_job_id: (a.hcp_job_id as string | null) ?? null,
-    appointment_type: (a.appointment_type as string | null) ?? null,
+    appointment_type: null, // appointment_location_v has no appointment_type; the strip deep-links jobs
+
     scheduled_start: a.scheduled_start as string,
     scheduled_end: (a.scheduled_end as string | null) ?? null,
     customer_name: (a.customer_name as string | null) ?? null,
