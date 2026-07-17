@@ -843,7 +843,7 @@ export async function ScheduleBoard({
       const laborEst = liveMinutes != null ? (liveMinutes / 60) * BURDEN * crewSize : null;
       return {
         key: a.appointment_id ?? a.hcp_job_id ?? `${a.scheduled_start}-${a.customer_name ?? ""}`,
-        hcpJobId: a.hcp_job_id, customer: a.customer_name,
+        hcpJobId: a.hcp_job_id, appointmentType: a.appointment_type, appointmentId: a.appointment_id, customer: a.customer_name,
         startMin: segs[0].startMin, endMin: segs[segs.length - 1].endMin,
         segs,
         curColor: lastEv ? STATE[lastEv.trigger_number]?.color ?? PLANNED : PLANNED,

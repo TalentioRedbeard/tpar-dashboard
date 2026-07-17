@@ -24,6 +24,8 @@ export type TLLifeSeg = { startMin: number; endMin: number; color: string; label
 export type TLJob = {
   key: string;
   hcpJobId: string | null;
+  appointmentType: string | null;   // 'estimate' | 'event' | job types — for deep-linking
+  appointmentId: string | null;
   customer: string | null;
   startMin: number;
   endMin: number;
@@ -166,8 +168,15 @@ export function TechDayTimeline({ rows, isToday, nowMin, canSeeAllMoney = true }
                         ))}
                       </>
                     );
-                    return j.hcpJobId ? (
-                      <Link key={j.key} href={`/job/${j.hcpJobId}`} className="block">{inner}</Link>
+                    // Jobs -> /job; estimate visits (no job yet) -> draft an estimate
+                    // from the visit; events fall through to non-clickable.
+                    const href = j.hcpJobId
+                      ? `/job/${j.hcpJobId}`
+                      : j.appointmentType === "estimate" && j.appointmentId
+                        ? `/estimate/new?appointment=${j.appointmentId}`
+                        : null;
+                    return href ? (
+                      <Link key={j.key} href={href} className="block">{inner}</Link>
                     ) : <div key={j.key}>{inner}</div>;
                   })}
                 </div>
