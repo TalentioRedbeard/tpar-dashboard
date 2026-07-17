@@ -106,18 +106,36 @@ export async function searchReceipts(facets: ReceiptFacets): Promise<BrowseResul
   };
 
   const offset = Math.max(0, Number(facets.offset ?? 0));
-  const [pageRes, sumRes] = await Promise.all([
-    apply(
-      supa.from("receipts_master")
-        .select("id, vendor_description, amount, transaction_date, source, tech_name, purchaser_set_by, photo_url, invoice_number, is_overhead, overhead_category, notes", { count: "exact" }),
-    )
-      .order("transaction_date", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false })
-      .range(offset, offset + PAGE - 1),
-    // Whole-set total: amounts only, capped generously (table is ~1.5k rows).
-    apply(supa.from("receipts_master").select("amount")).limit(5000),
-  ]);
+  const pageRes = await apply(
+    supa.from("receipts_master")
+      .select("id, vendor_description, amount, transaction_date, source, tech_name, purchaser_set_by, photo_url, invoice_number, is_overhead, overhead_category, notes", { count: "exact" }),
+  )
+    .order("transaction_date", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + PAGE - 1);
   if (pageRes.error) return { ok: false, error: pageRes.error.message };
+
+  // Whole-set total. PostgREST caps any single response at ~1000 rows
+  // regardless of .limit() (the bug the first probe caught: $45.8k rendered
+  // against a $577k truth) — so page the amounts explicitly, id-ordered.
+  let totalAmount = 0;
+  {
+    const CHUNK = 1000;
+    let lastId = -1;
+    for (let i = 0; i < 12; i++) {
+      const { data: chunk, error: sumErr } = await apply(
+        supa.from("receipts_master").select("id, amount"),
+      )
+        .gt("id", lastId)
+        .order("id", { ascending: true })
+        .limit(CHUNK);
+      if (sumErr) return { ok: false, error: sumErr.message };
+      const rows = (chunk ?? []) as Array<{ id: number; amount: unknown }>;
+      for (const r of rows) totalAmount += Number(r.amount) || 0;
+      if (rows.length < CHUNK) break;
+      lastId = rows[rows.length - 1].id;
+    }
+  }
 
   const rows: BrowseReceipt[] = ((pageRes.data ?? []) as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as number,
@@ -133,9 +151,6 @@ export async function searchReceipts(facets: ReceiptFacets): Promise<BrowseResul
     overhead_category: (r.overhead_category as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
   }));
-  const totalAmount = ((sumRes.data ?? []) as Array<{ amount: unknown }>)
-    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-
   return {
     ok: true,
     rows,
