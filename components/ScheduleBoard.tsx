@@ -487,9 +487,7 @@ export async function ScheduleBoard({
     if (Number.isNaN(dd.getTime())) return todayKey;
     return d;
   })();
-  const rawView: ViewMode = (params.view === "day" || params.view === "month" ? params.view : "week");
-  // Techs never get the day timeline (it exposes per-job labor cost / $); coerce to week.
-  const view: ViewMode = isTech && rawView === "day" ? "week" : rawView;
+  const view: ViewMode = (params.view === "day" || params.view === "month" ? params.view : "week");
   const color: ColorMode = (params.color === "status" || params.color === "tech" ? params.color : "plaid");
   const filters = parseFilters(params);
   // Test-customer jobs (Danny-as-customer artifacts) are hidden from the lanes by
@@ -899,7 +897,7 @@ export async function ScheduleBoard({
           <div className={`rounded-t-2xl border px-4 py-2 text-sm font-semibold ${centerKey === todayKey ? "border-amber-300 bg-amber-50 text-amber-900" : "border-neutral-200 bg-neutral-50 text-neutral-800"}`}>
             {centerLabel}
           </div>
-          <TechDayTimeline rows={timelineRows} isToday={centerKey === todayKey} nowMin={dayNowMin} />
+          <TechDayTimeline rows={timelineRows} isToday={centerKey === todayKey} nowMin={dayNowMin} canSeeAllMoney={canSeeAllMoney} />
         </div>
       )}
 
@@ -1030,7 +1028,7 @@ export async function ScheduleBoard({
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white p-0.5">
           <span className="px-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">View</span>
-          {((isTech ? ["week", "month"] : ["day", "week", "month"]) as ViewMode[]).map((v) => (
+          {(["day", "week", "month"] as ViewMode[]).map((v) => (
             <Link
               key={v}
               href={linkFor({ view: v === "week" ? null : v })}

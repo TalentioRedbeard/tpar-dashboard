@@ -68,7 +68,10 @@ const widthPct = (a: number, b: number) => Math.max(0.4, pct(b) - pct(a));
 const clockLabel = (min: number) => { const h = Math.floor(min / 60), m = min % 60; const hh = ((h + 11) % 12) + 1; return `${hh}:${String(m).padStart(2, "0")}${h < 12 ? "a" : "p"}`; };
 const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
-export function TechDayTimeline({ rows, isToday, nowMin }: { rows: TLRow[]; isToday: boolean; nowMin: number | null }) {
+export function TechDayTimeline({ rows, isToday, nowMin, canSeeAllMoney = true }: { rows: TLRow[]; isToday: boolean; nowMin: number | null; canSeeAllMoney?: boolean }) {
+  // Techs get the full operational day (GPS, clock, lifecycle triggers, live
+  // duration, status) but NOT revenue / material+labor cost — that's leadership.
+  // Server component, so hidden values are never serialized to the client.
   const hours: number[] = [];
   for (let h = DAY_START / 60; h <= DAY_END / 60; h++) hours.push(h);
   const quarters: number[] = [];
@@ -109,7 +112,7 @@ export function TechDayTimeline({ rows, isToday, nowMin }: { rows: TLRow[]; isTo
                     <span className="truncate text-xs font-semibold text-neutral-900">{r.short}</span>
                     {r.isLead ? <span className="text-[9px] text-amber-500" title="Lead">★</span> : null}
                   </div>
-                  <div className="text-[10px] text-neutral-400">{r.apptCount} job{r.apptCount === 1 ? "" : "s"}{r.dollars > 0 ? ` · ${money(r.dollars)}` : ""}</div>
+                  <div className="text-[10px] text-neutral-400">{r.apptCount} job{r.apptCount === 1 ? "" : "s"}{canSeeAllMoney && r.dollars > 0 ? ` · ${money(r.dollars)}` : ""}</div>
                 </div>
               </div>
             ))}
@@ -153,8 +156,8 @@ export function TechDayTimeline({ rows, isToday, nowMin }: { rows: TLRow[]; isTo
                           <span className="absolute left-1 top-0 truncate text-[10px] font-semibold text-neutral-700" style={{ maxWidth: "calc(100% - 6px)" }}>{j.customer ?? "—"}</span>
                           <span className="absolute bottom-0 left-1 truncate text-[9px] text-neutral-500" style={{ maxWidth: "calc(100% - 6px)" }}>
                             {j.liveMinutes != null ? `${j.durationDone ? "✓" : "⏱"} ${Math.floor(j.liveMinutes / 60)}h${String(j.liveMinutes % 60).padStart(2, "0")}` : ""}
-                            {j.materials != null && j.materials > 0 ? ` · ${money(j.materials)} mat` : ""}
-                            {j.laborEst != null && j.laborEst > 0 ? ` +${money(j.laborEst)} lbr` : ""}
+                            {canSeeAllMoney && j.materials != null && j.materials > 0 ? ` · ${money(j.materials)} mat` : ""}
+                            {canSeeAllMoney && j.laborEst != null && j.laborEst > 0 ? ` +${money(j.laborEst)} lbr` : ""}
                           </span>
                         </div>
                         {j.segs.map((s, si) => (
