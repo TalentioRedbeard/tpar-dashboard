@@ -55,7 +55,7 @@ export default async function ManagePage() {
   const today = chiToday();
   const weekStart = chiWeekStartIso();
 
-  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes, flagRes, captureRes, ownerCtxRes, custCtxRes, dailyRevRes, staleRegRes, schedReqRes] = await Promise.all([
+  const [apptRes, clockedRes, invRes, estRes, conflictRes, sendFailRes, flagRes, captureRes, ownerCtxRes, custCtxRes, dailyRevRes, staleRegRes, schedReqRes, wrapPartRes, fbOpenRes] = await Promise.all([
     // Tile 1: today's board — jobs today vs techs clocked in.
     supa
       .from("appointments_master")
@@ -118,6 +118,9 @@ export default async function ManagePage() {
       .in("status", ["open", "in_progress"])
       .order("created_at", { ascending: true })
       .limit(50),
+    // Feedback loop (spec §2): today's wrap participation + waiting answers.
+    supa.from("wrap_participation_v").select("tech_short_name, wrapped").eq("day", today),
+    supa.from("feedback_items").select("id, category, source_kind", { count: "exact" }).eq("status", "open").limit(500),
   ]);
 
   const jobsToday = apptRes.count ?? 0;
@@ -198,6 +201,12 @@ export default async function ManagePage() {
 
   const stamp = asOf();
 
+  // Feedback loop tile numbers (spec §2): the door IS the verb-bearing queue.
+  const wrapPart = (wrapPartRes.data ?? []) as Array<{ tech_short_name: string; wrapped: boolean }>;
+  const wrappedToday = wrapPart.filter((p) => p.wrapped).map((p) => p.tech_short_name).sort();
+  const fbRows = (fbOpenRes.data ?? []) as Array<{ category: string | null; source_kind: string }>;
+  const fbWaiting = fbRows.filter((r) => !(r.category === "kudos" || r.source_kind === "wrap_highlight")).length;
+
   const tiles = [
     {
       icon: "🗓️",
@@ -236,6 +245,18 @@ export default async function ManagePage() {
         : "Zero. Clear board — that's the goal state.",
       href: openFlags.length ? "/manage/flags" : "#exceptions",
       cta: openFlags.length ? "Open the flags queue" : "Jump to the rail",
+    },
+    {
+      icon: "🎙️",
+      label: "Daily wraps",
+      value: `${wrappedToday.length}/${wrapPart.length} today`,
+      sub: fbWaiting
+        ? `${fbWaiting} feedback item${fbWaiting === 1 ? "" : "s"} waiting for an answer`
+        : wrappedToday.length
+          ? `${wrappedToday.join(" + ")} in · all feedback answered`
+          : "No wraps yet today",
+      href: "/manage/feedback",
+      cta: "Open the loop",
     },
   ];
 

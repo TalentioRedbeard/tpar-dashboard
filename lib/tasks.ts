@@ -126,12 +126,42 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<Tas
   // Load parent linkage so we can auto-unblock the parent when its children resolve.
   const { data: task } = await supa
     .from("tasks")
-    .select("id, parent_task_id, source")
+    .select("id, parent_task_id, source, ref_kind")
     .eq("id", id)
     .maybeSingle();
   const { error } = await supa.from("tasks").update({ status, updated_at: now, done_at: status === "done" ? now : null }).eq("id", id);
   if (error) return { ok: false, error: error.message };
   await logTaskEvent(id, status === "done" ? "done" : status === "canceled" ? "canceled" : "status", g.name, { status });
+
+  // Feedback loop shipped hook (spec §3d, Danny decision #2 = in): finishing a
+  // feedback-born task flips every rider item to 'shipped' and re-notifies the
+  // tech — the payoff moment IS the deliverable. Best-effort; task write stands.
+  if (status === "done" && task?.ref_kind === "feedback_item") {
+    try {
+      const { data: items } = await supa
+        .from("feedback_items")
+        .select("id, tech, wrap_date, summary, response_note")
+        .eq("task_id", id)
+        .eq("status", "implementing");
+      const shipDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+      for (const it of (items ?? []) as Array<{ id: string; tech: string; wrap_date: string; summary: string; response_note: string | null }>) {
+        await supa.from("feedback_items").update({
+          status: "shipped",
+          response_note: `${it.response_note ?? ""} — Shipped ${shipDate}`.trim(),
+        }).eq("id", it.id).eq("status", "implementing");
+        const { notifyTechFeedback } = await import("./notify-tech");
+        await notifyTechFeedback({
+          itemId: it.id, tech: it.tech, wrapDate: it.wrap_date, summary: it.summary,
+          responseNote: `This one's DONE — shipped ${shipDate}. ${it.response_note ?? ""}`.trim(),
+          respondedBy: g.name,
+        });
+      }
+      revalidatePath("/me");
+      revalidatePath("/manage/feedback");
+    } catch {
+      // guide surface — never block the task write
+    }
+  }
 
   // Auto-unblock the parent: when a child resolves (done/canceled) and ALL siblings are
   // resolved, the blocked parent returns to in_progress, clears blocked_reason, and notifies

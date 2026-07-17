@@ -23,6 +23,7 @@ import { DismissJobButton } from "../../components/DismissJobButton";
 import { GpsLifecyclePrompt } from "../../components/GpsLifecyclePrompt";
 import { ScrollPanel } from "../../components/ui/ScrollPanel";
 import { DailyWrapCard } from "../../components/DailyWrapCard";
+import { FeedbackOutcomes } from "../../components/FeedbackOutcomes";
 import { MessageOfficeCard } from "../../components/MessageOfficeCard";
 import { TodaysOneThing } from "../../components/TodaysOneThing";
 import { WhiteboardPanel } from "../../components/WhiteboardPanel";
@@ -555,7 +556,15 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       {/* Daily wrap — 30-second end-of-day verbal recap. Feeds the on-prem
           transcription lane → tech-wrap-distill → Team wraps on /conversation. */}
       {!viewingAs && me.tech ? (
-        <DailyWrapCard tech={techName} wrappedAt={todaysWrapAt} />
+        <DailyWrapCard tech={techName} wrappedAt={todaysWrapAt} wrapReminder={me.tech.prefs.wrap_reminder === true} />
+      ) : null}
+
+      {/* 👂 Heard — the wrap's closed loop (spec §3d). Renders in BOTH simple
+          and full modes (simple-mode techs are the audience) and under cookie
+          view-as (read-only — ack is the tech's own; the ?as= legacy preview
+          keeps me.tech = the admin, so it naturally shows nothing there). */}
+      {me.tech ? (
+        <FeedbackOutcomes techShortName={me.tech.tech_short_name} readOnly={me.isImpersonating} />
       ) : null}
 
       {/* Geofence-driven clock-in suggestions */}
