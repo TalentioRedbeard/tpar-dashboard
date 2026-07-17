@@ -48,3 +48,5 @@ _screenshots/
 ziptest.zip
 
 .vercel
+
+.editor-baton.json
