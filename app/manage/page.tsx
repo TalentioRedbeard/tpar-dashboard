@@ -11,6 +11,8 @@ import { db } from "../../lib/supabase";
 import { PageShell } from "../../components/PageShell";
 import { getCurrentTech } from "../../lib/current-tech";
 import { ScheduleRequests } from "./ScheduleRequests";
+import { TimeOffApprovals } from "./TimeOffApprovals";
+import { listPendingTimeOff } from "@/lib/time-off-actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Manage · TPAR-DB" };
@@ -147,6 +149,7 @@ export default async function ManagePage() {
       createdAt: t.created_at,
       ageDays: Math.max(0, Math.floor((Date.now() - new Date(t.created_at).getTime()) / (24 * 60 * 60 * 1000))),
     }));
+  const pendingTimeOff = await listPendingTimeOff();
   const ageOf = (iso: string | undefined | null) =>
     iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000))) : null;
   const backlogs = [
@@ -294,6 +297,7 @@ export default async function ManagePage() {
       {/* B2: schedule requests sit ABOVE the exception rail — they're asks
           with a person waiting, not anomalies. */}
       <ScheduleRequests rows={schedReqs} />
+      <TimeOffApprovals rows={pendingTimeOff} />
 
       <section id="exceptions" className="mb-6">
         <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-600">

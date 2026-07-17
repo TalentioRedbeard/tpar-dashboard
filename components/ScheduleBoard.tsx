@@ -32,6 +32,8 @@ import { TechOrderControl } from "./TechOrderControl";
 import { resolveTechColor } from "../lib/tech-colors";
 import { DraggableAppt } from "./DraggableAppt";
 import { DropCell } from "./DropCell";
+import { listApprovedTimeOff } from "../lib/time-off-actions";
+import { TimeOffRequest } from "./TimeOffRequest";
 
 // ScheduleBoard — the shared visual schedule grid (day/week/month) extracted from
 // app/schedule/page.tsx (2026-07-17) so BOTH /schedule (chrome="full") and /dispatch
@@ -714,6 +716,14 @@ export async function ScheduleBoard({
   // Pending reschedule proposals (#21), keyed by appointment.
   const pendingChanges = await listPendingChanges();
   const pendingByAppt = new Map<string, PendingChange>(pendingChanges.filter((c) => c.appointment_id).map((c) => [c.appointment_id as string, c]));
+
+  // Approved time-off overlapping the visible window → "Off — Name" bands on the
+  // board (all roles see who's off; it organizes work). Keyed "fullName|dayKey".
+  const timeOff = await listApprovedTimeOff(windowKeys[0], windowKeys[windowKeys.length - 1]);
+  const offByTechDay = new Set<string>();
+  for (const t of timeOff) {
+    for (const k of windowKeys) if (k >= t.start_date && k <= t.end_date) offByTechDay.add(`${t.tech_full_name}|${k}`);
+  }
   const apptCountByDay = new Map<string, number>();
   const dollarsByDay = new Map<string, number>();
   for (const a of appts) {
@@ -921,6 +931,7 @@ export async function ScheduleBoard({
           viewerEmpId={viewerEmpId}
           dropMode={dropMode}
           addMode={mode}
+          offByTechDay={offByTechDay}
         />
       )}
 
@@ -1050,6 +1061,7 @@ export async function ScheduleBoard({
             </Link>
           ))}
         </div>
+        <div className="ml-auto"><TimeOffRequest todayKey={todayKey} /></div>
       </div>
 
       {!isTech && view !== "month" ? <div className="mb-3"><TechOrderControl techs={orderedTechsForControl} /></div> : null}
@@ -1276,7 +1288,7 @@ function DayView({
 // ──────────────────────────────────────────────────────────────────────────────
 
 function WeekView({
-  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey, multiVisitJobs, canSeeAllMoney, viewerEmpId, dropMode, addMode,
+  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey, multiVisitJobs, canSeeAllMoney, viewerEmpId, dropMode, addMode, offByTechDay,
 }: {
   windowKeys: string[];
   rowOrder: string[];
@@ -1296,6 +1308,7 @@ function WeekView({
   viewerEmpId: string | null;
   dropMode: "apply" | "request";
   addMode: "office" | "tech";
+  offByTechDay: Set<string>;
 }) {
   if (rowOrder.length === 0) {
     return (
@@ -1357,6 +1370,7 @@ function WeekView({
                   return (
                     <td key={dayKey} className={`min-h-24 border-r border-b border-neutral-200 align-top ${isToday ? "bg-amber-50/60" : isPast ? "bg-neutral-50/40" : "bg-white"}`}>
                       <DropCell techFull={techFullName} dateKey={dayKey} mode={dropMode} disabled={isPast || !techs.some((t) => t.hcp_full_name === techFullName)} className="h-full min-h-16 rounded-md p-1">
+                        {offByTechDay.has(`${techFullName}|${dayKey}`) ? <div className="mb-1 rounded bg-neutral-300/70 px-1 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-neutral-700">🏖️ Off</div> : null}
                         {cell.length === 0 ? (
                           <div className="flex h-full min-h-16 items-center justify-center">
                             {isPast ? <span className="text-[10px] text-neutral-300">—</span> : <CellAddMenu techFull={techFullName} dateKey={dayKey} mode={addMode} compact />}
