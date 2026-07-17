@@ -7,7 +7,10 @@
 import { PageShell } from "../../components/PageShell";
 import { GalleryGrid } from "../../components/GalleryGrid";
 import { GalleryFilter } from "../../components/GalleryFilter";
+import { ReceiptsBrowser } from "../../components/ReceiptsBrowser";
 import { getCurrentTech } from "../../lib/current-tech";
+import { searchReceipts } from "../../lib/receipt-browse-actions";
+import { listPurchaserOptions } from "../../lib/purchasers";
 import { db } from "@/lib/supabase";
 import { assignedHasEmployee } from "@/lib/assigned-employees";
 import { techWorkedJob } from "@/lib/tech-scope";
@@ -19,14 +22,51 @@ export const dynamic = "force-dynamic";
 const SCOPES = ["job", "customer", "estimate", "segment"] as const;
 type Scope = (typeof SCOPES)[number];
 
-export default async function GalleryPage({ searchParams }: { searchParams: Promise<{ scope?: string; id?: string }> }) {
+export default async function GalleryPage({ searchParams }: { searchParams: Promise<{ scope?: string; id?: string; cat?: string }> }) {
   const sp = await searchParams;
   const scope = (SCOPES.includes(sp.scope as Scope) ? (sp.scope as Scope) : "job");
   const id = (sp.id ?? "").trim();
+  const cat = (sp.cat ?? "").trim();
 
   const me = await getCurrentTech().catch(() => null);
   if (!me) redirect(`/login?from=${encodeURIComponent(`/gallery?scope=${scope}&id=${id}`)}`);
   const isOffice = !!(me.isAdmin || me.isManager);
+
+  // Gallery-framework Phase 1: the Receipts tile — office-only (financial
+  // data; same gate class as /reports). Built standalone against
+  // receipts_master; Phase 2 folds it behind the union RPC unchanged.
+  if (cat === "receipts") {
+    if (!isOffice) redirect("/gallery");
+    const [initial, purchasers] = await Promise.all([
+      searchReceipts({ category: "all" }),
+      listPurchaserOptions().catch(() => []),
+    ]);
+    return (
+      <PageShell
+        kicker="Gallery"
+        title="Receipts"
+        description="Every receipt in one searchable ledger — filter by time, job, customer, category, or who filed it; fix the purchaser inline."
+        backHref="/gallery"
+        backLabel="Gallery"
+        help={{
+          intent: "The is-everything-accounted-for view: search and total every receipt, and correct who it's attributed to.",
+          actions: [
+            "Filter by vendor text, time window, category chips, person, job #, customer, or amount range.",
+            "The total updates with your filters — that's the verification number.",
+            "Click the purchaser name to reassign a receipt (audited).",
+            "Unattributed chip = the reconcile backlog; the queue page has the attach-to-job verbs.",
+          ],
+          stuck: <>Batch-imported receipts (email/statement) have no photo and often no person — that&apos;s the source data, not a bug.</>,
+        }}
+      >
+        {initial.ok ? (
+          <ReceiptsBrowser purchasers={purchasers} initial={{ rows: initial.rows, totalCount: initial.totalCount, totalAmount: initial.totalAmount, pageSize: initial.pageSize }} />
+        ) : (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-800">{initial.error}</div>
+        )}
+      </PageShell>
+    );
+  }
 
   // Top-nav "Gallery" lands here with no scope/id → show the chooser (search a job/customer).
   if (!id) {
@@ -38,6 +78,14 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
         backHref="/"
         backLabel="Home"
       >
+        {isOffice ? (
+          <div className="mb-4">
+            <Link href="/gallery?cat=receipts"
+              className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-800 hover:bg-brand-100">
+              🧾 Receipts — search &amp; verify every receipt →
+            </Link>
+          </div>
+        ) : null}
         <GalleryFilter isOffice={isOffice} />
       </PageShell>
     );
