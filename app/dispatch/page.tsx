@@ -38,6 +38,8 @@ import { listTasks, listTaskTemplates } from "../../lib/tasks";
 import { getFollowupConfig } from "./followup-actions";
 import { FollowupConfigPanel } from "../../components/FollowupConfigPanel";
 import { isResolving, dispositionEntityKey, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
+import { DispatchViewToggle } from "../../components/DispatchViewToggle";
+import { ScheduleBoard } from "../../components/ScheduleBoard";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -619,6 +621,18 @@ export default async function DispatchPage({
         stuck: <>Map blank? GPS pipeline likely paused; check /admin/system pipeline freshness or text Danny.</>,
       }}
     >
+      <DispatchViewToggle
+        board={
+          <ScheduleBoard
+            params={{}}
+            basePath="/dispatch"
+            isAdmin={me.isAdmin}
+            canApply={me.isAdmin || me.isManager}
+            chrome="compact"
+          />
+        }
+        mapQueues={
+          <>
       {/* STICKY ACTION BAR — full-width dispatch actions */}
       <div className="sticky top-0 z-30 -mx-4 mb-4 flex items-stretch gap-2 border-b border-neutral-200 bg-white/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
         <Link href="/ask" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800 hover:bg-brand-100">🔎 Ask</Link>
@@ -1117,8 +1131,11 @@ export default async function DispatchPage({
       ) : null}
 
       <p className="mt-4 text-xs text-neutral-500">
-        v0 · read-only · drag-to-reassign + map coming in v1/v2.
+        v0 · Map + Queues cockpit. Switch to <strong>Board</strong> (top toggle) for the drag-to-reschedule week grid.
       </p>
+          </>
+        }
+      />
     </PageShell>
   );
 }
