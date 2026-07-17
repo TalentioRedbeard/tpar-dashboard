@@ -4,6 +4,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentTech } from "@/lib/current-tech";
 import { db } from "@/lib/supabase";
+import { listPurchaserOptions } from "@/lib/purchasers";
 import { PageShell } from "@/components/PageShell";
 import { ReceiptForm, type ReceiptVehicle } from "./ReceiptForm";
 
@@ -55,6 +56,14 @@ export default async function ReceiptPage() {
     ? vehicles.find((v) => v.driver && v.driver.toLowerCase() === myShort.toLowerCase())?.id ?? null
     : null;
 
+  // Phase 0 (gallery-framework spec): office may attribute a receipt to the
+  // person who actually bought it. Roster fetched ONLY for admin/manager — the
+  // list never ships to a tech's HTML; the server action re-enforces anyway.
+  const isOffice = me.isAdmin || me.isManager;
+  // .catch → []: a roster hiccup hides the dropdown (self-attribution still
+  // works) instead of crashing the whole receipt page.
+  const purchasers = isOffice ? await listPurchaserOptions().catch(() => []) : [];
+
   return (
     <PageShell
       kicker="Receipt"
@@ -77,6 +86,8 @@ export default async function ReceiptPage() {
         canWrite={me.canWrite || me.isManager}
         vehicles={vehicles}
         defaultVehicleId={defaultVehicleId}
+        canSetPurchaser={isOffice}
+        purchasers={purchasers}
       />
     </PageShell>
   );

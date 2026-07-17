@@ -8,6 +8,7 @@
 
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
+import { validatePurchaser } from "@/lib/purchasers";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
@@ -259,11 +260,32 @@ export async function finalizeReceipt(input: {
   category?: string | null;
   vehicle_id?: string | null;
   odometer_miles?: string | null;
+  purchaser?: string | null;
 }): Promise<UploadReceiptResult> {
   const me = await getCurrentTech();
   if (!me?.canWrite && !me?.isManager) return { ok: false, error: "Not signed in or no write access." };
   const path = String(input.path ?? "").trim();
   if (!path) return { ok: false, error: "Missing upload path." };
+
+  // Purchaser — Phase 0 of the gallery-framework spec (2026-07-16). Defaults to
+  // the submitter; ONLY admin/manager may attribute the receipt to someone else,
+  // validated against tech_directory (active) ∪ former_techs. A tech-supplied
+  // purchaser is IGNORED server-side (never trust the client for attribution) —
+  // the tech's receipt still saves as their own, exactly as before.
+  let techName = me.tech?.tech_short_name ?? null;
+  const requestedPurchaser = input.purchaser?.trim() || null;
+  if (requestedPurchaser && (me.isAdmin || me.isManager)) {
+    let valid: string | null;
+    try {
+      valid = await validatePurchaser(requestedPurchaser);
+    } catch {
+      // Roster lookup failed (transient) — distinct from "unknown tech" so the
+      // office user retries instead of chasing a roster problem that isn't there.
+      return { ok: false, error: "Couldn't verify the purchaser just now — try again." };
+    }
+    if (!valid) return { ok: false, error: "Purchaser isn't a known current or former tech." };
+    techName = valid;
+  }
 
   const invoiceNumber = input.invoice_number?.trim() || null;
   const chargeTo = resolveChargeTo(invoiceNumber, input.category ?? null);
@@ -309,7 +331,10 @@ export async function finalizeReceipt(input: {
       ...chargeTo.fields,
       // B1: gas-only vehicle/odometer tether (null for every other category).
       ...vehicle.fields,
-      tech_name: me.tech?.tech_short_name ?? null,
+      // Phase 0: submitter by default; office may have attributed someone else
+      // (validated above). slack_user_id stays the SUBMITTER — capture lineage,
+      // not attribution.
+      tech_name: techName,
       photo_url: publicUrl.publicUrl,
       notes,
       slack_user_id: me.tech?.slack_user_id ?? null,

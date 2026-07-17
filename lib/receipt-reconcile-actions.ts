@@ -13,6 +13,7 @@
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { revalidatePath } from "next/cache";
+import { listPurchaserOptions, validatePurchaser, type PurchaserOption } from "@/lib/purchasers";
 
 async function requireReconciler() {
   const me = await getCurrentTech().catch(() => null);
@@ -137,6 +138,55 @@ export async function attachReceiptToJob(receiptId: number, trunk: string): Prom
   if (error) return { ok: false, error: error.message };
   revalidatePath("/reports/receipts");
   return { ok: true };
+}
+
+// ── Purchaser attribution — Phase 0, gallery-framework spec (2026-07-16) ─────
+// receipts_master.tech_name is stamped from the submitter's session on every
+// ingest path and nothing could ever change it — so office-logged receipts all
+// read as the office person, not the actual buyer. These two actions are the
+// plumbing for the Receipts-tile inline "change purchaser" (Phase 1 UI).
+
+export async function listPurchasers(): Promise<PurchaserOption[]> {
+  const me = await requireReconciler();
+  if (!me) return [];
+  return listPurchaserOptions().catch(() => []);
+}
+
+// Reassign who a receipt is attributed to. Admin + manager ONLY (requireReconciler;
+// view-as impersonation drops isAdmin/isManager, so the audit always names the
+// real actor). Audit columns purchaser_set_by/purchaser_set_at land with the
+// spec's Migration A (tpar-supabase) — until that applies, this update errors
+// cleanly on the unknown columns; nothing calls it before Phase 1 ships.
+export async function reassignReceiptPurchaser(
+  receiptId: number,
+  newTechShortName: string,
+): Promise<{ ok: true; purchaser: string } | { ok: false; error: string }> {
+  const me = await requireReconciler();
+  if (!me) return { ok: false, error: "unauthorized" };
+  if (!Number.isFinite(receiptId)) return { ok: false, error: "invalid receipt id" };
+  let valid: string | null;
+  try {
+    valid = await validatePurchaser(String(newTechShortName ?? ""));
+  } catch {
+    return { ok: false, error: "Couldn't verify the purchaser just now — try again." };
+  }
+  if (!valid) return { ok: false, error: "Not a known current or former tech." };
+  // .select("id") so a 0-row match (bad/deleted id) is a real error, not a
+  // silent ok:true the Phase 1 UI would render as success (review 2026-07-16).
+  const { data: updated, error } = await db()
+    .from("receipts_master")
+    .update({
+      tech_name: valid,
+      purchaser_set_by: me.tech?.tech_short_name ?? me.email,
+      purchaser_set_at: new Date().toISOString(),
+    })
+    .eq("id", receiptId)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!updated?.length) return { ok: false, error: "Receipt not found." };
+  revalidatePath("/reports/receipts");
+  revalidatePath("/reports/material-spend");
+  return { ok: true, purchaser: valid };
 }
 
 export async function markReceiptsOverhead(receiptIds: number[]): Promise<{ ok: true; n: number } | { ok: false; error: string }> {

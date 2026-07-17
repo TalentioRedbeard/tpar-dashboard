@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { createReceiptUpload, finalizeReceipt, probeReceiptExtraction } from "./actions";
 import { browserClient } from "@/lib/supabase-browser";
 import { AppGuide } from "../../components/AppGuide";
+import type { PurchaserOption } from "@/lib/purchasers";
 
 // Non-job PO categories (SPEC_2026-07-16): the counter PO is sometimes a word.
 const CATEGORY_CHIPS = [
@@ -28,11 +29,16 @@ export function ReceiptForm({
   canWrite,
   vehicles = [],
   defaultVehicleId = null,
+  canSetPurchaser = false,
+  purchasers = [],
 }: {
   techShortName: string;
   canWrite: boolean;
   vehicles?: ReceiptVehicle[];
   defaultVehicleId?: string | null;
+  // Phase 0 (gallery-framework spec): office-only purchaser attribution.
+  canSetPurchaser?: boolean;
+  purchasers?: PurchaserOption[];
 }) {
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -53,8 +59,10 @@ export function ReceiptForm({
   const [vehicleId, setVehicleId] = useState<string>("");
   const [odometer, setOdometer] = useState("");
   const [odometerEdited, setOdometerEdited] = useState(false);
+  // Phase 0: "" = self (the default); a short name = office attributed someone else.
+  const [purchaser, setPurchaser] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ receipt_id: number; photo_url: string; amount: string; vendor: string; invoice: string; category: string | null; notes: string; localPreview: string | null } | null>(null);
+  const [success, setSuccess] = useState<{ receipt_id: number; photo_url: string; amount: string; vendor: string; invoice: string; category: string | null; notes: string; purchaser: string; localPreview: string | null } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   if (!canWrite) {
@@ -84,6 +92,7 @@ export function ReceiptForm({
               <h2 className="text-2xl font-bold text-emerald-900">Receipt uploaded!</h2>
               <p className="mt-1 text-sm text-emerald-800">
                 Saved as receipt #{success.receipt_id} · submitted by {techShortName}
+                {success.purchaser ? ` · purchaser: ${success.purchaser}` : ""}
               </p>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-emerald-900 sm:max-w-md">
                 <dt className="font-medium">Amount</dt>
@@ -121,7 +130,7 @@ export function ReceiptForm({
             onClick={() => {
               setSuccess(null); setPhoto(null); setPhotoPreview(null);
               setInvoiceNumber(""); setCategory(null); setAmount(""); setVendor(""); setNotes("");
-              setVehicleId(""); setOdometer(""); setOdometerEdited(false);
+              setVehicleId(""); setOdometer(""); setOdometerEdited(false); setPurchaser("");
               setUploadedPath(null); setPrefilled([]);
             }}
             className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
@@ -176,6 +185,7 @@ export function ReceiptForm({
             invoice: invoiceNumber.trim(),
             category,
             notes: notes.trim(),
+            purchaser: purchaser.trim(),
             localPreview: photoPreview,
           };
           startTransition(async () => {
@@ -203,6 +213,8 @@ export function ReceiptForm({
                 category,
                 vehicle_id: category === "gas" ? vehicleId || null : null,
                 odometer_miles: category === "gas" ? odometer || null : null,
+                // "" = self; server ignores this unless admin/manager anyway.
+                purchaser: purchaser || null,
               });
               if (res.ok) setSuccess({ receipt_id: res.receipt_id, photo_url: res.photo_url, ...snapshot });
               else setError(res.error);
@@ -399,6 +411,37 @@ export function ReceiptForm({
           className="block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </div>
+
+      {/* Purchaser — office (admin/manager) only; defaults to self. Phase 0 of the
+       *  gallery-framework spec: the office logs receipts that someone ELSE bought,
+       *  and until now every one of those was mis-attributed to the office person. */}
+      {canSetPurchaser && purchasers.length > 0 ? (
+        <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-700">Purchaser — who bought this</label>
+          <select
+            value={purchaser}
+            onChange={(e) => setPurchaser(e.target.value)}
+            className="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            <option value="">Me ({techShortName})</option>
+            {purchasers.filter((p) => !p.former).map((p) => (
+              <option key={p.shortName} value={p.shortName}>
+                {p.shortName}{p.fullName ? ` — ${p.fullName}` : ""}
+              </option>
+            ))}
+            {purchasers.some((p) => p.former) ? (
+              <optgroup label="Former techs">
+                {purchasers.filter((p) => p.former).map((p) => (
+                  <option key={p.shortName} value={p.shortName}>{p.shortName}</option>
+                ))}
+              </optgroup>
+            ) : null}
+          </select>
+          <p className="mt-1 text-xs text-neutral-500">
+            Logging someone else&apos;s receipt? Attribute it to whoever actually made the purchase.
+          </p>
+        </div>
+      ) : null}
 
       <div>
         <label className="mb-1 block text-sm font-medium text-neutral-700">Notes (optional)</label>
