@@ -13,6 +13,7 @@ import Link from "next/link";
 import { db } from "../../lib/supabase";
 import { getCurrentTech, type DashboardRole } from "../../lib/current-tech";
 import { PageShell } from "../../components/PageShell";
+import { MyDayStrip } from "../../components/MyDayStrip";
 import { AppGuide } from "../../components/AppGuide";
 import { ClockButton } from "../../components/ClockButton";
 import { HcpClockSync } from "../../components/HcpClockSync";
@@ -138,7 +139,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     // testing functionality on his own customer record).
     supa
       .from("appointment_location_v")
-      .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_start_chicago, customer_name, street, city, zip, status, total_amount, tech_primary_name, tech_all_names, cust_lat, cust_lng")
+      .select("appointment_id, hcp_job_id, hcp_customer_id, scheduled_start, scheduled_end, scheduled_start_chicago, appointment_type, customer_name, street, city, zip, status, total_amount, tech_primary_name, tech_all_names, cust_lat, cust_lng")
       .or(`tech_primary_name.eq."${techFullName ?? techName}",tech_all_names.cs.{"${techFullName ?? techName}"}`)
       .gte("appt_date_chicago", today)
       .lte("appt_date_chicago", today)
@@ -239,6 +240,23 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   };
   const activeAppts = appts.filter((a) => !isApptDismissed(a));
   const dismissedAppts = appts.filter(isApptDismissed);
+
+  // "Your day at a glance" strip (compact schedule view): Chicago now-minute for
+  // the current-time marker + today's active appts mapped to the strip's shape.
+  const nowChiMin = (() => {
+    const s = new Date().toLocaleTimeString("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hour12: false });
+    const [h, m] = s.split(":").map(Number);
+    return h * 60 + m;
+  })();
+  const stripAppts = activeAppts.map((a) => ({
+    appointment_id: (a.appointment_id as string | null) ?? null,
+    hcp_job_id: (a.hcp_job_id as string | null) ?? null,
+    appointment_type: (a.appointment_type as string | null) ?? null,
+    scheduled_start: a.scheduled_start as string,
+    scheduled_end: (a.scheduled_end as string | null) ?? null,
+    customer_name: (a.customer_name as string | null) ?? null,
+    status: (a.status as string | null) ?? null,
+  }));
 
   // Estimate badges — one batched RPC over today's appts (customer-keyed; the
   // /me view doesn't expose hcp_estimate_id, so no anti-self-reference needed).
@@ -579,6 +597,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       {/* Today's appointments */}
       <section className="mb-8">
         <h2 className="mb-3 text-base font-semibold text-neutral-800">Today&apos;s appointments</h2>
+        <MyDayStrip appts={stripAppts} nowMin={nowChiMin} />
         {activeAppts.length === 0 ? (
           dismissedAppts.length > 0 ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center text-sm text-emerald-800">
