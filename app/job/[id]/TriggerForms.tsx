@@ -17,6 +17,7 @@ import { markBriefingReviewed, type Briefing } from "./briefing-actions";
 import { getOpenJobForTech, type OpenJob } from "@/lib/omw-guard-actions";
 import { OmwGuardModal } from "@/components/OmwGuardModal";
 import { OnSiteElapsedChip } from "@/components/OnSiteElapsedChip";
+import { TriggerStageClock, buildStageWindows, fmtPressTime, type StageEvent, type StageWindow } from "@/components/TriggerStageClock";
 
 const DISPOSITION_OPTIONS: Array<{ value: CustomerDisposition; label: string; emoji: string }> = [
   { value: "approved_now",       label: "Approved — pay now",      emoji: "✅" },
@@ -82,18 +83,27 @@ export function TriggerForms({
     return pool.reduce((m, t) => (t.fired_at > m ? t.fired_at : m), pool[0].fired_at);
   })();
   const [startedAt, setStartedAt] = useState<string | null>(storedStartAt);
+  // Per-button stage clocks: in-session light-trigger presses merged with the
+  // stored rows so a tap shows its clock instantly; the form triggers skip
+  // this because fireJobTrigger's revalidatePath refreshes props on its own.
+  const [pressedAt, setPressedAt] = useState<Record<number, string>>({});
 
   // One-tap fire for the light, log-only buttons (Schedule #8, Start #3, Perform Work #9).
   const fireLight = (n: 3 | 8 | 9) => {
     setLightError(null);
     setLightPending(n);
     if (n === 3 && !startedAt) setStartedAt(new Date().toISOString());
+    // Optimistic stage clock — only when this trigger has no canonical time yet
+    // (a re-press dedups server-side and must not reset the clock).
+    const already = stageWindows.has(n);
+    if (!already) setPressedAt((p) => ({ ...p, [n]: new Date().toISOString() }));
     startLight(async () => {
       const fn = n === 8 ? fireSchedule : n === 3 ? fireStart : firePerformWork;
       const res = await fn({ hcp_job_id: hcpJobId, hcp_customer_id: hcpCustomerId });
       if (!res.ok) {
         setLightError(res.error);
         if (n === 3) setStartedAt(storedStartAt);
+        if (!already) setPressedAt((p) => { const q = { ...p }; delete q[n]; return q; });
       }
       setLightPending(null);
     });
@@ -108,7 +118,10 @@ export function TriggerForms({
   }
 
   // The bar, in Danny's lifecycle order. "light" = one-tap log; "form" = inline form.
-  const firedSet = new Set(firedTriggers.map((t) => t.trigger_number));
+  const firedSet = new Set<number>([
+    ...firedTriggers.map((t) => t.trigger_number),
+    ...Object.keys(pressedAt).map(Number),
+  ]);
   const impliedDone = impliedDoneFromHcp(hcpWorkStatus);
   const canceled = isCanceledStatus(hcpWorkStatus);
   const isDone = (n: number) => firedSet.has(n) || impliedDone.has(n);
@@ -123,6 +136,16 @@ export function TriggerForms({
   ];
   // Next-step hint = first bar button not done (by an app event OR by HCP status). None if canceled.
   const nextN = canceled ? null : BAR.find((b) => !isDone(b.n))?.n ?? null;
+  // Stage windows: canonical time per trigger (press-preferred), each stage
+  // ending at the next chronological fire; the latest stage stays open.
+  const stageEvents: StageEvent[] = [
+    ...firedTriggers,
+    ...Object.entries(pressedAt).map(([n, at]) => ({
+      trigger_number: Number(n), fired_at: at, origin: "dashboard", fired_by: null,
+    })),
+  ];
+  const stageWindows = buildStageWindows(stageEvents, BAR.map((b) => b.n));
+  const jobRunning = !isDone(6) && !isDone(7) && !canceled;
 
   return (
     <div className="space-y-3">
@@ -147,6 +170,8 @@ export function TriggerForms({
             label={b.label} emoji={b.emoji}
             fired={firedSet.has(b.n)} impliedDone={impliedDone.has(b.n)} primary={nextN === b.n}
             pending={lightPending === b.n}
+            stage={stageWindows.get(b.n) ?? null}
+            jobRunning={jobRunning}
             onClick={() => {
               if (b.kind === "light") fireLight(b.n as 3 | 8 | 9);
               else setOpenForm(openForm === b.n ? null : (b.n as 2 | 5 | 6 | 7));
@@ -187,9 +212,10 @@ export function TriggerForms({
 }
 
 function TriggerButton({
-  label, emoji, fired, impliedDone, primary, pending, onClick,
+  label, emoji, fired, impliedDone, primary, pending, stage, jobRunning, onClick,
 }: {
-  label: string; emoji: string; fired: boolean; impliedDone?: boolean; primary: boolean; pending?: boolean; onClick: () => void;
+  label: string; emoji: string; fired: boolean; impliedDone?: boolean; primary: boolean;
+  pending?: boolean; stage?: StageWindow | null; jobRunning?: boolean; onClick: () => void;
 }) {
   const complete = fired || !!impliedDone;
   const cls = complete
@@ -197,18 +223,27 @@ function TriggerButton({
     : primary
     ? "border-brand-400 bg-brand-50 text-brand-900 ring-2 ring-brand-300"
     : "border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50";
+  // Stage clock shows when it has something honest to say: a closed stage
+  // always, an open stage only while the job is running (live tick).
+  const showClock = !!stage && (!!stage.endedAt || !!jobRunning);
+  const title = stage
+    ? `${label} — fired ${fmtPressTime(stage.at)}${stage.fired_by ? ` by ${stage.fired_by}` : ""}${stage.origin === "hcp_derived" ? " (HCP time)" : ""}`
+    : label;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={pending}
       aria-label={label}
+      title={title}
       className={`flex flex-col items-center gap-1 rounded-2xl border p-3 text-center transition disabled:opacity-60 ${cls}`}
     >
       <span className="text-2xl" aria-hidden>{emoji}</span>
       <span className="text-sm font-semibold leading-tight">{label}</span>
-      <span className={`text-[10px] uppercase tracking-wide ${complete ? "text-emerald-700" : primary ? "text-brand-700" : "text-neutral-500"}`}>
-        {pending ? "logging…" : fired ? "fired" : impliedDone ? "done" : primary ? "next" : "not yet"}
+      <span className={`text-[10px] uppercase tracking-wide ${complete ? "text-emerald-700" : primary ? "text-brand-700" : "text-neutral-500"}${stage?.origin === "hcp_derived" ? " opacity-60" : ""}`}>
+        {pending ? "logging…"
+          : showClock && stage ? <TriggerStageClock firedAt={stage.at} endedAt={stage.endedAt} live={!!jobRunning} />
+          : fired ? "fired" : impliedDone ? "done" : primary ? "next" : "not yet"}
       </span>
     </button>
   );

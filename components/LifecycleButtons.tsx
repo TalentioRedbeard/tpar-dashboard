@@ -9,6 +9,7 @@ import { OmwGuardModal } from "./OmwGuardModal";
 import { PostPresentationChecklist } from "./PostPresentationChecklist";
 import { EndOfJobChecklist } from "./EndOfJobChecklist";
 import { OnSiteElapsedChip } from "./OnSiteElapsedChip";
+import { TriggerStageClock, buildStageWindows, fmtPressTime, type StageEvent } from "./TriggerStageClock";
 
 type Props = {
   hcpJobId: string;
@@ -37,6 +38,10 @@ type Props = {
   // Stored fired_at of this job's Start trigger (3), threaded from /me's
   // lifecycle query so the on-site elapsed chip survives reloads.
   startFiredAt?: string | null;
+  // Today's lifecycle events for this job (fired_at + origin per trigger),
+  // threaded from /me's existing 24h query — powers the per-button stage
+  // clocks. fired_by=techName filter upstream means no hcp_derived rows here.
+  firedEvents?: Array<{ trigger_number: number; fired_at: string; origin: string | null; fired_by?: string | null }>;
 };
 
 type TriggerNum = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -90,7 +95,7 @@ function resolveFix(): Promise<{ lat: number; lng: number; accuracyM: number | n
 
 type MirrorEntry = { firedAt: string; status: HcpMirrorStatus };
 
-export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors, destAddress, destLat, destLng, ppSubmitted, eojSubmitted, startFiredAt }: Props) {
+export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, initialMirrors, destAddress, destLat, destLng, ppSubmitted, eojSubmitted, startFiredAt, firedEvents }: Props) {
   const [pending, startTransition] = useTransition();
   const [firing, setFiring] = useState<TriggerNum | null>(null);
   const [lastFired, setLastFired] = useState<number | null>(null);
@@ -100,6 +105,12 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
   // "took" — the confusion this fixes: "we thought we were hitting start
   // drawing" (Anthony/Landon, 7/16).
   const [startedAt, setStartedAt] = useState<string | null>(startFiredAt ?? null);
+  // Per-button stage clocks: optimistic press times merged with the server's
+  // rows; runFire adopts the server fired_at on success, rolls back on failure.
+  const [pressedAt, setPressedAt] = useState<Record<number, string>>({});
+  const hasServerRow = (t: number) => (firedEvents ?? []).some((e) => e.trigger_number === t);
+  const clearPressed = (t: number) =>
+    setPressedAt((p) => { if (!(t in p)) return p; const q = { ...p }; delete q[t]; return q; });
   // OMW-without-Finish guard: a prior open job to resolve before On-My-Way fires.
   const [guardJob, setGuardJob] = useState<OpenJob | null>(null);
   // Seed mirror state from server-rendered initialMirrors so pills survive
@@ -206,10 +217,14 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
       setError(res.error);
       // Roll the optimistic on-site chip back to the stored truth.
       if (triggerNumber === 3) setStartedAt(startFiredAt ?? null);
+      clearPressed(triggerNumber);
       return;
     }
     // Adopt the server's fired_at for the chip (was set optimistically on press).
     if (triggerNumber === 3) setStartedAt(res.fired_at);
+    // Adopt it for the stage clock too — unless the server already had a row
+    // (a mirror-retry re-fire must not reset an existing clock).
+    if (!hasServerRow(triggerNumber)) setPressedAt((p) => ({ ...p, [triggerNumber]: res.fired_at }));
     setLastFired(triggerNumber);
     // "Build estimate" → open the 4-question builder for this job once the
     // trigger is logged (in-app route push, not a new tab; only on success).
@@ -236,6 +251,11 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
     // GPS fix + server round-trip), so the press visibly "took". runFire adopts
     // the server timestamp on success and rolls back on failure.
     if (triggerNumber === 3 && !startedAt) setStartedAt(new Date().toISOString());
+    // Optimistic stage clock for any first fire of a trigger (same rule as the
+    // on-site chip: never reset an existing clock).
+    if (!stageWindows.has(triggerNumber)) {
+      setPressedAt((p) => ({ ...p, [triggerNumber]: new Date().toISOString() }));
+    }
     setFiring(triggerNumber);
     startTransition(async () => {
       try {
@@ -250,7 +270,13 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
         // never Finished). If found, prompt Finish/Pause/Other and defer the fire.
         if (triggerNumber === 2) {
           const open = await getOpenJobForTech(hcpJobId);
-          if (open) { setGuardJob(open); return; }
+          if (open) {
+            setGuardJob(open);
+            // A deferred OMW isn't a fire — no phantom clock while the guard
+            // modal decides. onProceed's runFire(2) re-adopts on success.
+            if (!hasServerRow(2)) clearPressed(2);
+            return;
+          }
         }
         await runFire(triggerNumber, fix);
       } finally {
@@ -280,6 +306,16 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
   const workEnded = [6, 7].some((t) => firedTriggers.includes(t) || lastFired === t);
   const showOnSite = !!startedAt && !workEnded;
 
+  // Per-button stage windows (canonical time per trigger, press-preferred).
+  const stageEvents: StageEvent[] = [
+    ...(firedEvents ?? []),
+    ...Object.entries(pressedAt).map(([n, at]) => ({
+      trigger_number: Number(n), fired_at: at, origin: "dashboard" as string | null,
+    })),
+  ];
+  const stageWindows = buildStageWindows(stageEvents, [2, 3, 4, 5, 6, 7]);
+  const jobRunning = !workEnded;
+
   return (
     <div className="mt-2.5">
       {showOnSite ? (
@@ -301,6 +337,7 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
         ) : null}
         {BUTTONS.map((b) => {
           const wasFired = firedTriggers.includes(b.trigger) || lastFired === b.trigger;
+          const st = stageWindows.get(b.trigger);
           const mirrorEntry = mirror[b.trigger];
           const baseClass =
             "min-h-11 inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-50";
@@ -323,9 +360,19 @@ export function LifecycleButtons({ hcpJobId, hcpAppointmentId, firedTriggers, in
                 disabled={firing === b.trigger || wasFired}
                 onClick={() => onFire(b.trigger)}
                 className={`${baseClass} ${variantClass}${emphasisClass}`}
-                title={b.hint ?? b.label}
+                title={st
+                  ? `${b.label} — fired ${fmtPressTime(st.at)}${st.fired_by ? ` by ${st.fired_by}` : ""}`
+                  : b.hint ?? b.label}
               >
                 {firing === b.trigger ? "Sending…" : `${wasFired ? "✓ " : ""}${b.label}`}
+                {/* Suffix gate mirrors TriggerForms' showClock: closed stage always,
+                    open stage only while running — else the "·" would dangle on the
+                    last-fired button of every completed job. */}
+                {wasFired && st && firing !== b.trigger && (st.endedAt || jobRunning) ? (
+                  <span className="ml-1.5 text-xs tabular-nums">
+                    · <TriggerStageClock firedAt={st.at} endedAt={st.endedAt} live={jobRunning} />
+                  </span>
+                ) : null}
               </button>
               {mirrorEntry ? (
                 <MirrorPill entry={mirrorEntry} hcpJobId={hcpJobId} onRetry={() => onFire(b.trigger)} retryDisabled={firing === b.trigger} />

@@ -181,7 +181,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     // Used to show which trigger buttons have already been pressed.
     supa
       .from("job_lifecycle_events")
-      .select("hcp_job_id, appointment_id, trigger_number, fired_at")
+      .select("hcp_job_id, appointment_id, trigger_number, fired_at, origin, fired_by")
       .gte("fired_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
       .eq("fired_by", techName),
     // Recent HCP-mirror outcomes (last 24h) for this tech's jobs. Lets
@@ -333,12 +333,17 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
   const lifecycleByJob = new Map<string, number[]>();
   // Also track fired_at per (job, trigger) so we can correlate with mirror logs.
   const firedAtByJobTrigger = new Map<string, string>();
-  for (const row of (lifecycleRes.data ?? []) as Array<{ hcp_job_id: string | null; trigger_number: number; fired_at: string }>) {
+  // Full event rows per job — powers the per-button stage clocks.
+  const lifecycleEventsByJob = new Map<string, Array<{ trigger_number: number; fired_at: string; origin: string | null; fired_by: string | null }>>();
+  for (const row of (lifecycleRes.data ?? []) as Array<{ hcp_job_id: string | null; trigger_number: number; fired_at: string; origin: string | null; fired_by: string | null }>) {
     if (!row.hcp_job_id) continue;
     const arr = lifecycleByJob.get(row.hcp_job_id) ?? [];
     arr.push(row.trigger_number);
     lifecycleByJob.set(row.hcp_job_id, arr);
     firedAtByJobTrigger.set(`${row.hcp_job_id}::${row.trigger_number}`, row.fired_at);
+    const evs = lifecycleEventsByJob.get(row.hcp_job_id) ?? [];
+    evs.push({ trigger_number: row.trigger_number, fired_at: row.fired_at, origin: row.origin, fired_by: row.fired_by });
+    lifecycleEventsByJob.set(row.hcp_job_id, evs);
   }
 
   // Build initial mirror state per (job, trigger). LifecycleButtons uses this
@@ -739,6 +744,7 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
                       ppSubmitted={ppSubmittedJobs.has(jobId)}
                       eojSubmitted={eojSubmittedJobs.has(jobId)}
                       startFiredAt={firedAtByJobTrigger.get(`${jobId}::3`) ?? null}
+                      firedEvents={lifecycleEventsByJob.get(jobId) ?? []}
                     />
                   )}
                   {/* Photo nudge (Phase 1b): no photos on this job yet — prompt the
