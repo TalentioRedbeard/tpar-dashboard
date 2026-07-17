@@ -32,6 +32,34 @@ async function gate() {
   return me;
 }
 
+// Propose-gate (Danny 2026-07-17): a field tech MAY submit a request — insert a
+// pending schedule_change_requests row — but only office (admin/manager) may
+// ever APPLY it to HCP (applyJobMove / applyChangeRequest keep gate()). So drag
+// / reschedule on the read-only tech board queues an office-approval request
+// instead of writing to HCP. requested_by = the tech's short name marks it.
+async function gatePropose() {
+  const me = await getCurrentTech();
+  if (!me) return null;
+  if (me.isAdmin || me.isManager || me.tech) return me; // me.tech = a field tech
+  return null;
+}
+
+// A field tech's own OPEN requests, so the tech board can badge cards "requested"
+// and let the tech cancel one. Office approval is unchanged (listPendingChanges
+// + PendingChangesBar, admin/manager only).
+export async function listMyPendingRequests(): Promise<PendingChange[]> {
+  const me = await getCurrentTech();
+  if (!me || !me.tech) return [];
+  const supa = db();
+  const { data } = await supa
+    .from("schedule_change_requests")
+    .select("id, appointment_id, hcp_job_id, kind, proposed_date, proposed_start_time, proposed_tech, customer_name, current_start, requested_by")
+    .eq("status", "pending")
+    .eq("requested_by", me.tech.tech_short_name)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as PendingChange[];
+}
+
 export async function requestReschedule(input: {
   appointment_id: string;
   hcp_job_id?: string | null;
@@ -41,8 +69,8 @@ export async function requestReschedule(input: {
   proposed_time: string;
   note?: string;
 }): Promise<Res> {
-  const me = await gate();
-  if (!me) return { ok: false, error: "dispatch role required" };
+  const me = await gatePropose();
+  if (!me) return { ok: false, error: "scheduling access required" };
   if (!input.appointment_id || !input.proposed_time) return { ok: false, error: "missing appointment or time" };
   const supa = db();
   // One open proposal per appointment — supersede any prior pending one.
@@ -61,6 +89,7 @@ export async function requestReschedule(input: {
   });
   if (error) return { ok: false, error: error.message };
   revalidatePath("/schedule");
+  revalidatePath("/dispatch");
   return { ok: true };
 }
 
@@ -77,8 +106,8 @@ export async function proposeJobMove(input: {
   new_tech: string;        // hcp_full_name of the drop row
   new_date: string;        // YYYY-MM-DD of the drop day
 }): Promise<Res> {
-  const me = await gate();
-  if (!me) return { ok: false, error: "dispatch role required" };
+  const me = await gatePropose();
+  if (!me) return { ok: false, error: "scheduling access required" };
   if (!input.appointment_id) return { ok: false, error: "no appointment" };
   const techChanged = !!input.new_tech && input.new_tech !== input.current_tech && input.new_tech !== "Unassigned";
   const dateChanged = !!input.new_date && input.new_date !== input.current_date;
@@ -101,6 +130,7 @@ export async function proposeJobMove(input: {
   });
   if (error) return { ok: false, error: error.message };
   revalidatePath("/schedule");
+  revalidatePath("/dispatch");
   return { ok: true };
 }
 

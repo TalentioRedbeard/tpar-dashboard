@@ -7,7 +7,7 @@
 import { useState } from "react";
 import Link from "next/link";
 
-export function CellAddMenu({ techFull, dateKey, compact }: { techFull: string | null; dateKey: string; compact?: boolean }) {
+export function CellAddMenu({ techFull, dateKey, compact, mode = "office" }: { techFull: string | null; dateKey: string; compact?: boolean; mode?: "office" | "tech" }) {
   const [open, setOpen] = useState(false);
   const techParam = techFull && techFull !== "Unassigned" ? `&tech=${encodeURIComponent(techFull)}` : "";
   const q = `?date=${dateKey}${techParam}`;
@@ -25,9 +25,16 @@ export function CellAddMenu({ techFull, dateKey, compact }: { techFull: string |
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
           <div className="absolute left-0 z-50 mt-1 w-36 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 text-xs shadow-lg">
-            <Link href={`/dispatch/new-job${q}`} className="block px-3 py-1.5 hover:bg-neutral-50">🧰 New job</Link>
-            <Link href={`/dispatch/new-estimate${q}`} className="block px-3 py-1.5 hover:bg-neutral-50">📝 New estimate</Link>
-            <Link href={`/dispatch/new-event${q}`} className="block px-3 py-1.5 hover:bg-neutral-50">📅 New event</Link>
+            {mode === "tech" ? (
+              // Techs create estimates but cannot schedule jobs/events (office-only).
+              <Link href="/estimate/new" className="block px-3 py-1.5 hover:bg-neutral-50">📝 New estimate</Link>
+            ) : (
+              <>
+                <Link href={`/dispatch/new-job${q}`} className="block px-3 py-1.5 hover:bg-neutral-50">🧰 New job</Link>
+                <Link href={`/dispatch/new-estimate${q}`} className="block px-3 py-1.5 hover:bg-neutral-50">📝 New estimate</Link>
+                <Link href={`/dispatch/new-event${q}`} className="block px-3 py-1.5 hover:bg-neutral-50">📅 New event</Link>
+              </>
+            )}
           </div>
         </>
       ) : null}

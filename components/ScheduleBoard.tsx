@@ -59,6 +59,7 @@ type Appt = {
   appointment_type: string | null;
   tech_primary_name: string | null;
   tech_all_names: string[] | null;
+  tech_all_ids: string[] | null;   // hcp_employee_ids of the crew — collision-safe money gate
   customer_name: string | null;
   street: string | null;
   city: string | null;
@@ -314,7 +315,17 @@ function buildUrl(
 type CellOpts = {
   color: ColorMode;
   compact?: boolean;   // for month view: render as 1-line pill
+  // Money gate: office (canSeeAllMoney) sees every job's $; a tech sees $ only on
+  // jobs whose crew (tech_all_ids) includes their viewerEmpId. Default = show.
+  canSeeAllMoney?: boolean;
+  viewerEmpId?: string | null;
 };
+
+// Whether to show revenue on a given appointment's card, per the money gate.
+function showMoneyFor(a: Appt, opts: CellOpts): boolean {
+  if (opts.canSeeAllMoney ?? true) return true;
+  return !!opts.viewerEmpId && (a.tech_all_ids ?? []).includes(opts.viewerEmpId);
+}
 
 function CrewAvatars({ crew, size }: { crew: CrewMember[]; size: number }) {
   if (crew.length === 0) return null;
@@ -334,6 +345,7 @@ function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
   const internal = isInternalAppt(a.hcp_customer_id);
   const crew = a.crew ?? [];
   const dollars = (Number(a.total_amount) || 0) / 100;
+  const showMoney = showMoneyFor(a, opts);
 
   // Color composition:
   //   "status" mode  → fill = status; left border = neutral
@@ -364,7 +376,7 @@ function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
       <div className="flex items-baseline justify-between gap-1">
         <span className="font-mono text-[10px] font-semibold">{chicagoTime(a.scheduled_start)}</span>
         <span className="flex items-center gap-1">
-          {dollars > 0 && <span className="text-[10px] font-medium">{fmtMoney(dollars)}</span>}
+          {showMoney && dollars > 0 && <span className="text-[10px] font-medium">{fmtMoney(dollars)}</span>}
           {(a.estimates?.length ?? 0) > 0 && <EstimateBadge estimates={a.estimates!} size="sm" />}
         </span>
       </div>
@@ -386,6 +398,7 @@ function ApptDetail({ a, opts }: { a: Appt; opts: CellOpts }) {
   const internal = isInternalAppt(a.hcp_customer_id);
   const crew = a.crew ?? [];
   const dollars = (Number(a.total_amount) || 0) / 100;
+  const showMoney = showMoneyFor(a, opts);
   const fillClass = opts.color === "tech" ? tcol.fillTint : stTone.fill;
   const textClass = opts.color === "tech" ? "text-neutral-900" : stTone.text;
   const leadBorder = opts.color === "status" ? null : (a.leadColorHex ?? null);
@@ -419,7 +432,7 @@ function ApptDetail({ a, opts }: { a: Appt; opts: CellOpts }) {
           </span>
         )}
         {(a.estimates?.length ?? 0) > 0 && <EstimateBadge estimates={a.estimates!} size="md" />}
-        {dollars > 0 && <span className="ml-auto text-[11px] font-semibold">{fmtMoney(dollars)}</span>}
+        {showMoney && dollars > 0 && <span className="ml-auto text-[11px] font-semibold">{fmtMoney(dollars)}</span>}
       </div>
     </div>
   );
@@ -441,6 +454,15 @@ type ScheduleBoardProps = {
   canApply?: boolean;
   // "full" = the whole /schedule page chrome; "compact" = grid only (for /dispatch).
   chrome?: "full" | "compact";
+  // "office" = full write affordances (drag writes to HCP, create job/event).
+  // "tech" = read-only board: drag becomes an office-approval REQUEST, create is
+  // estimate-only, no reorder, no Apply, and revenue is money-gated (Danny 7/17).
+  mode?: "office" | "tech";
+  // The viewing tech's hcp_employee_id — the collision-safe "is this job mine"
+  // key for the money gate (never match on names — second-Chris landmine).
+  viewerEmpId?: string | null;
+  // Office (admin/manager) sees all revenue; a tech sees $ only on their own jobs.
+  canSeeAllMoney?: boolean;
 };
 
 export async function ScheduleBoard({
@@ -449,7 +471,12 @@ export async function ScheduleBoard({
   isAdmin = false,
   canApply = false,
   chrome = "full",
+  mode = "office",
+  viewerEmpId = null,
+  canSeeAllMoney = true,
 }: ScheduleBoardProps) {
+  const isTech = mode === "tech";
+  const dropMode: "apply" | "request" = isTech ? "request" : "apply";
   const todayKey = chicagoTodayKey();
 
   // Parse URL state
@@ -460,7 +487,9 @@ export async function ScheduleBoard({
     if (Number.isNaN(dd.getTime())) return todayKey;
     return d;
   })();
-  const view: ViewMode = (params.view === "day" || params.view === "month" ? params.view : "week");
+  const rawView: ViewMode = (params.view === "day" || params.view === "month" ? params.view : "week");
+  // Techs never get the day timeline (it exposes per-job labor cost / $); coerce to week.
+  const view: ViewMode = isTech && rawView === "day" ? "week" : rawView;
   const color: ColorMode = (params.color === "status" || params.color === "tech" ? params.color : "plaid");
   const filters = parseFilters(params);
   // Test-customer jobs (Danny-as-customer artifacts) are hidden from the lanes by
@@ -502,7 +531,7 @@ export async function ScheduleBoard({
   let apptQuery = supa
     .from("appointments_master")
     .select(
-      "appointment_id, hcp_job_id, hcp_customer_id, hcp_estimate_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, customer_name, street, city, total_amount, flags",
+      "appointment_id, hcp_job_id, hcp_customer_id, hcp_estimate_id, scheduled_start, scheduled_end, status, appointment_type, tech_primary_name, tech_all_names, tech_all_ids, customer_name, street, city, total_amount, flags",
     )
     .is("deleted_at", null)
     .gte("scheduled_start", windowStartUtc)
@@ -890,6 +919,10 @@ export async function ScheduleBoard({
           color={color}
           todayKey={todayKey}
           multiVisitJobs={multiVisitJobs}
+          canSeeAllMoney={canSeeAllMoney}
+          viewerEmpId={viewerEmpId}
+          dropMode={dropMode}
+          addMode={mode}
         />
       )}
 
@@ -902,6 +935,8 @@ export async function ScheduleBoard({
           color={color}
           todayKey={todayKey}
           linkFor={linkFor}
+          canSeeAllMoney={canSeeAllMoney}
+          viewerEmpId={viewerEmpId}
         />
       )}
     </>
@@ -995,7 +1030,7 @@ export async function ScheduleBoard({
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white p-0.5">
           <span className="px-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">View</span>
-          {(["day", "week", "month"] as ViewMode[]).map((v) => (
+          {((isTech ? ["week", "month"] : ["day", "week", "month"]) as ViewMode[]).map((v) => (
             <Link
               key={v}
               href={linkFor({ view: v === "week" ? null : v })}
@@ -1019,9 +1054,9 @@ export async function ScheduleBoard({
         </div>
       </div>
 
-      {view !== "month" ? <div className="mb-3"><TechOrderControl techs={orderedTechsForControl} /></div> : null}
+      {!isTech && view !== "month" ? <div className="mb-3"><TechOrderControl techs={orderedTechsForControl} /></div> : null}
 
-      <PendingChangesBar changes={pendingChanges} canApply={canApply} />
+      {!isTech && <PendingChangesBar changes={pendingChanges} canApply={canApply} />}
 
       <div className="mb-3 text-[11px]">
         {includeTest ? (
@@ -1243,7 +1278,7 @@ function DayView({
 // ──────────────────────────────────────────────────────────────────────────────
 
 function WeekView({
-  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey, multiVisitJobs,
+  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey, multiVisitJobs, canSeeAllMoney, viewerEmpId, dropMode, addMode,
 }: {
   windowKeys: string[];
   rowOrder: string[];
@@ -1259,6 +1294,10 @@ function WeekView({
   color: ColorMode;
   todayKey: string;
   multiVisitJobs: Set<string>;
+  canSeeAllMoney: boolean;
+  viewerEmpId: string | null;
+  dropMode: "apply" | "request";
+  addMode: "office" | "tech";
 }) {
   if (rowOrder.length === 0) {
     return (
@@ -1309,7 +1348,7 @@ function WeekView({
                           : techFullName !== "Unassigned" ? <span className="rounded-sm bg-sky-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">apprentice</span> : null}
                         {techFullName === "Unassigned" && <span className="rounded-sm bg-red-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-red-800">unassigned</span>}
                       </div>
-                      <div className="text-[11px] text-neutral-500">{count} appt{count === 1 ? "" : "s"}{dollars > 0 ? ` · ${fmtMoney(dollars)}` : ""}{assist > 0 ? ` · +${assist} assist` : ""}</div>
+                      <div className="text-[11px] text-neutral-500">{count} appt{count === 1 ? "" : "s"}{canSeeAllMoney && dollars > 0 ? ` · ${fmtMoney(dollars)}` : ""}{assist > 0 ? ` · +${assist} assist` : ""}</div>
                     </div>
                   </div>
                 </td>
@@ -1319,10 +1358,10 @@ function WeekView({
                   const isPast = dayKey < todayKey;
                   return (
                     <td key={dayKey} className={`min-h-24 border-r border-b border-neutral-200 align-top ${isToday ? "bg-amber-50/60" : isPast ? "bg-neutral-50/40" : "bg-white"}`}>
-                      <DropCell techFull={techFullName} dateKey={dayKey} disabled={isPast || !techs.some((t) => t.hcp_full_name === techFullName)} className="h-full min-h-16 rounded-md p-1">
+                      <DropCell techFull={techFullName} dateKey={dayKey} mode={dropMode} disabled={isPast || !techs.some((t) => t.hcp_full_name === techFullName)} className="h-full min-h-16 rounded-md p-1">
                         {cell.length === 0 ? (
                           <div className="flex h-full min-h-16 items-center justify-center">
-                            {isPast ? <span className="text-[10px] text-neutral-300">—</span> : <CellAddMenu techFull={techFullName} dateKey={dayKey} compact />}
+                            {isPast ? <span className="text-[10px] text-neutral-300">—</span> : <CellAddMenu techFull={techFullName} dateKey={dayKey} mode={addMode} compact />}
                           </div>
                         ) : (
                           <div className="space-y-1">
@@ -1339,22 +1378,22 @@ function WeekView({
                                   {assisting ? <span className="block text-[8px] font-semibold uppercase tracking-wide text-sky-600">assisting</span> : null}
                                   {a.hcp_job_id ? (
                                     <Link href={`/job/${a.hcp_job_id}`} title={`${a.customer_name ?? "—"} · ${a.street ?? ""}${a.city ? ", " + a.city : ""} · ${a.status ?? ""}`} className="block">
-                                      <ApptBlock a={a} opts={{ color }} />
+                                      <ApptBlock a={a} opts={{ color, canSeeAllMoney, viewerEmpId }} />
                                     </Link>
                                   ) : a.appointment_type === "estimate" && a.appointment_id ? (
                                     <Link href={`/estimate/new?appointment=${a.appointment_id}`} title={`${a.customer_name ?? "—"} · draft estimate from visit`} className="block">
-                                      <ApptBlock a={a} opts={{ color }} />
+                                      <ApptBlock a={a} opts={{ color, canSeeAllMoney, viewerEmpId }} />
                                     </Link>
                                   ) : (
                                     <div title={`${a.customer_name ?? "—"} · ${a.status ?? ""}`}>
-                                      <ApptBlock a={a} opts={{ color }} />
+                                      <ApptBlock a={a} opts={{ color, canSeeAllMoney, viewerEmpId }} />
                                     </div>
                                   )}
                                 </div>
                               </DraggableAppt>
                               );
                             })}
-                            {!isPast ? <div className="pt-0.5"><CellAddMenu techFull={techFullName} dateKey={dayKey} compact /></div> : null}
+                            {!isPast ? <div className="pt-0.5"><CellAddMenu techFull={techFullName} dateKey={dayKey} mode={addMode} compact /></div> : null}
                           </div>
                         )}
                       </DropCell>
@@ -1376,7 +1415,7 @@ function WeekView({
               const d = (dollarsByDay.get(k) ?? 0) / 100;
               return (
                 <td key={k} className={`border-r border-neutral-200 px-2 py-2 text-center tabular-nums ${isToday ? "bg-amber-100 font-semibold text-amber-900" : "text-neutral-700"}`}>
-                  {c > 0 ? (<><div>{c} appt{c === 1 ? "" : "s"}</div>{d > 0 && <div className="text-[10px] opacity-70">{fmtMoney(d)}</div>}</>) : <span className="text-neutral-300">—</span>}
+                  {c > 0 ? (<><div>{c} appt{c === 1 ? "" : "s"}</div>{canSeeAllMoney && d > 0 && <div className="text-[10px] opacity-70">{fmtMoney(d)}</div>}</>) : <span className="text-neutral-300">—</span>}
                 </td>
               );
             })}
@@ -1392,7 +1431,7 @@ function WeekView({
 // ──────────────────────────────────────────────────────────────────────────────
 
 function MonthView({
-  gridKeys, centerKey, activeMonth, cellByDay, color, todayKey, linkFor,
+  gridKeys, centerKey, activeMonth, cellByDay, color, todayKey, linkFor, canSeeAllMoney, viewerEmpId,
 }: {
   gridKeys: string[];
   centerKey: string;
@@ -1401,6 +1440,8 @@ function MonthView({
   color: ColorMode;
   todayKey: string;
   linkFor: (overrides: Record<string, string | null>) => string;
+  canSeeAllMoney: boolean;
+  viewerEmpId: string | null;
 }) {
   void centerKey; // kept for future "highlight selected day" feature
   const weekRows: string[][] = [];
@@ -1464,15 +1505,15 @@ function MonthView({
                         {visible.map((a) => (
                           a.hcp_job_id ? (
                             <Link key={a.appointment_id ?? a.hcp_job_id} href={`/job/${a.hcp_job_id}`} className="block">
-                              <ApptBlock a={a} opts={{ color, compact: true }} />
+                              <ApptBlock a={a} opts={{ color, compact: true, canSeeAllMoney, viewerEmpId }} />
                             </Link>
                           ) : a.appointment_type === "estimate" && a.appointment_id ? (
                             <Link key={a.appointment_id} href={`/estimate/new?appointment=${a.appointment_id}`} className="block">
-                              <ApptBlock a={a} opts={{ color, compact: true }} />
+                              <ApptBlock a={a} opts={{ color, compact: true, canSeeAllMoney, viewerEmpId }} />
                             </Link>
                           ) : (
                             <div key={a.appointment_id ?? Math.random()}>
-                              <ApptBlock a={a} opts={{ color, compact: true }} />
+                              <ApptBlock a={a} opts={{ color, compact: true, canSeeAllMoney, viewerEmpId }} />
                             </div>
                           )
                         ))}
@@ -1481,7 +1522,7 @@ function MonthView({
                             + {overflow} more →
                           </Link>
                         )}
-                        {dollars > 0 && (
+                        {canSeeAllMoney && dollars > 0 && (
                           <div className="px-1.5 pt-0.5 text-right text-[9px] font-medium text-neutral-500">
                             {fmtMoney(dollars)}
                           </div>

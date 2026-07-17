@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { applyJobMove } from "../lib/schedule-changes";
+import { applyJobMove, proposeJobMove } from "../lib/schedule-changes";
 import { APPT_MIME } from "./DraggableAppt";
 
 type MoveResult = {
@@ -18,8 +18,11 @@ type MoveResult = {
   error?: boolean;
 };
 
-export function DropCell({ techFull, dateKey, disabled, className, children }: {
-  techFull: string; dateKey: string; disabled?: boolean; className?: string; children: ReactNode;
+export function DropCell({ techFull, dateKey, disabled, className, mode = "apply", children }: {
+  techFull: string; dateKey: string; disabled?: boolean; className?: string;
+  // "apply" (office) = write the move to HCP immediately; "request" (tech) =
+  // queue an office-approval request (proposeJobMove), never touch HCP.
+  mode?: "apply" | "request"; children: ReactNode;
 }) {
   const router = useRouter();
   const [over, setOver] = useState(false);
@@ -51,6 +54,18 @@ export function DropCell({ techFull, dateKey, disabled, className, children }: {
         try { p = JSON.parse(raw); } catch { return; }
         if (p.currentTech === techFull && p.currentDate === dateKey) return; // same cell
         start(async () => {
+          if (mode === "request") {
+            // Tech board: queue a request for the office, no HCP write.
+            const rq = await proposeJobMove({
+              appointment_id: p.apptId, hcp_job_id: p.hcpJobId, customer_name: p.customerName,
+              current_start: p.currentStart, current_tech: p.currentTech, current_date: p.currentDate,
+              new_tech: techFull, new_date: dateKey,
+            });
+            if (!rq.ok) { showResult({ label: rq.error ?? "Request failed", undo: null, error: true }, 8_000); return; }
+            showResult({ label: `Requested${p.customerName ? ` ${p.customerName}` : ""} → sent to office ✓`, undo: null }, 8_000);
+            router.refresh();
+            return;
+          }
           const res = await applyJobMove({
             appointment_id: p.apptId, hcp_job_id: p.hcpJobId, customer_name: p.customerName,
             current_start: p.currentStart, current_tech: p.currentTech, current_date: p.currentDate,

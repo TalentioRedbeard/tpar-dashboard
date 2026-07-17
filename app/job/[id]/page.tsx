@@ -778,7 +778,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </div>
         ) : null}
 
-        {canEdit ? <AddJobLineItem hcpJobId={id} /> : null}
+        {/* Techs may add line-items/segments to an existing job (Danny 2026-07-17;
+            addJobLineItem already permits admin|manager|tech server-side). */}
+        {(canEdit || canWrite) ? <AddJobLineItem hcpJobId={id} /> : null}
 
         {/* Identity + money facts moved to the rail (same place every time);
             what stays here is performance + context. */}

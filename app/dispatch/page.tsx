@@ -38,7 +38,7 @@ import { listTasks, listTaskTemplates } from "../../lib/tasks";
 import { getFollowupConfig } from "./followup-actions";
 import { FollowupConfigPanel } from "../../components/FollowupConfigPanel";
 import { isResolving, dispositionEntityKey, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
-import { DispatchViewToggle } from "../../components/DispatchViewToggle";
+import { ViewToggle } from "../../components/ViewToggle";
 import { ScheduleBoard } from "../../components/ScheduleBoard";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
@@ -621,8 +621,10 @@ export default async function DispatchPage({
         stuck: <>Map blank? GPS pipeline likely paused; check /admin/system pipeline freshness or text Danny.</>,
       }}
     >
-      <DispatchViewToggle
-        board={
+      <ViewToggle
+        primaryLabel="🗺️ Map + Queues"
+        secondaryLabel="🗓️ Board"
+        secondary={
           <ScheduleBoard
             params={{}}
             basePath="/dispatch"
@@ -631,7 +633,7 @@ export default async function DispatchPage({
             chrome="compact"
           />
         }
-        mapQueues={
+        primary={
           <>
       {/* STICKY ACTION BAR — full-width dispatch actions */}
       <div className="sticky top-0 z-30 -mx-4 mb-4 flex items-stretch gap-2 border-b border-neutral-200 bg-white/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">

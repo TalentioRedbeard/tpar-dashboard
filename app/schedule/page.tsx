@@ -1,14 +1,14 @@
-// /schedule — the full visual schedule page (day/week/month, filters, color modes).
+// /schedule — the full visual schedule board (day/week/month, filters, colors).
 //
-// Auth + the tech-scoped fork live here; the interactive grid itself is the shared
-// <ScheduleBoard> (chrome="full" here, chrome="compact" on /dispatch behind the
-// Board/Map toggle). URL params still drive everything on the full page:
-//   ?date=YYYY-MM-DD  ?view=day|week|month  ?color=status|tech|plaid
-//   ?status=csv  ?tech=name  ?customer=text  ?revenue=1  ?action=1  ?include_test=1
+// Office (admin/manager) get the board with write affordances (drag writes to
+// HCP, create job/event). A field tech gets the SAME board in read-only tech mode
+// (Danny 2026-07-17): they SEE the whole company schedule, but drag becomes an
+// office-approval REQUEST, revenue shows only on their own jobs, create is
+// estimate-only, and reorder/apply are hidden. The interactive grid is the shared
+// <ScheduleBoard> (chrome="full" here, chrome="compact" on /dispatch).
 
 import { redirect } from "next/navigation";
 import { getCurrentTech } from "../../lib/current-tech";
-import { TechScheduleView } from "./TechScheduleView";
 import { ScheduleBoard } from "../../components/ScheduleBoard";
 
 export const metadata = { title: "Schedule · TPAR-DB" };
@@ -23,21 +23,21 @@ export default async function SchedulePage({
   if (!me) redirect("/login?from=/schedule");
   const params = await searchParams;
 
-  // Techs get a scoped "My schedule" — their OWN appointments only ("what pertains
-  // to me") — instead of the leadership dispatch grid. Office users (signed in, no
-  // tech row) still go to /me.
-  if (!me.isAdmin && !me.isManager) {
-    if (!me.tech) redirect("/me");
-    return <TechScheduleView fullName={me.tech.hcp_full_name} shortName={me.tech.tech_short_name} centerKey={params.date} />;
-  }
+  const isOffice = me.isAdmin || me.isManager;
+  // A signed-in office user with no tech row and no leadership role has no place
+  // on the board — send them to /me (unchanged behavior).
+  if (!isOffice && !me.tech) redirect("/me");
 
   return (
     <ScheduleBoard
       params={params}
       basePath="/schedule"
       isAdmin={me.isAdmin}
-      canApply={me.isAdmin || me.isManager}
+      canApply={isOffice}
       chrome="full"
+      mode={isOffice ? "office" : "tech"}
+      viewerEmpId={me.tech?.hcp_employee_id ?? null}
+      canSeeAllMoney={isOffice}
     />
   );
 }
