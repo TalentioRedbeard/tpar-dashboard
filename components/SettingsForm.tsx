@@ -6,8 +6,9 @@
 
 import { useState, useTransition } from "react";
 import {
-  updateMySettings, setSmsMaster, setPhoneLoginEnabled, type MySettings, type DetailLevel,
+  updateMySettings, createAvatarUpload, setSmsMaster, setPhoneLoginEnabled, type MySettings, type DetailLevel,
 } from "../lib/settings-actions";
+import { browserClient } from "../lib/supabase-browser";
 
 // "How the app fits you" — personality levers (2026-07-05). These are honored,
 // not decorative: detail level + processing notes steer the AI ask bar's answer
@@ -67,21 +68,26 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
   // (so the button disables and "Saved." shows without a prop round-trip).
   const [receiveTeamSms, setReceiveTeamSms] = useState(!initial.sms_opt_out);
   const [receiveEodDm, setReceiveEodDm] = useState(!initial.eod_dm_opt_out);
+  const [receiveFeedbackDm, setReceiveFeedbackDm] = useState(!initial.feedback_dm_opt_out);
   const [showGps, setShowGps] = useState(!initial.gps_prompts_opt_out);
   const [showRecorder, setShowRecorder] = useState(!initial.hide_quick_recorder);
   const [color, setColor] = useState(initial.color_hex ?? "");
   const [landing, setLanding] = useState(initial.default_landing ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(initial.avatar_url ?? "");
   const [detailLevel, setDetailLevel] = useState<DetailLevel>(initial.detail_level);
   const [simpleMode, setSimpleMode] = useState(initial.simple_mode);
   const [wrapReminder, setWrapReminder] = useState(initial.wrap_reminder);
   const [processingNotes, setProcessingNotes] = useState(initial.processing_notes);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const [baseline, setBaseline] = useState({
     receiveTeamSms: !initial.sms_opt_out,
     receiveEodDm: !initial.eod_dm_opt_out,
+    receiveFeedbackDm: !initial.feedback_dm_opt_out,
     showGps: !initial.gps_prompts_opt_out,
     showRecorder: !initial.hide_quick_recorder,
     color: initial.color_hex ?? "",
     landing: initial.default_landing ?? "",
+    avatarUrl: initial.avatar_url ?? "",
     detailLevel: initial.detail_level,
     simpleMode: initial.simple_mode,
     wrapReminder: initial.wrap_reminder,
@@ -95,10 +101,12 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
   const dirty =
     receiveTeamSms !== baseline.receiveTeamSms ||
     receiveEodDm !== baseline.receiveEodDm ||
+    receiveFeedbackDm !== baseline.receiveFeedbackDm ||
     showGps !== baseline.showGps ||
     showRecorder !== baseline.showRecorder ||
     color !== baseline.color ||
     landing !== baseline.landing ||
+    avatarUrl !== baseline.avatarUrl ||
     detailLevel !== baseline.detailLevel ||
     simpleMode !== baseline.simpleMode ||
     wrapReminder !== baseline.wrapReminder ||
@@ -111,20 +119,42 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
       const res = await updateMySettings({
         sms_opt_out: !receiveTeamSms,
         eod_dm_opt_out: !receiveEodDm,
+        feedback_dm_opt_out: !receiveFeedbackDm,
         gps_prompts_opt_out: !showGps,
         hide_quick_recorder: !showRecorder,
         color_hex: color === "" ? null : color,
         default_landing: landing === "" ? null : landing,
+        avatar_url: avatarUrl === "" ? null : avatarUrl,
         detail_level: detailLevel,
         simple_mode: simpleMode,
         wrap_reminder: wrapReminder,
         processing_notes: processingNotes,
       });
       if (res.ok) {
-        setBaseline({ receiveTeamSms, receiveEodDm, showGps, showRecorder, color, landing, detailLevel, simpleMode, wrapReminder, processingNotes });
+        setBaseline({ receiveTeamSms, receiveEodDm, receiveFeedbackDm, showGps, showRecorder, color, landing, avatarUrl, detailLevel, simpleMode, wrapReminder, processingNotes });
         setSaved(true);
       } else setErr(res.error);
     });
+  }
+
+  // Avatar: upload-first (browser → Storage direct), then the URL rides the
+  // normal Save through the whitelist.
+  async function pickAvatar(f: File | null) {
+    if (!f) return;
+    if (f.size > 2 * 1024 * 1024) { setErr("Avatar must be under 2MB."); return; }
+    setErr(null);
+    setAvatarBusy(true);
+    try {
+      const slot = await createAvatarUpload({ filename: f.name });
+      if (!slot.ok) { setErr(slot.error); return; }
+      const { error: upErr } = await browserClient().storage
+        .from("avatars")
+        .uploadToSignedUrl(slot.path, slot.token, f, { contentType: f.type || "image/jpeg" });
+      if (upErr) { setErr(`Upload failed: ${upErr.message}`); return; }
+      setAvatarUrl(slot.publicUrl);
+    } finally {
+      setAvatarBusy(false);
+    }
   }
 
   const landingOpts = leadership ? [...LANDING_BASE, ...LANDING_LEADERSHIP] : LANDING_BASE;
@@ -145,10 +175,25 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
           <Group title="Notifications">
             <Toggle checked={receiveTeamSms} onChange={setReceiveTeamSms}
               label="Text me when a teammate sends me a note"
-              hint="Turns off the SMS for notes addressed to you (you'll still see them in the app)." />
+              hint="Texting is paused company-wide until carrier registration clears — this takes effect the day it's back on." />
             <Toggle checked={receiveEodDm} onChange={setReceiveEodDm}
               label="Send me the automated end-of-day Slack review"
               hint="The daily DM when one of your jobs ran long. Untick to mute it." />
+          </Group>
+
+          <Group title="Feedback & wraps">
+            <Toggle checked={receiveFeedbackDm} onChange={setReceiveFeedbackDm}
+              label="Slack me when my feedback gets answered"
+              hint="Answers always land on your Home page either way — this is just the ping." />
+            <Toggle checked={wrapReminder} onChange={setWrapReminder}
+              label="Wrap reminder"
+              hint="~6:30pm Slack nudge if you haven't recorded your Daily Wrap yet. Your call — nothing nags without this." />
+            {initial.feedbackAnswered30d > 0 ? (
+              <p className="py-1.5 text-xs text-neutral-500">
+                Your feedback answered: <span className="font-semibold text-emerald-700">{initial.feedbackAnswered30d}</span> in the last 30 days —{" "}
+                <a href="/me#heard" className="underline hover:text-neutral-700">see them on your Home page</a>.
+              </p>
+            ) : null}
           </Group>
 
           <Group title="Field & mobile">
@@ -190,10 +235,7 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
             </div>
             <Toggle checked={simpleMode} onChange={setSimpleMode}
               label="Simple mode"
-              hint="Calmer My Day — fewer panels, bigger buttons." />
-            <Toggle checked={wrapReminder} onChange={setWrapReminder}
-              label="Wrap reminder"
-              hint="End-of-day nudge to record my Daily Wrap." />
+              hint="Calmer My Day — fewer panels, bigger buttons. On by default for field techs; your choice here sticks." />
             <div className="py-2">
               <label className="mb-1 block text-sm font-medium text-neutral-800">How do you like information?</label>
               <textarea
@@ -209,6 +251,29 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
           </Group>
 
           <Group title="Display">
+            <p className="py-1.5 text-xs text-neutral-500">
+              Signed in as <span className="font-medium text-neutral-700">{initial.techShortName ?? "—"}</span>
+              {initial.dashboardRole ? <> · {initial.dashboardRole.replace("_", " ")}</> : null}
+            </p>
+            <div className="py-2">
+              <label className="mb-1 block text-sm font-medium text-neutral-800">Avatar</label>
+              <div className="flex items-center gap-3">
+                {avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarUrl} alt="your avatar" className="h-12 w-12 rounded-full border border-neutral-200 object-cover" />
+                ) : (
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 text-lg text-neutral-400">🙂</span>
+                )}
+                <input type="file" accept="image/*"
+                  onChange={(e) => void pickAvatar(e.target.files?.[0] ?? null)}
+                  className="block text-sm file:mr-3 file:rounded file:border-0 file:bg-neutral-200 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-neutral-800 hover:file:bg-neutral-300" />
+                {avatarBusy ? <span className="text-xs text-brand-700">uploading…</span> : null}
+                {avatarUrl ? (
+                  <button type="button" onClick={() => setAvatarUrl("")} className="text-xs text-neutral-500 hover:underline">remove</button>
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-neutral-500">Shows on the schedule, dispatch board, and map. Under 2MB; hit Save after picking.</p>
+            </div>
             <div className="py-1.5">
               <label className="flex items-center gap-3">
                 <input type="checkbox" checked={hasColor}
@@ -247,7 +312,9 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
         </>
       )}
 
-      {initial.isOwner ? <OwnerSection initialSms={initial.smsMaster} initialPhone={initial.phoneLogin} /> : null}
+      {/* Owner controls hide during view-as (hygiene, spec §1): previewing a
+          tech must never render — let alone flip — the global switches. */}
+      {initial.isOwner && !initial.isImpersonating ? <OwnerSection initialSms={initial.smsMaster} initialPhone={initial.phoneLogin} /> : null}
     </div>
   );
 }

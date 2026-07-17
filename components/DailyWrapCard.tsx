@@ -16,6 +16,7 @@ import {
   markRecordingPendingLocal,
   finalizeRecording,
 } from "../lib/recordings";
+import { updateMySettings } from "../lib/settings-actions";
 import { browserClient } from "../lib/supabase-browser";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -24,17 +25,21 @@ function chiTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" });
 }
 
-export function DailyWrapCard({ tech, wrappedAt }: {
+export function DailyWrapCard({ tech, wrappedAt, wrapReminder = true }: {
   /** Tech short name — used in the recording label. */
   tech: string;
   /** ISO created_at of today's latest daily-wrap recording, or null if none yet. */
   wrappedAt: string | null;
+  /** prefs.wrap_reminder — when false, the one-tap "Remind me daily" chip shows
+   *  (spec §1: the zero-adoption fix for this lever is PLACEMENT, not a knob). */
+  wrapReminder?: boolean;
 }) {
   const router = useRouter();
   const [phase, setPhase] = useState<"idle" | "recording" | "saving">("idle");
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [savedAtIso, setSavedAtIso] = useState<string | null>(null);
+  const [reminderState, setReminderState] = useState<"off" | "saving" | "on">(wrapReminder ? "on" : "off");
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const startTsRef = useRef(0);
@@ -171,6 +176,19 @@ export function DailyWrapCard({ tech, wrappedAt }: {
               <p className="text-xs text-neutral-600">
                 The job, the app, the company — what worked, what frustrated you, what do you want?
               </p>
+              {reminderState !== "on" ? (
+                <button
+                  type="button"
+                  disabled={reminderState === "saving"}
+                  onClick={() => {
+                    setReminderState("saving");
+                    void updateMySettings({ wrap_reminder: true }).then((r) => setReminderState(r.ok ? "on" : "off"));
+                  }}
+                  className="mt-1.5 rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600 hover:bg-neutral-200 disabled:opacity-50"
+                >
+                  {reminderState === "saving" ? "…" : "🔔 Remind me daily (~6:30pm)"}
+                </button>
+              ) : null}
             </div>
             <button
               type="button"

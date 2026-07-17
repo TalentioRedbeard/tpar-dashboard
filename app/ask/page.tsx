@@ -12,6 +12,7 @@ import { AskResult, type RoutePlan, type RouteScope } from "../../components/Ask
 import { PushToDanny } from "../../components/PushToDanny";
 import { VoiceAsk } from "../../components/VoiceAsk";
 import { supabaseServer } from "../../lib/supabase-server";
+import { getCurrentTech } from "../../lib/current-tech";
 
 export const metadata = { title: "Ask · TPAR-DB" };
 export const dynamic = "force-dynamic";
@@ -89,11 +90,25 @@ async function routeQuery(question: string): Promise<RouteResult> {
   const { data: sessionData } = await supa.auth.getSession();
   const accessToken = sessionData.session?.access_token ?? null;
   if (!accessToken) return { ok: false, error: "not signed in" };
+  // Personality levers (spec §1 wiring fix): the /ask PAGE now honors
+  // detail_level + processing_notes the same way the AskBar does — the
+  // preference line rides page_context FIRST (appguide-route slices
+  // page_context to 200 chars, so lead position survives truncation).
+  let pageContext: string | null = null;
+  const prefs = (await getCurrentTech().catch(() => null))?.tech?.prefs;
+  if (prefs && (prefs.detail_level || prefs.processing_notes)) {
+    const parts: string[] = [];
+    if (prefs.detail_level) parts.push(`User answer-style preference: ${prefs.detail_level}.`);
+    if (typeof prefs.processing_notes === "string" && prefs.processing_notes.trim()) {
+      parts.push(`Their own words on how they like information: ${prefs.processing_notes.trim().slice(0, 80)}.`);
+    }
+    pageContext = parts.join(" ");
+  }
   try {
     const res = await fetch(ROUTE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, ...(pageContext ? { page_context: pageContext } : {}) }),
       signal: AbortSignal.timeout(30_000),
     });
     const json = await res.json().catch(() => ({}));

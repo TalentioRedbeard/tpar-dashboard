@@ -162,13 +162,10 @@ export async function getMySmsOptOut(): Promise<boolean> {
   return !!data?.sms_opt_out;
 }
 
-export async function setMySmsOptOut(optOut: boolean): Promise<{ ok: boolean }> {
-  const me = await getCurrentTech();
-  if (!me) return { ok: false };
-  await db().from("tech_directory").update({ sms_opt_out: optOut }).ilike("email", me.email.toLowerCase());
-  revalidatePath("/inbox");
-  return { ok: true };
-}
+// setMySmsOptOut was RETIRED 2026-07-17 (hygiene, feedback-loop spec §1): it
+// wrote tech_directory by email-ilike with no self gate — under view-as it
+// edited the wrong row. The one true setter is updateMySettings on /settings
+// (requireSelf + tech_id-scoped + strict whitelist).
 
 // Quiet hours: 9pm–7am America/Chicago — no texts sent in this window.
 function inQuietHours(): boolean {

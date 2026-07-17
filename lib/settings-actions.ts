@@ -37,6 +37,7 @@ export type MySettings = {
   hasTech: boolean;
   isImpersonating: boolean;
   isOwner: boolean;
+  dashboardRole: string | null;
   // per-user
   sms_opt_out: boolean;
   eod_dm_opt_out: boolean;
@@ -44,12 +45,16 @@ export type MySettings = {
   hide_quick_recorder: boolean;
   color_hex: string | null;
   default_landing: string | null;
+  avatar_url: string | null;
   techShortName: string | null;
   // personality levers (from prefs jsonb)
   detail_level: DetailLevel;
   simple_mode: boolean;
   wrap_reminder: boolean;
+  feedback_dm_opt_out: boolean;
   processing_notes: string;
+  // trust line (spec §1): answers this tech received in the last 30 days
+  feedbackAnswered30d: number;
   // owner-only globals
   smsMaster: boolean;
   phoneLogin: boolean;
@@ -61,13 +66,23 @@ export async function getMySettings(): Promise<MySettings | null> {
   const supa = db();
 
   let row: Record<string, unknown> | null = null;
+  let feedbackAnswered30d = 0;
   if (me.tech) {
-    const { data } = await supa
-      .from("tech_directory")
-      .select("tech_short_name, sms_opt_out, eod_dm_opt_out, gps_prompts_opt_out, hide_quick_recorder, color_hex, default_landing, prefs")
-      .eq("tech_id", me.tech.tech_id)
-      .maybeSingle();
-    row = (data ?? null) as Record<string, unknown> | null;
+    const [rowRes, fbRes] = await Promise.all([
+      supa
+        .from("tech_directory")
+        .select("tech_short_name, sms_opt_out, eod_dm_opt_out, gps_prompts_opt_out, hide_quick_recorder, color_hex, default_landing, avatar_url, prefs")
+        .eq("tech_id", me.tech.tech_id)
+        .maybeSingle(),
+      supa
+        .from("feedback_items")
+        .select("id", { count: "exact", head: true })
+        .eq("tech", me.tech.tech_short_name)
+        .not("responded_at", "is", null)
+        .gte("responded_at", new Date(Date.now() - 30 * 86_400_000).toISOString()),
+    ]);
+    row = (rowRes.data ?? null) as Record<string, unknown> | null;
+    feedbackAnswered30d = fbRes.count ?? 0;
   }
 
   const owner = isOwner(me.realEmail);
@@ -87,12 +102,14 @@ export async function getMySettings(): Promise<MySettings | null> {
     hasTech: !!me.tech,
     isImpersonating: me.isImpersonating,
     isOwner: owner,
+    dashboardRole: me.dashboardRole,
     sms_opt_out: !!(row?.sms_opt_out as boolean | null),
     eod_dm_opt_out: !!(row?.eod_dm_opt_out as boolean | null),
     gps_prompts_opt_out: !!(row?.gps_prompts_opt_out as boolean | null),
     hide_quick_recorder: !!(row?.hide_quick_recorder as boolean | null),
     color_hex: (row?.color_hex as string | null) ?? null,
     default_landing: (row?.default_landing as string | null) ?? null,
+    avatar_url: (row?.avatar_url as string | null) ?? null,
     techShortName: (row?.tech_short_name as string | null) ?? me.tech?.tech_short_name ?? null,
     detail_level: DETAIL_LEVELS.includes(prefs.detail_level as DetailLevel) ? (prefs.detail_level as DetailLevel) : "standard",
     // Mirror toPrefs' role-aware default (A9): an untouched tech shows the
@@ -101,7 +118,10 @@ export async function getMySettings(): Promise<MySettings | null> {
     // simple_mode) would write false and silently kill the default.
     simple_mode: typeof prefs.simple_mode === "boolean" ? prefs.simple_mode : me.dashboardRole === "tech",
     wrap_reminder: prefs.wrap_reminder === true,
+    // absent = DMs ON (answers reach the tech unless they said otherwise)
+    feedback_dm_opt_out: prefs.feedback_dm_opt_out === true,
     processing_notes: typeof prefs.processing_notes === "string" ? prefs.processing_notes : "",
+    feedbackAnswered30d,
     smsMaster,
     phoneLogin,
   };
@@ -114,10 +134,12 @@ export async function updateMySettings(input: {
   hide_quick_recorder?: boolean;
   color_hex?: string | null;
   default_landing?: string | null;
+  avatar_url?: string | null;
   // personality levers → merged into prefs jsonb (never clobbers unknown keys)
   detail_level?: DetailLevel;
   simple_mode?: boolean;
   wrap_reminder?: boolean;
+  feedback_dm_opt_out?: boolean;
   processing_notes?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const self = await requireSelf();
@@ -143,6 +165,13 @@ export async function updateMySettings(input: {
     else if (LANDING_ALLOW.has(d)) patch.default_landing = d;
     else return { ok: false, error: "That landing page isn't allowed." };
   }
+  if (input.avatar_url !== undefined) {
+    const a = (input.avatar_url ?? "").trim();
+    if (a === "") patch.avatar_url = null;
+    // Only our own avatars bucket — never an arbitrary URL onto a rendered <img>.
+    else if (a.startsWith(`${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/`)) patch.avatar_url = a;
+    else return { ok: false, error: "Avatar must come from the in-app uploader." };
+  }
 
   // Personality levers → prefs jsonb. Whitelisted keys only, MERGED over the
   // row's current prefs (read-then-write; single-owner row, so no real race).
@@ -154,6 +183,7 @@ export async function updateMySettings(input: {
   }
   if (typeof input.simple_mode === "boolean") prefsPatch.simple_mode = input.simple_mode;
   if (typeof input.wrap_reminder === "boolean") prefsPatch.wrap_reminder = input.wrap_reminder;
+  if (typeof input.feedback_dm_opt_out === "boolean") prefsPatch.feedback_dm_opt_out = input.feedback_dm_opt_out;
   if (input.processing_notes !== undefined) {
     const n = String(input.processing_notes).trim();
     if (n.length > PROCESSING_NOTES_MAX) return { ok: false, error: `Processing notes must be ${PROCESSING_NOTES_MAX} characters or fewer.` };
@@ -176,6 +206,27 @@ export async function updateMySettings(input: {
   revalidatePath("/me"); // simple_mode reshapes /me
   revalidatePath("/", "layout"); // hide_quick_recorder is read in the root layout
   return { ok: true };
+}
+
+// ── Avatar upload (spec §1 Display) ─────────────────────────────────────────
+// Upload-first (browser → Storage direct, the 4.5MB Vercel body law): this
+// mints the signed slot in the public `avatars` bucket; the client PUTs, then
+// saves the public URL through updateMySettings' whitelist (which re-checks
+// the URL prefix). Path is tech-scoped + timestamped (cache-bust on change).
+export async function createAvatarUpload(input: { filename?: string }): Promise<
+  | { ok: true; path: string; token: string; publicUrl: string }
+  | { ok: false; error: string }
+> {
+  const self = await requireSelf();
+  if (!self.ok) return { ok: false, error: self.error };
+  const techId = self.me.tech!.tech_id;
+  const ext = (input.filename?.split(".").pop()?.toLowerCase() || "jpg").replace(/[^a-z0-9]/g, "") || "jpg";
+  const path = `${techId}/${Date.now()}.${ext}`;
+  const supa = db();
+  const { data: signed, error } = await supa.storage.from("avatars").createSignedUploadUrl(path);
+  if (error || !signed?.token) return { ok: false, error: `Could not start upload: ${error?.message ?? "no token"}` };
+  const { data: pub } = supa.storage.from("avatars").getPublicUrl(signed.path ?? path);
+  return { ok: true, path: signed.path ?? path, token: signed.token, publicUrl: pub.publicUrl };
 }
 
 // ── Owner-only global flags ─────────────────────────────────────────────────
