@@ -622,9 +622,9 @@ export default async function DispatchPage({
       }}
     >
       <ViewToggle
-        primaryLabel="🗺️ Map + Queues"
-        secondaryLabel="🗓️ Board"
-        secondary={
+        primaryLabel="🗓️ Board"
+        secondaryLabel="🗺️ Map + Queues"
+        primary={
           <ScheduleBoard
             params={{}}
             basePath="/dispatch"
@@ -633,7 +633,7 @@ export default async function DispatchPage({
             chrome="compact"
           />
         }
-        primary={
+        secondary={
           <>
       {/* STICKY ACTION BAR — full-width dispatch actions */}
       <div className="sticky top-0 z-30 -mx-4 mb-4 flex items-stretch gap-2 border-b border-neutral-200 bg-white/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
