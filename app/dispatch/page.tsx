@@ -38,7 +38,6 @@ import { listTasks, listTaskTemplates } from "../../lib/tasks";
 import { getFollowupConfig } from "./followup-actions";
 import { FollowupConfigPanel } from "../../components/FollowupConfigPanel";
 import { isResolving, dispositionEntityKey, type DispatchAckStatus, type DispatchItemType } from "./dispositions";
-import { ViewToggle } from "../../components/ViewToggle";
 import { ScheduleBoard } from "../../components/ScheduleBoard";
 
 export const metadata = { title: "Dispatch · TPAR-DB" };
@@ -621,20 +620,16 @@ export default async function DispatchPage({
         stuck: <>Map blank? GPS pipeline likely paused; check /admin/system pipeline freshness or text Danny.</>,
       }}
     >
-      <ViewToggle
-        primaryLabel="🗓️ Board"
-        secondaryLabel="🗺️ Map + Queues"
-        primary={
-          <ScheduleBoard
-            params={sp}
-            basePath="/dispatch"
-            isAdmin={me.isAdmin}
-            canApply={me.isAdmin || me.isManager}
-            chrome="compact"
-          />
-        }
-        secondary={
-          <>
+      {/* Board — the schedule, the TOP feature of Dispatch (Danny 2026-07-18). The
+          full map + per-tech lanes + queues cockpit continues below, same page. */}
+      <ScheduleBoard
+        params={sp}
+        basePath="/dispatch"
+        isAdmin={me.isAdmin}
+        canApply={me.isAdmin || me.isManager}
+        chrome="compact"
+      />
+
       {/* STICKY ACTION BAR — full-width dispatch actions */}
       <div className="sticky top-0 z-30 -mx-4 mb-4 flex items-stretch gap-2 border-b border-neutral-200 bg-white/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
         <Link href="/ask" className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800 hover:bg-brand-100">🔎 Ask</Link>
@@ -1133,11 +1128,8 @@ export default async function DispatchPage({
       ) : null}
 
       <p className="mt-4 text-xs text-neutral-500">
-        v0 · Map + Queues cockpit. Switch to <strong>Board</strong> (top toggle) for the drag-to-reschedule week grid.
+        v0 · Today&apos;s map, per-tech lanes, and queues — the drag-to-reschedule week grid is at the top of the page.
       </p>
-          </>
-        }
-      />
     </PageShell>
   );
 }
