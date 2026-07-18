@@ -932,6 +932,7 @@ export async function ScheduleBoard({
           dropMode={dropMode}
           addMode={mode}
           offByTechDay={offByTechDay}
+          linkFor={linkFor}
         />
       )}
 
@@ -958,7 +959,10 @@ export async function ScheduleBoard({
     return (
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-neutral-800">🗓️ {centerLabel}</h2>
+          <div className="flex items-center gap-2">
+            {view === "day" ? <Link href={basePath} className="rounded border border-neutral-300 bg-white px-2 py-0.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50">← Week</Link> : null}
+            <h2 className="text-sm font-semibold text-neutral-800">🗓️ {centerLabel}{view === "week" ? <span className="ml-1 font-normal text-neutral-400">· tap a day to expand</span> : null}</h2>
+          </div>
           <Link href="/schedule" className="text-xs font-medium text-brand-700 hover:underline">Open full schedule ↗</Link>
         </div>
         <PendingChangesBar changes={pendingChanges} canApply={canApply} />
@@ -1288,7 +1292,7 @@ function DayView({
 // ──────────────────────────────────────────────────────────────────────────────
 
 function WeekView({
-  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey, multiVisitJobs, canSeeAllMoney, viewerEmpId, dropMode, addMode, offByTechDay,
+  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey, multiVisitJobs, canSeeAllMoney, viewerEmpId, dropMode, addMode, offByTechDay, linkFor,
 }: {
   windowKeys: string[];
   rowOrder: string[];
@@ -1309,6 +1313,7 @@ function WeekView({
   dropMode: "apply" | "request";
   addMode: "office" | "tech";
   offByTechDay: Set<string>;
+  linkFor: (overrides: Record<string, string | null>) => string;
 }) {
   if (rowOrder.length === 0) {
     return (
@@ -1331,9 +1336,11 @@ function WeekView({
               const { weekday, mmdd } = dayHeader(k);
               return (
                 <th key={k} className={`w-[14%] border-r border-neutral-200 px-2 py-2 text-center align-top ${isToday ? "bg-amber-100" : isPast ? "bg-neutral-100/60" : "bg-neutral-50"}`}>
-                  <div className={`text-[11px] font-semibold uppercase tracking-wide ${isToday ? "text-amber-900" : isPast ? "text-neutral-500" : "text-neutral-700"}`}>{weekday}</div>
-                  <div className={`text-sm font-semibold tabular-nums ${isToday ? "text-amber-900" : isPast ? "text-neutral-500" : "text-neutral-900"}`}>{mmdd}</div>
-                  {isToday && <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700">Today</div>}
+                  <Link href={linkFor({ view: "day", date: k })} className="block rounded px-1 py-0.5 hover:bg-white/70" title="Expand this day — GPS, clock, live status">
+                    <div className={`text-[11px] font-semibold uppercase tracking-wide ${isToday ? "text-amber-900" : isPast ? "text-neutral-500" : "text-neutral-700"}`}>{weekday}</div>
+                    <div className={`text-sm font-semibold tabular-nums ${isToday ? "text-amber-900" : isPast ? "text-neutral-500" : "text-neutral-900"}`}>{mmdd}</div>
+                    {isToday && <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700">Today</div>}
+                  </Link>
                 </th>
               );
             })}

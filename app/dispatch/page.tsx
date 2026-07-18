@@ -154,14 +154,14 @@ function techStateLabel(state: string): string {
 export default async function DispatchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show_resolved?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const me = await getCurrentTech();
   if (!me) redirect("/login?from=/dispatch");
   if (!me.isAdmin && !me.isManager) redirect("/me");
 
-  const { show_resolved } = await searchParams;
-  const hideResolved = show_resolved !== "1";  // resolving dispositions auto-collapse by default
+  const sp = await searchParams;
+  const hideResolved = sp.show_resolved !== "1";  // resolving dispositions auto-collapse by default
   const canWriteAck = me.isAdmin || me.isManager || !!me.tech?.is_lead;
 
   const supa = db();
@@ -626,7 +626,7 @@ export default async function DispatchPage({
         secondaryLabel="🗺️ Map + Queues"
         primary={
           <ScheduleBoard
-            params={{}}
+            params={sp}
             basePath="/dispatch"
             isAdmin={me.isAdmin}
             canApply={me.isAdmin || me.isManager}
