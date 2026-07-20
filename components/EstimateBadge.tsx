@@ -19,6 +19,14 @@ import type { CardEstimate } from "../lib/estimates-for-cards";
 
 const fmt = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
+// Compact date for the row (e.g. "Jun 24, 26"). Null-safe → "" when HCP gave no date.
+function fmtDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "2-digit" });
+}
+
 function amountLabel(e: CardEstimate): string {
   if (e.total_dollars == null || e.total_dollars <= 0) return "—";
   if (e.option_count > 1 && e.min_dollars != null && e.min_dollars < e.total_dollars) {
@@ -29,6 +37,8 @@ function amountLabel(e: CardEstimate): string {
 
 function statusTone(s: string): string {
   switch (s) {
+    case "performed": // job from this estimate is complete — the terminal win state
+      return "bg-emerald-600 text-white";
     case "won":
     case "approved":
       return "bg-emerald-100 text-emerald-800";
@@ -91,13 +101,18 @@ export function EstimateBadge({
                 onClick={(ev) => ev.stopPropagation()}
                 className="flex items-start justify-between gap-2 px-3 py-1.5 hover:bg-neutral-50"
               >
-                <span className="min-w-0">
-                  <span className="font-mono font-semibold text-neutral-800">
-                    #{e.estimate_number ?? "—"}
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="flex items-center gap-1">
+                    <span className="font-mono font-semibold text-neutral-800">
+                      #{e.estimate_number ?? "—"}
+                    </span>
+                    <span className={`rounded-sm px-1 py-0.5 text-[9px] font-medium ${statusTone(e.display_status)}`}>
+                      {e.display_status}
+                    </span>
                   </span>
-                  <span className={`ml-1 rounded-sm px-1 py-0.5 text-[9px] font-medium ${statusTone(e.display_status)}`}>
-                    {e.display_status}
-                  </span>
+                  {fmtDate(e.est_created_at) ? (
+                    <span className="text-[10px] text-neutral-400">{fmtDate(e.est_created_at)}</span>
+                  ) : null}
                 </span>
                 <span className="shrink-0 font-medium tabular-nums text-neutral-700">
                   {amountLabel(e)}
