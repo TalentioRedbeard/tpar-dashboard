@@ -32,6 +32,7 @@ import { TechOrderControl } from "./TechOrderControl";
 import { resolveTechColor } from "../lib/tech-colors";
 import { DraggableAppt } from "./DraggableAppt";
 import { DropCell } from "./DropCell";
+import { CalendarDayDrop } from "./CalendarDayDrop";
 import { listApprovedTimeOff } from "../lib/time-off-actions";
 import { TimeOffRequest } from "./TimeOffRequest";
 
@@ -317,6 +318,7 @@ function buildUrl(
 type CellOpts = {
   color: ColorMode;
   compact?: boolean;   // for month view: render as 1-line pill
+  fill?: boolean;      // for the calendar week grid: fill the positioned time block
   // Money gate: office (canSeeAllMoney) sees every job's $; a tech sees $ only on
   // jobs whose crew (tech_all_ids) includes their viewerEmpId. Default = show.
   canSeeAllMoney?: boolean;
@@ -359,7 +361,7 @@ function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
   const borderLeftClass = (opts.color === "status" || !leadBorder) ? "border-l-neutral-300" : "";
   const borderStyle = leadBorder ? { borderLeftColor: leadBorder } : undefined;
 
-  const containerClass = `relative rounded-md border ${stTone.border} border-l-4 ${borderLeftClass} ${fillClass} ${textClass} hover:brightness-95`;
+  const containerClass = `relative rounded-md border ${stTone.border} border-l-4 ${borderLeftClass} ${fillClass} ${textClass} hover:brightness-95 ${opts.fill ? "h-full overflow-hidden" : ""}`;
 
   if (opts.compact) {
     return (
@@ -367,7 +369,7 @@ function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
         <div className="flex items-baseline gap-1">
           <span className="font-mono font-semibold">{chicagoTime(a.scheduled_start)}</span>
           <span className="truncate font-medium">{a.customer_name ?? "—"}</span>
-          {(a.estimates?.length ?? 0) > 0 && <span className="ml-auto"><EstimateBadge estimates={a.estimates!} size="sm" /></span>}
+          {showMoney && (a.estimates?.length ?? 0) > 0 && <span className="ml-auto"><EstimateBadge estimates={a.estimates!} size="sm" /></span>}
         </div>
       </div>
     );
@@ -379,7 +381,7 @@ function ApptBlock({ a, opts }: { a: Appt; opts: CellOpts }) {
         <span className="font-mono text-[10px] font-semibold">{chicagoTime(a.scheduled_start)}</span>
         <span className="flex items-center gap-1">
           {showMoney && dollars > 0 && <span className="text-[10px] font-medium">{fmtMoney(dollars)}</span>}
-          {(a.estimates?.length ?? 0) > 0 && <EstimateBadge estimates={a.estimates!} size="sm" />}
+          {showMoney && (a.estimates?.length ?? 0) > 0 && <EstimateBadge estimates={a.estimates!} size="sm" />}
         </span>
       </div>
       <div className="mt-0.5 truncate font-medium">{a.customer_name ?? "—"}</div>
@@ -433,7 +435,7 @@ function ApptDetail({ a, opts }: { a: Appt; opts: CellOpts }) {
             flag
           </span>
         )}
-        {(a.estimates?.length ?? 0) > 0 && <EstimateBadge estimates={a.estimates!} size="md" />}
+        {showMoney && (a.estimates?.length ?? 0) > 0 && <EstimateBadge estimates={a.estimates!} size="md" />}
         {showMoney && dollars > 0 && <span className="ml-auto text-[11px] font-semibold">{fmtMoney(dollars)}</span>}
       </div>
     </div>
@@ -717,13 +719,19 @@ export async function ScheduleBoard({
   const pendingChanges = await listPendingChanges();
   const pendingByAppt = new Map<string, PendingChange>(pendingChanges.filter((c) => c.appointment_id).map((c) => [c.appointment_id as string, c]));
 
-  // Approved time-off overlapping the visible window → "Off — Name" bands on the
-  // board (all roles see who's off; it organizes work). Keyed "fullName|dayKey".
+  // Approved time-off overlapping the visible window → per-day "Off — Name" banners
+  // on the calendar week grid (all roles see who's off; it organizes work).
   const timeOff = await listApprovedTimeOff(windowKeys[0], windowKeys[windowKeys.length - 1]);
-  const offByTechDay = new Set<string>();
+  const offBannersByDay = new Map<string, string[]>();
   for (const t of timeOff) {
-    for (const k of windowKeys) if (k >= t.start_date && k <= t.end_date) offByTechDay.add(`${t.tech_full_name}|${k}`);
+    const name = t.tech_short_name || t.tech_full_name;
+    for (const k of windowKeys) if (k >= t.start_date && k <= t.end_date) {
+      const arr = offBannersByDay.get(k) ?? [];
+      arr.push(name);
+      offBannersByDay.set(k, arr);
+    }
   }
+  const weekNowMin = chiMinOfDay(nowIso);
   const apptCountByDay = new Map<string, number>();
   const dollarsByDay = new Map<string, number>();
   for (const a of appts) {
@@ -914,25 +922,16 @@ export async function ScheduleBoard({
       {view === "week" && (
         <WeekView
           windowKeys={windowKeys}
-          rowOrder={rowOrder}
-          cells={cells}
-          techs={techs}
-          shortByFull={shortByFull}
-          avatarByFull={avatarByFull}
-          apptCountByTech={apptCountByTech}
-          dollarsByTech={dollarsByTech}
-          assistCountByTech={assistCountByTech}
-          apptCountByDay={apptCountByDay}
-          dollarsByDay={dollarsByDay}
+          cellByDay={cellByDay}
           color={color}
           todayKey={todayKey}
           multiVisitJobs={multiVisitJobs}
           canSeeAllMoney={canSeeAllMoney}
           viewerEmpId={viewerEmpId}
           dropMode={dropMode}
-          addMode={mode}
-          offByTechDay={offByTechDay}
+          offBannersByDay={offBannersByDay}
           linkFor={linkFor}
+          nowMin={weekNowMin}
         />
       )}
 
@@ -1291,156 +1290,157 @@ function DayView({
 // Week view — 7 days × tech rows
 // ──────────────────────────────────────────────────────────────────────────────
 
+// Week view — HCP-style calendar grid (Danny 2026-07-20 overhaul): days across the
+// top, time of day down the side, appointments placed at their actual time and
+// colored by tech. NO per-tech rows. All-day events + approved time-off render as
+// banners up top (like HCP's "Off Work — …"). Drag a block to another day column to
+// reschedule (office = immediate HCP write; tech = office-approval request). Tap a
+// day header to expand into the rich day timeline. The day + month views are unchanged.
 function WeekView({
-  windowKeys, rowOrder, cells, techs, shortByFull, avatarByFull, apptCountByTech, dollarsByTech, assistCountByTech, apptCountByDay, dollarsByDay, color, todayKey, multiVisitJobs, canSeeAllMoney, viewerEmpId, dropMode, addMode, offByTechDay, linkFor,
+  windowKeys, cellByDay, color, todayKey, multiVisitJobs, canSeeAllMoney, viewerEmpId, dropMode, offBannersByDay, linkFor, nowMin,
 }: {
   windowKeys: string[];
-  rowOrder: string[];
-  cells: Map<string, Appt[]>;
-  techs: Tech[];
-  shortByFull: Map<string, string>;
-  avatarByFull: Map<string, string | null>;
-  apptCountByTech: Map<string, number>;
-  dollarsByTech: Map<string, number>;
-  assistCountByTech: Map<string, number>;
-  apptCountByDay: Map<string, number>;
-  dollarsByDay: Map<string, number>;
+  cellByDay: Map<string, Appt[]>;
   color: ColorMode;
   todayKey: string;
   multiVisitJobs: Set<string>;
   canSeeAllMoney: boolean;
   viewerEmpId: string | null;
   dropMode: "apply" | "request";
-  addMode: "office" | "tech";
-  offByTechDay: Set<string>;
+  offBannersByDay: Map<string, string[]>;
   linkFor: (overrides: Record<string, string | null>) => string;
+  nowMin: number;
 }) {
-  if (rowOrder.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center text-sm text-neutral-500">
-        No appointments in this window with current filters.
-      </div>
-    );
-  }
+  const DAY_START = 6 * 60, DAY_END = 20 * 60, SPAN = DAY_END - DAY_START;
+  const HOUR_H = 46;
+  const totalH = (SPAN / 60) * HOUR_H;
+  const yOf = (m: number) => ((Math.max(DAY_START, Math.min(DAY_END, m)) - DAY_START) / 60) * HOUR_H;
+  const hours: number[] = [];
+  for (let h = DAY_START / 60; h <= DAY_END / 60; h++) hours.push(h);
+  const hourLabel = (h: number) => `${((h + 11) % 12) + 1}${h < 12 ? "a" : "p"}`;
+
+  const eventsOf = (k: string) => (cellByDay.get(k) ?? []).filter((a) => a.appointment_type === "event");
+  const timedOf = (k: string) => (cellByDay.get(k) ?? []).filter((a) => a.appointment_type !== "event");
+  const anyBanner = windowKeys.some((k) => (offBannersByDay.get(k)?.length ?? 0) > 0 || eventsOf(k).length > 0);
+  const totalTimed = windowKeys.reduce((n, k) => n + timedOf(k).length, 0);
+
+  // Per-day overlap layout: concurrent appointments sit side-by-side in columns.
+  const layoutDay = (appts: Appt[]) => {
+    const items = appts.map((a) => {
+      const s = chiMinOfDay(a.scheduled_start);
+      const e = Math.max(a.scheduled_end ? chiMinOfDay(a.scheduled_end) : s + 60, s + 20);
+      return { a, s, e, col: 0, cols: 1 };
+    }).sort((x, y) => x.s - y.s || x.e - y.e);
+    type Item = typeof items[number];
+    const done: Item[] = [];
+    let cluster: Item[] = [];
+    let clusterEnd = -1;
+    const colEnds: number[] = [];
+    const flush = () => {
+      if (cluster.length) {
+        const cols = Math.max(1, ...cluster.map((c) => c.col + 1));
+        for (const c of cluster) { c.cols = cols; done.push(c); }
+      }
+      cluster = []; colEnds.length = 0;
+    };
+    for (const it of items) {
+      if (it.s >= clusterEnd) flush();
+      let col = colEnds.findIndex((end) => end <= it.s);
+      if (col === -1) { col = colEnds.length; colEnds.push(it.e); } else { colEnds[col] = it.e; }
+      it.col = col;
+      cluster.push(it);
+      clusterEnd = Math.max(clusterEnd, it.e);
+    }
+    flush();
+    return done.map((it) => ({
+      a: it.a,
+      top: yOf(it.s),
+      height: Math.max(20, yOf(it.e) - yOf(it.s)),
+      leftPct: (it.col / it.cols) * 100,
+      widthPct: (1 / it.cols) * 100,
+    }));
+  };
+
   return (
     <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
-      <table className="w-full min-w-[1100px] border-collapse">
-        <thead>
-          <tr className="border-b border-neutral-200 bg-neutral-50">
-            <th className="sticky left-0 z-10 w-44 border-r border-neutral-200 bg-neutral-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-600">
-              Tech
-            </th>
-            {windowKeys.map((k) => {
-              const isToday = k === todayKey;
-              const isPast = k < todayKey;
-              const { weekday, mmdd } = dayHeader(k);
-              return (
-                <th key={k} className={`w-[14%] border-r border-neutral-200 px-2 py-2 text-center align-top ${isToday ? "bg-amber-100" : isPast ? "bg-neutral-100/60" : "bg-neutral-50"}`}>
-                  <Link href={linkFor({ view: "day", date: k })} className="block rounded px-1 py-0.5 hover:bg-white/70" title="Expand this day — GPS, clock, live status">
-                    <div className={`text-[11px] font-semibold uppercase tracking-wide ${isToday ? "text-amber-900" : isPast ? "text-neutral-500" : "text-neutral-700"}`}>{weekday}</div>
-                    <div className={`text-sm font-semibold tabular-nums ${isToday ? "text-amber-900" : isPast ? "text-neutral-500" : "text-neutral-900"}`}>{mmdd}</div>
-                    {isToday && <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700">Today</div>}
-                  </Link>
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {rowOrder.map((techFullName, rowIdx) => {
-            const short = shortByFull.get(techFullName) ?? techFullName.split(" ")[0];
-            const isLead = techs.find((t) => t.hcp_full_name === techFullName)?.is_lead === true;
-            const count = apptCountByTech.get(techFullName) ?? 0;
-            const assist = assistCountByTech.get(techFullName) ?? 0;
-            const dollars = (dollarsByTech.get(techFullName) ?? 0) / 100;
-            const tcol = techColor(techFullName);
+      <div style={{ minWidth: 920 }}>
+        {/* Day headers — tap a day to expand into the rich day timeline */}
+        <div className="flex border-b border-neutral-200 bg-neutral-50">
+          <div className="w-12 shrink-0 border-r border-neutral-200" />
+          {windowKeys.map((k) => {
+            const isToday = k === todayKey, isPast = k < todayKey;
+            const { weekday, mmdd } = dayHeader(k);
             return (
-              <tr key={techFullName} className={rowIdx % 2 === 0 ? "bg-white" : "bg-neutral-50/40"}>
-                <td className="sticky left-0 z-10 w-48 border-r border-b border-neutral-200 bg-inherit px-3 py-2 align-top">
-                  <div className={`flex items-center gap-2 border-l-4 ${tcol.border} pl-2`}>
-                    {techFullName !== "Unassigned" ? <TechAvatar shortName={short} avatarUrl={avatarByFull.get(techFullName) ?? null} /> : null}
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-sm font-semibold text-neutral-900">{short}</span>
-                        {isLead ? <span className="rounded-sm bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-800">lead</span>
-                          : techFullName !== "Unassigned" ? <span className="rounded-sm bg-sky-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">apprentice</span> : null}
-                        {techFullName === "Unassigned" && <span className="rounded-sm bg-red-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-red-800">unassigned</span>}
-                      </div>
-                      <div className="text-[11px] text-neutral-500">{count} appt{count === 1 ? "" : "s"}{canSeeAllMoney && dollars > 0 ? ` · ${fmtMoney(dollars)}` : ""}{assist > 0 ? ` · +${assist} assist` : ""}</div>
-                    </div>
-                  </div>
-                </td>
-                {windowKeys.map((dayKey) => {
-                  const cell = cells.get(`${techFullName}|${dayKey}`) ?? [];
-                  const isToday = dayKey === todayKey;
-                  const isPast = dayKey < todayKey;
-                  return (
-                    <td key={dayKey} className={`min-h-24 border-r border-b border-neutral-200 align-top ${isToday ? "bg-amber-50/60" : isPast ? "bg-neutral-50/40" : "bg-white"}`}>
-                      <DropCell techFull={techFullName} dateKey={dayKey} mode={dropMode} disabled={isPast || !techs.some((t) => t.hcp_full_name === techFullName)} className="h-full min-h-16 rounded-md p-1">
-                        {offByTechDay.has(`${techFullName}|${dayKey}`) ? <div className="mb-1 rounded bg-neutral-300/70 px-1 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-neutral-700">🏖️ Off</div> : null}
-                        {cell.length === 0 ? (
-                          <div className="flex h-full min-h-16 items-center justify-center">
-                            {isPast ? <span className="text-[10px] text-neutral-300">—</span> : <CellAddMenu techFull={techFullName} dateKey={dayKey} mode={addMode} compact />}
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            {cell.map((a) => {
-                              // Mark assist cards so a helper's populated week row shows who leads.
-                              const assisting = !!a.tech_primary_name && a.tech_primary_name !== techFullName;
-                              return (
-                              <DraggableAppt
-                                key={a.appointment_id ?? a.hcp_job_id ?? Math.random()}
-                                payload={{ apptId: a.appointment_id, hcpJobId: a.hcp_job_id, customerName: a.customer_name, currentStart: a.scheduled_start, currentTech: techFullName, currentDate: dayKey }}
-                                multiVisit={!!a.hcp_job_id && multiVisitJobs.has(a.hcp_job_id)}
-                              >
-                                <div className="space-y-0.5">
-                                  {assisting ? <span className="block text-[8px] font-semibold uppercase tracking-wide text-sky-600">assisting</span> : null}
-                                  {a.hcp_job_id ? (
-                                    <Link href={`/job/${a.hcp_job_id}`} title={`${a.customer_name ?? "—"} · ${a.street ?? ""}${a.city ? ", " + a.city : ""} · ${a.status ?? ""}`} className="block">
-                                      <ApptBlock a={a} opts={{ color, canSeeAllMoney, viewerEmpId }} />
-                                    </Link>
-                                  ) : a.appointment_type === "estimate" && a.appointment_id ? (
-                                    <Link href={`/estimate/new?appointment=${a.appointment_id}`} title={`${a.customer_name ?? "—"} · draft estimate from visit`} className="block">
-                                      <ApptBlock a={a} opts={{ color, canSeeAllMoney, viewerEmpId }} />
-                                    </Link>
-                                  ) : (
-                                    <div title={`${a.customer_name ?? "—"} · ${a.status ?? ""}`}>
-                                      <ApptBlock a={a} opts={{ color, canSeeAllMoney, viewerEmpId }} />
-                                    </div>
-                                  )}
-                                </div>
-                              </DraggableAppt>
-                              );
-                            })}
-                            {!isPast ? <div className="pt-0.5"><CellAddMenu techFull={techFullName} dateKey={dayKey} mode={addMode} compact /></div> : null}
-                          </div>
-                        )}
-                      </DropCell>
-                    </td>
-                  );
-                })}
-              </tr>
+              <div key={k} className={`min-w-0 flex-1 border-r border-neutral-200 ${isToday ? "bg-amber-100" : isPast ? "bg-neutral-100/60" : ""}`}>
+                <Link href={linkFor({ view: "day", date: k })} className="block px-2 py-1.5 text-center hover:bg-white/60" title="Expand this day — GPS, clock, live status">
+                  <div className={`text-[11px] font-semibold uppercase tracking-wide ${isToday ? "text-amber-900" : isPast ? "text-neutral-500" : "text-neutral-700"}`}>{weekday}</div>
+                  <div className={`text-sm font-semibold tabular-nums ${isToday ? "text-amber-900" : isPast ? "text-neutral-500" : "text-neutral-900"}`}>{mmdd}{isToday ? <span className="ml-1 text-[9px] uppercase tracking-wider text-amber-700">today</span> : null}</div>
+                </Link>
+              </div>
             );
           })}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-neutral-300 bg-neutral-50 text-xs">
-            <td className="sticky left-0 z-10 border-r border-neutral-200 bg-neutral-50 px-3 py-2 text-right font-semibold text-neutral-600">
-              Day totals
-            </td>
-            {windowKeys.map((k) => {
-              const isToday = k === todayKey;
-              const c = apptCountByDay.get(k) ?? 0;
-              const d = (dollarsByDay.get(k) ?? 0) / 100;
-              return (
-                <td key={k} className={`border-r border-neutral-200 px-2 py-2 text-center tabular-nums ${isToday ? "bg-amber-100 font-semibold text-amber-900" : "text-neutral-700"}`}>
-                  {c > 0 ? (<><div>{c} appt{c === 1 ? "" : "s"}</div>{canSeeAllMoney && d > 0 && <div className="text-[10px] opacity-70">{fmtMoney(d)}</div>}</>) : <span className="text-neutral-300">—</span>}
-                </td>
-              );
-            })}
-          </tr>
-        </tfoot>
-      </table>
+        </div>
+
+        {/* All-day banner row — approved time-off + events */}
+        {anyBanner ? (
+          <div className="flex border-b border-neutral-200 bg-neutral-50/40">
+            <div className="flex w-12 shrink-0 items-start justify-end border-r border-neutral-200 px-1 py-1 text-[8px] font-semibold uppercase tracking-wide text-neutral-400">all-day</div>
+            {windowKeys.map((k) => (
+              <div key={k} className="min-w-0 flex-1 space-y-0.5 border-r border-neutral-200 p-1">
+                {(offBannersByDay.get(k) ?? []).map((name, i) => (
+                  <div key={`o${i}`} className="truncate rounded bg-neutral-300/70 px-1 py-0.5 text-[9px] font-semibold text-neutral-700" title={`${name} — off`}>🏖️ Off — {name}</div>
+                ))}
+                {eventsOf(k).map((a) => (
+                  a.hcp_job_id
+                    ? <Link key={a.appointment_id ?? a.hcp_job_id} href={`/job/${a.hcp_job_id}`} className="block truncate rounded bg-violet-100 px-1 py-0.5 text-[9px] font-medium text-violet-900 hover:bg-violet-200" title={a.customer_name ?? "event"}>📅 {a.customer_name ?? "Event"}</Link>
+                    : <div key={a.appointment_id ?? `e${a.scheduled_start}`} className="truncate rounded bg-violet-100 px-1 py-0.5 text-[9px] font-medium text-violet-900" title={a.customer_name ?? "event"}>📅 {a.customer_name ?? "Event"}</div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* Time grid */}
+        <div className="flex">
+          <div className="relative w-12 shrink-0 border-r border-neutral-200" style={{ height: totalH }}>
+            {hours.map((h) => (
+              <div key={h} className="absolute right-1 -translate-y-1/2 text-[9px] tabular-nums text-neutral-400" style={{ top: yOf(h * 60) }}>{hourLabel(h)}</div>
+            ))}
+          </div>
+          {windowKeys.map((k) => {
+            const isToday = k === todayKey, isPast = k < todayKey;
+            const placed = layoutDay(timedOf(k));
+            return (
+              <CalendarDayDrop key={k} dateKey={k} mode={dropMode} disabled={isPast}
+                className={`relative min-w-0 flex-1 border-r border-neutral-200 ${isToday ? "bg-amber-50/40" : isPast ? "bg-neutral-50/40" : ""}`}
+                style={{ height: totalH }}>
+                {hours.map((h) => <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-neutral-100" style={{ top: yOf(h * 60) }} />)}
+                {isToday && nowMin >= DAY_START && nowMin <= DAY_END ? <div className="pointer-events-none absolute inset-x-0 z-20 h-0.5 bg-rose-400" style={{ top: yOf(nowMin) }} /> : null}
+                {placed.map(({ a, top, height, leftPct, widthPct }) => {
+                  const href = a.hcp_job_id ? `/job/${a.hcp_job_id}` : (a.appointment_type === "estimate" && a.appointment_id ? `/estimate/new?appointment=${a.appointment_id}` : null);
+                  const inner = <ApptBlock a={a} opts={{ color, canSeeAllMoney, viewerEmpId, fill: true }} />;
+                  return (
+                    <div key={a.appointment_id ?? a.hcp_job_id ?? `t${a.scheduled_start}`} className="absolute" style={{ top, height, left: `${leftPct}%`, width: `calc(${widthPct}% - 3px)` }}>
+                      <DraggableAppt
+                        payload={{ apptId: a.appointment_id, hcpJobId: a.hcp_job_id, customerName: a.customer_name, currentStart: a.scheduled_start, currentTech: a.tech_primary_name ?? "Unassigned", currentDate: k }}
+                        multiVisit={!!a.hcp_job_id && multiVisitJobs.has(a.hcp_job_id)}
+                      >
+                        {href
+                          ? <Link href={href} className="block h-full" title={`${a.customer_name ?? "—"} · ${a.status ?? ""}`}>{inner}</Link>
+                          : <div className="h-full" title={a.customer_name ?? "—"}>{inner}</div>}
+                      </DraggableAppt>
+                    </div>
+                  );
+                })}
+              </CalendarDayDrop>
+            );
+          })}
+        </div>
+
+        {totalTimed === 0 && !anyBanner ? (
+          <div className="p-8 text-center text-sm text-neutral-500">No appointments in this window with current filters.</div>
+        ) : null}
+      </div>
     </div>
   );
 }
