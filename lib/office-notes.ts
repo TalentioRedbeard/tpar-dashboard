@@ -57,6 +57,9 @@ export async function createOfficeNoteUpload(input: {
       conversation_id: input.conversationId ?? null,
       seq: input.conversationId ? (input.seq ?? 0) : null,
       audio_path: path,
+      // Pin conversation-mode chunks (intentional captures / harvestable) so the
+      // 30-day sweep keeps them; ambient stays on the default window (Danny 7/20).
+      ...(input.conversationId ? { keep_audio: true } : {}),
     })
     .select("id")
     .single();
