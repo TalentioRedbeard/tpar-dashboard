@@ -1116,7 +1116,7 @@ export default async function DispatchPage({
       {/* DOWNTIME TASK BANK (Task System v1, item b — 2026-06-24) */}
       {canWriteAck ? (
         <div className="mb-6">
-          <TaskBank templates={taskTemplates} techNames={taskTechNames} />
+          <TaskBank templates={taskTemplates} techNames={taskTechNames} canManage={me.isAdmin || me.isManager} />
         </div>
       ) : null}
 

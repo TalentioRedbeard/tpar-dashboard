@@ -10,7 +10,7 @@ import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { isOwner, ownerEmail } from "@/lib/admin";
 import { revalidatePath } from "next/cache";
-import { BLOCKER_TYPES, type BlockerType, type Task, type TaskRequirement, type TaskResult, type TaskStatus, type TaskTemplate } from "@/lib/task-types";
+import { BLOCKER_TYPES, TASK_CATEGORIES, type BlockerType, type Task, type TaskRequirement, type TaskResult, type TaskStatus, type TaskTemplate, type TaskTemplateInput } from "@/lib/task-types";
 
 // NOTE: lib/tasks.ts is "use server" — it may export ONLY async server actions, not
 // types or constants (the RSC compiler treats every export as an action reference).
@@ -393,11 +393,129 @@ export async function listTaskTemplates(): Promise<TaskTemplate[]> {
   if (!me) return [];
   const { data } = await db()
     .from("tasks_master")
-    .select("id, task_key, task_name, category, instructions, estimated_minutes, eligible_techs")
+    .select("id, task_key, task_name, category, instructions, expected_outcome, trackable_metric, estimated_minutes, eligible_techs, requires_geo, geo_target, min_gap_minutes, sort_order, active")
     .eq("active", true)
-    .order("category", { ascending: true })
+    .order("sort_order", { ascending: true })
     .order("task_name", { ascending: true });
   return (data ?? []) as TaskTemplate[];
+}
+
+// ── Downtime-bank management (Danny 2026-07-20): managers own the task library —
+// create / edit / remove / reorder. Gate is admin|manager (not lead: the bank is a
+// company-wide library, editable by management). db() is service-role → self-authorize.
+async function gateManage(): Promise<{ name: string } | { error: string }> {
+  const me = await getCurrentTech();
+  if (!me) return { error: "not signed in" };
+  if (!(me.isAdmin || me.isManager)) return { error: "manager or admin required" };
+  return { name: me.tech?.tech_short_name ?? me.email.split("@")[0] };
+}
+
+function slugifyKey(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "task";
+}
+function cleanText(v: string | null | undefined): string | null {
+  const s = (v ?? "").trim();
+  return s ? s.slice(0, 4000) : null;
+}
+function cleanInt(v: number | null | undefined): number | null {
+  if (v == null) return null;
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+function cleanTechs(v: string[] | null | undefined): string[] | null {
+  if (!v) return null;
+  const arr = v.map((s) => s.trim()).filter(Boolean);
+  return arr.length ? arr : null;
+}
+
+export async function createTaskTemplate(input: TaskTemplateInput): Promise<TaskResult> {
+  const g = await gateManage();
+  if ("error" in g) return { ok: false, error: g.error };
+  const name = (input.task_name ?? "").trim();
+  if (!name) return { ok: false, error: "Task name is required." };
+  if (!TASK_CATEGORIES.includes(input.category)) return { ok: false, error: "Pick a valid category." };
+  const instructions = (input.instructions ?? "").trim();
+  if (!instructions) return { ok: false, error: "Instructions are required — say how to do the task so anyone can follow it." };
+  const supa = db();
+  // Unique task_key derived from the name (append _2, _3… on collision).
+  const base = slugifyKey(name);
+  let key = base;
+  for (let i = 2; i < 50; i++) {
+    const { data: hit } = await supa.from("tasks_master").select("id").eq("task_key", key).maybeSingle();
+    if (!hit) break;
+    key = `${base}_${i}`;
+  }
+  const { data: maxRow } = await supa.from("tasks_master").select("sort_order").order("sort_order", { ascending: false }).limit(1).maybeSingle();
+  const nextSort = ((maxRow?.sort_order as number | undefined) ?? 0) + 10;
+  const { error } = await supa.from("tasks_master").insert({
+    task_key: key,
+    task_name: name.slice(0, 200),
+    category: input.category,
+    instructions: instructions.slice(0, 4000),
+    expected_outcome: cleanText(input.expected_outcome),
+    trackable_metric: cleanText(input.trackable_metric),
+    estimated_minutes: cleanInt(input.estimated_minutes),
+    eligible_techs: cleanTechs(input.eligible_techs),
+    requires_geo: !!input.requires_geo,
+    geo_target: cleanText(input.geo_target),
+    sort_order: nextSort,
+    active: true,
+  });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/dispatch");
+  return { ok: true };
+}
+
+export async function updateTaskTemplate(id: number, patch: TaskTemplateInput): Promise<TaskResult> {
+  const g = await gateManage();
+  if ("error" in g) return { ok: false, error: g.error };
+  const name = (patch.task_name ?? "").trim();
+  if (!name) return { ok: false, error: "Task name is required." };
+  if (!TASK_CATEGORIES.includes(patch.category)) return { ok: false, error: "Pick a valid category." };
+  const instructions = (patch.instructions ?? "").trim();
+  if (!instructions) return { ok: false, error: "Instructions are required — say how to do the task so anyone can follow it." };
+  const { error } = await db().from("tasks_master").update({
+    task_name: name.slice(0, 200),
+    category: patch.category,
+    instructions: instructions.slice(0, 4000),
+    expected_outcome: cleanText(patch.expected_outcome),
+    trackable_metric: cleanText(patch.trackable_metric),
+    estimated_minutes: cleanInt(patch.estimated_minutes),
+    eligible_techs: cleanTechs(patch.eligible_techs),
+    requires_geo: !!patch.requires_geo,
+    geo_target: cleanText(patch.geo_target),
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/dispatch");
+  return { ok: true };
+}
+
+export async function setTaskTemplateActive(id: number, active: boolean): Promise<TaskResult> {
+  const g = await gateManage();
+  if ("error" in g) return { ok: false, error: g.error };
+  const { error } = await db().from("tasks_master").update({ active, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/dispatch");
+  return { ok: true };
+}
+
+// Reorder = swap sort_order with the nearest active neighbor in the given direction.
+export async function moveTaskTemplate(id: number, direction: "up" | "down"): Promise<TaskResult> {
+  const g = await gateManage();
+  if ("error" in g) return { ok: false, error: g.error };
+  const supa = db();
+  const { data: cur } = await supa.from("tasks_master").select("id, sort_order").eq("id", id).maybeSingle();
+  if (!cur) return { ok: false, error: "task not found" };
+  const curSort = cur.sort_order as number;
+  const { data: neighbor } = direction === "up"
+    ? await supa.from("tasks_master").select("id, sort_order").eq("active", true).lt("sort_order", curSort).order("sort_order", { ascending: false }).limit(1).maybeSingle()
+    : await supa.from("tasks_master").select("id, sort_order").eq("active", true).gt("sort_order", curSort).order("sort_order", { ascending: true }).limit(1).maybeSingle();
+  if (!neighbor) return { ok: true }; // already at the edge — no-op
+  await supa.from("tasks_master").update({ sort_order: neighbor.sort_order as number }).eq("id", id);
+  await supa.from("tasks_master").update({ sort_order: curSort }).eq("id", neighbor.id as number);
+  revalidatePath("/dispatch");
+  return { ok: true };
 }
 
 export async function assignFromTemplate(

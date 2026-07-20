@@ -58,13 +58,40 @@ export function isBlockerReq(r: TaskRequirement): r is Extract<TaskRequirement, 
   return r.kind === "blocker";
 }
 
-// Downtime bank template (subset of tasks_master).
+// Downtime bank template (tasks_master). Manager-editable (create/edit/remove/reorder)
+// as of 2026-07-20 — the fuller field set below is what the bank editor exposes so a
+// task carries real instructions (what to do), an expected outcome (what "done" is),
+// and a trackable metric (what to report) — nobody should have to guess how to do one.
 export type TaskTemplate = {
   id: number;
   task_key: string;
   task_name: string;
   category: string | null;
   instructions: string | null;
+  expected_outcome: string | null;
+  trackable_metric: string | null;
   estimated_minutes: number | null;
   eligible_techs: string[] | null;
+  requires_geo: boolean;
+  geo_target: string | null;
+  min_gap_minutes: number | null;
+  sort_order: number;
+  active: boolean;
+};
+
+// tasks_master.category CHECK constraint — keep in lockstep with the DB.
+export const TASK_CATEGORIES = ["operational", "promotional", "business_dev"] as const;
+export type TaskCategory = (typeof TASK_CATEGORIES)[number];
+
+// Shape the bank editor submits for create/update (task_key is derived server-side).
+export type TaskTemplateInput = {
+  task_name: string;
+  category: TaskCategory;
+  instructions: string;
+  expected_outcome?: string | null;
+  trackable_metric?: string | null;
+  estimated_minutes?: number | null;
+  eligible_techs?: string[] | null;
+  requires_geo?: boolean;
+  geo_target?: string | null;
 };
