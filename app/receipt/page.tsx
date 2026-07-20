@@ -51,10 +51,13 @@ export default async function ReceiptPage() {
       };
     }),
   );
+  // Settings Wave feature 8: a saved default-vehicle pref wins (if still in the
+  // active fleet), else fall back to today's primary-driver match, else null.
+  const prefVehicleId = typeof me.tech?.prefs?.default_vehicle_id === "string" ? me.tech.prefs.default_vehicle_id : null;
   const myShort = me.tech?.tech_short_name ?? null;
-  const defaultVehicleId = myShort
-    ? vehicles.find((v) => v.driver && v.driver.toLowerCase() === myShort.toLowerCase())?.id ?? null
-    : null;
+  const defaultVehicleId =
+    (prefVehicleId && vehicles.some((v) => v.id === prefVehicleId) ? prefVehicleId : null)
+    ?? (myShort ? vehicles.find((v) => v.driver && v.driver.toLowerCase() === myShort.toLowerCase())?.id ?? null : null);
 
   // Phase 0 (gallery-framework spec): office may attribute a receipt to the
   // person who actually bought it. Roster fetched ONLY for admin/manager — the

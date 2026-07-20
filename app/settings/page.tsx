@@ -6,6 +6,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentTech } from "@/lib/current-tech";
 import { getMySettings } from "@/lib/settings-actions";
+import { db } from "@/lib/supabase";
 import { PageShell } from "@/components/PageShell";
 import { SettingsForm } from "@/components/SettingsForm";
 
@@ -18,6 +19,19 @@ export default async function SettingsPage() {
   const settings = await getMySettings();
   if (!settings) redirect("/login?from=/settings");
   const leadership = me.isAdmin || me.isManager;
+
+  // Active fleet for the default-fuel-vehicle picker (feature 8) — same filter
+  // the receipt page uses (shared, non-owner, Bouncie-tracked, non-test).
+  const { data: fleet } = await db()
+    .from("vehicles_master")
+    .select("id, display_name, primary_driver_short_name")
+    .eq("is_active", true)
+    .eq("owner_only", false)
+    .not("bouncie_vehicle_id", "is", null)
+    .not("display_name", "ilike", "%test%")
+    .order("display_name");
+  const vehicles = ((fleet ?? []) as Array<{ id: string; display_name: string; primary_driver_short_name: string | null }>)
+    .map((v) => ({ id: v.id, label: v.display_name, driver: v.primary_driver_short_name }));
 
   return (
     <PageShell
@@ -39,7 +53,7 @@ export default async function SettingsPage() {
           "Your sign-in, your name, and your role aren't editable here — those stay with Danny. In view-as mode, exit first to change your own settings.",
       }}
     >
-      <SettingsForm initial={settings} leadership={leadership} />
+      <SettingsForm initial={settings} leadership={leadership} vehicles={vehicles} />
     </PageShell>
   );
 }

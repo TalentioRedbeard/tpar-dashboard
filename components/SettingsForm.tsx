@@ -6,9 +6,37 @@
 
 import { useState, useTransition } from "react";
 import {
-  updateMySettings, createAvatarUpload, setSmsMaster, setPhoneLoginEnabled, type MySettings, type DetailLevel,
+  updateMySettings, createAvatarUpload, setSmsMaster, setPhoneLoginEnabled,
+  type MySettings, type DetailLevel, type JobBanner, type Accent, type LogoVariant, type LifecycleNudge,
 } from "../lib/settings-actions";
 import { browserClient } from "../lib/supabase-browser";
+
+type Vehicle = { id: string; label: string; driver: string | null };
+
+// Settings Wave choices
+const BANNER_CHOICES: Array<[JobBanner, string, string]> = [
+  ["customer", "Customer name", "Show who the job is for (today's default)."],
+  ["address", "Job address", "Show where the job is; the customer name moves to the line below."],
+];
+const ACCENT_CHOICES: Array<{ value: Accent; label: string; swatch: string }> = [
+  { value: "gold", label: "Gold", swatch: "#e8a200" },
+  { value: "purple", label: "Purple", swatch: "#b48fd6" },
+  { value: "teal", label: "Teal", swatch: "#6fbcae" },
+];
+const LOGO_CHOICES: Array<[LogoVariant, string]> = [
+  ["default", "Default"], ["type", "Type"], ["outline", "Outline"], ["poster", "Poster"],
+];
+const NUDGE_CHOICES: Array<[LifecycleNudge, string]> = [
+  ["off", "Off — no arrival nudge"],
+  ["slack", "Slack (today's default)"],
+  ["text", "Text me"],
+  ["text_call", "Text, then call"],
+];
+
+// A control appears only once its consumer ships — flip a flag to true in the same
+// commit that wires that feature. Persisting an unwired pref is harmless, but a
+// control that visibly does nothing isn't. Banner + vehicle are live from Phase 1.
+const WIRED = { nudges: false, bests: false, accent: false, icon: false };
 
 // "How the app fits you" — personality levers (2026-07-05). These are honored,
 // not decorative: detail level + processing notes steer the AI ask bar's answer
@@ -62,7 +90,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-export function SettingsForm({ initial, leadership }: { initial: MySettings; leadership: boolean }) {
+export function SettingsForm({ initial, leadership, vehicles = [] }: { initial: MySettings; leadership: boolean; vehicles?: Vehicle[] }) {
   // Store user-facing positives; convert to *_opt_out on save. `baseline` is the
   // last-saved state — dirty compares against it, and a successful save advances it
   // (so the button disables and "Saved." shows without a prop round-trip).
@@ -78,6 +106,13 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
   const [simpleMode, setSimpleMode] = useState(initial.simple_mode);
   const [wrapReminder, setWrapReminder] = useState(initial.wrap_reminder);
   const [processingNotes, setProcessingNotes] = useState(initial.processing_notes);
+  // Settings Wave
+  const [jobBanner, setJobBanner] = useState<JobBanner>(initial.job_banner);
+  const [accent, setAccent] = useState<Accent>(initial.accent);
+  const [logoVariant, setLogoVariant] = useState<LogoVariant>(initial.logo_variant);
+  const [showBests, setShowBests] = useState(initial.show_personal_bests);
+  const [nudges, setNudges] = useState<LifecycleNudge>(initial.lifecycle_nudges);
+  const [vehicleId, setVehicleId] = useState(initial.default_vehicle_id ?? "");
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [baseline, setBaseline] = useState({
     receiveTeamSms: !initial.sms_opt_out,
@@ -92,6 +127,12 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
     simpleMode: initial.simple_mode,
     wrapReminder: initial.wrap_reminder,
     processingNotes: initial.processing_notes,
+    jobBanner: initial.job_banner,
+    accent: initial.accent,
+    logoVariant: initial.logo_variant,
+    showBests: initial.show_personal_bests,
+    nudges: initial.lifecycle_nudges,
+    vehicleId: initial.default_vehicle_id ?? "",
   });
 
   const [pending, start] = useTransition();
@@ -110,7 +151,13 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
     detailLevel !== baseline.detailLevel ||
     simpleMode !== baseline.simpleMode ||
     wrapReminder !== baseline.wrapReminder ||
-    processingNotes !== baseline.processingNotes;
+    processingNotes !== baseline.processingNotes ||
+    jobBanner !== baseline.jobBanner ||
+    accent !== baseline.accent ||
+    logoVariant !== baseline.logoVariant ||
+    showBests !== baseline.showBests ||
+    nudges !== baseline.nudges ||
+    vehicleId !== baseline.vehicleId;
 
   function save() {
     setErr(null);
@@ -129,9 +176,16 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
         simple_mode: simpleMode,
         wrap_reminder: wrapReminder,
         processing_notes: processingNotes,
+        job_banner: jobBanner,
+        accent,
+        logo_variant: logoVariant,
+        show_personal_bests: showBests,
+        lifecycle_nudges: nudges,
+        default_vehicle_id: vehicleId === "" ? null : vehicleId,
+        allowed_vehicle_ids: vehicles.map((v) => v.id),
       });
       if (res.ok) {
-        setBaseline({ receiveTeamSms, receiveEodDm, receiveFeedbackDm, showGps, showRecorder, color, landing, avatarUrl, detailLevel, simpleMode, wrapReminder, processingNotes });
+        setBaseline({ receiveTeamSms, receiveEodDm, receiveFeedbackDm, showGps, showRecorder, color, landing, avatarUrl, detailLevel, simpleMode, wrapReminder, processingNotes, jobBanner, accent, logoVariant, showBests, nudges, vehicleId });
         setSaved(true);
       } else setErr(res.error);
     });
@@ -203,6 +257,25 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
             <Toggle checked={showRecorder} onChange={setShowRecorder}
               label="Show the quick-Record button"
               hint="The floating Record button in the top-right corner." />
+            {WIRED.nudges ? (
+            <div className="py-2">
+              <label className="mb-1 block text-sm font-medium text-neutral-800">Arrival nudge when you reach a job</label>
+              <select value={nudges} onChange={(e) => setNudges(e.target.value as LifecycleNudge)} className={inputCls}>
+                {NUDGE_CHOICES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-neutral-500">
+                How the app pings you to Start a job when GPS says you&rsquo;ve arrived. Text and call nudges wait on carrier registration — they&rsquo;ll honor this the day texting is back.
+              </p>
+            </div>
+            ) : null}
+            <div className="py-2">
+              <label className="mb-1 block text-sm font-medium text-neutral-800">Default vehicle for gas receipts</label>
+              <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className={inputCls}>
+                <option value="">Automatic (your assigned van)</option>
+                {vehicles.map((v) => <option key={v.id} value={v.id}>{v.label}{v.driver ? ` · ${v.driver}` : ""}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-neutral-500">Which vehicle a fuel receipt preselects. &ldquo;Automatic&rdquo; uses the van assigned to you.</p>
+            </div>
           </Group>
 
           <Group title="How the app fits you">
@@ -236,6 +309,11 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
             <Toggle checked={simpleMode} onChange={setSimpleMode}
               label="Simple mode"
               hint="Calmer My Day — fewer panels, bigger buttons. On by default for field techs; your choice here sticks." />
+            {WIRED.bests ? (
+            <Toggle checked={showBests} onChange={setShowBests}
+              label="Show my job times"
+              hint="Adds a “Your times” card to My Day — your latest, average, and best onsite times. Only you see this; no leaderboard." />
+            ) : null}
             <div className="py-2">
               <label className="mb-1 block text-sm font-medium text-neutral-800">How do you like information?</label>
               <textarea
@@ -299,6 +377,51 @@ export function SettingsForm({ initial, leadership }: { initial: MySettings; lea
               </select>
               <p className="mt-1 text-xs text-neutral-500">Where you land when you open the app. “Role default” = your normal home.</p>
             </div>
+            <div className="py-2">
+              <span className="mb-1.5 block text-sm font-medium text-neutral-800">Job page banner</span>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {BANNER_CHOICES.map(([v, label, hint]) => (
+                  <label key={v}
+                    className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2 ${jobBanner === v ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500" : "border-neutral-200 bg-white hover:border-neutral-300"}`}>
+                    <input type="radio" name="job_banner" value={v} checked={jobBanner === v}
+                      onChange={() => setJobBanner(v)} className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600" />
+                    <span>
+                      <span className="block text-sm font-medium text-neutral-800">{label}</span>
+                      <span className="block text-xs text-neutral-500">{hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            {WIRED.accent ? (
+            <div className="py-2">
+              <span className="mb-1.5 block text-sm font-medium text-neutral-800">Accent color</span>
+              <div className="flex flex-wrap gap-2">
+                {ACCENT_CHOICES.map((a) => (
+                  <button key={a.value} type="button" onClick={() => setAccent(a.value)}
+                    className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm ${accent === a.value ? "border-brand-500 ring-1 ring-brand-500" : "border-neutral-200 hover:border-neutral-300"}`}>
+                    <span className="h-4 w-4 rounded-full border border-black/10" style={{ backgroundColor: a.swatch }} />
+                    <span className="font-medium text-neutral-800">{a.label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-neutral-500">Recolors the banner and gold accents across the app — for you only.</p>
+            </div>
+            ) : null}
+            {WIRED.icon ? (
+            <div className="py-2">
+              <span className="mb-1.5 block text-sm font-medium text-neutral-800">App icon</span>
+              <div className="flex flex-wrap gap-1.5">
+                {LOGO_CHOICES.map(([v, label]) => (
+                  <button key={v} type="button" onClick={() => setLogoVariant(v)}
+                    className={`rounded-lg border px-3 py-1.5 text-sm ${logoVariant === v ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500 text-neutral-800" : "border-neutral-200 text-neutral-600 hover:border-neutral-300"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-neutral-500">Which mark shows in the top-left nav — a personal touch, professional either way.</p>
+            </div>
+            ) : null}
           </Group>
 
           <div className="flex items-center gap-3">

@@ -33,6 +33,18 @@ const DETAIL_LEVELS = ["concise", "standard", "walkthrough"] as const;
 export type DetailLevel = (typeof DETAIL_LEVELS)[number];
 const PROCESSING_NOTES_MAX = 500;
 
+// Settings Wave (2026-07-18) — prefs-jsonb enums. Each has a NON-NULL default that
+// getMySettings returns as the EFFECTIVE value (like simple_mode), so SettingsForm
+// always sending every key can't clobber an untouched user's intended default.
+const JOB_BANNERS = ["customer", "address"] as const;
+export type JobBanner = (typeof JOB_BANNERS)[number];
+const ACCENTS = ["gold", "purple", "teal"] as const;
+export type Accent = (typeof ACCENTS)[number];
+const LOGO_VARIANTS = ["default", "type", "outline", "poster"] as const;
+export type LogoVariant = (typeof LOGO_VARIANTS)[number];
+const LIFECYCLE_NUDGES = ["off", "slack", "text", "text_call"] as const;
+export type LifecycleNudge = (typeof LIFECYCLE_NUDGES)[number];
+
 export type MySettings = {
   hasTech: boolean;
   isImpersonating: boolean;
@@ -53,6 +65,13 @@ export type MySettings = {
   wrap_reminder: boolean;
   feedback_dm_opt_out: boolean;
   processing_notes: string;
+  // Settings Wave (prefs jsonb) — effective values (defaults applied here)
+  job_banner: JobBanner;
+  accent: Accent;
+  logo_variant: LogoVariant;
+  show_personal_bests: boolean;
+  lifecycle_nudges: LifecycleNudge;
+  default_vehicle_id: string | null;
   // trust line (spec §1): answers this tech received in the last 30 days
   feedbackAnswered30d: number;
   // owner-only globals
@@ -121,6 +140,15 @@ export async function getMySettings(): Promise<MySettings | null> {
     // absent = DMs ON (answers reach the tech unless they said otherwise)
     feedback_dm_opt_out: prefs.feedback_dm_opt_out === true,
     processing_notes: typeof prefs.processing_notes === "string" ? prefs.processing_notes : "",
+    // Settings Wave — effective values (default when the key is absent/invalid).
+    // lifecycle_nudges defaults to 'slack' (= today's behavior), so an untouched
+    // tech shows/keeps Slack; the same guard simple_mode uses.
+    job_banner: JOB_BANNERS.includes(prefs.job_banner as JobBanner) ? (prefs.job_banner as JobBanner) : "customer",
+    accent: ACCENTS.includes(prefs.accent as Accent) ? (prefs.accent as Accent) : "gold",
+    logo_variant: LOGO_VARIANTS.includes(prefs.logo_variant as LogoVariant) ? (prefs.logo_variant as LogoVariant) : "default",
+    show_personal_bests: prefs.show_personal_bests === true,
+    lifecycle_nudges: LIFECYCLE_NUDGES.includes(prefs.lifecycle_nudges as LifecycleNudge) ? (prefs.lifecycle_nudges as LifecycleNudge) : "slack",
+    default_vehicle_id: typeof prefs.default_vehicle_id === "string" ? prefs.default_vehicle_id : null,
     feedbackAnswered30d,
     smsMaster,
     phoneLogin,
@@ -141,6 +169,15 @@ export async function updateMySettings(input: {
   wrap_reminder?: boolean;
   feedback_dm_opt_out?: boolean;
   processing_notes?: string;
+  // Settings Wave
+  job_banner?: JobBanner;
+  accent?: Accent;
+  logo_variant?: LogoVariant;
+  show_personal_bests?: boolean;
+  lifecycle_nudges?: LifecycleNudge;
+  default_vehicle_id?: string | null;
+  // active-fleet ids the caller may set default_vehicle_id to (validated server-side)
+  allowed_vehicle_ids?: string[];
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const self = await requireSelf();
   if (!self.ok) return { ok: false, error: self.error };
@@ -189,6 +226,31 @@ export async function updateMySettings(input: {
     if (n.length > PROCESSING_NOTES_MAX) return { ok: false, error: `Processing notes must be ${PROCESSING_NOTES_MAX} characters or fewer.` };
     prefsPatch.processing_notes = n;
   }
+  // Settings Wave enums — strict whitelist; unknown value = reject (never silently drop).
+  if (input.job_banner !== undefined) {
+    if (!JOB_BANNERS.includes(input.job_banner)) return { ok: false, error: "Unknown banner choice." };
+    prefsPatch.job_banner = input.job_banner;
+  }
+  if (input.accent !== undefined) {
+    if (!ACCENTS.includes(input.accent)) return { ok: false, error: "Unknown accent." };
+    prefsPatch.accent = input.accent;
+  }
+  if (input.logo_variant !== undefined) {
+    if (!LOGO_VARIANTS.includes(input.logo_variant)) return { ok: false, error: "Unknown app icon." };
+    prefsPatch.logo_variant = input.logo_variant;
+  }
+  if (typeof input.show_personal_bests === "boolean") prefsPatch.show_personal_bests = input.show_personal_bests;
+  if (input.lifecycle_nudges !== undefined) {
+    if (!LIFECYCLE_NUDGES.includes(input.lifecycle_nudges)) return { ok: false, error: "Unknown nudge preference." };
+    prefsPatch.lifecycle_nudges = input.lifecycle_nudges;
+  }
+  if (input.default_vehicle_id !== undefined) {
+    const v = (input.default_vehicle_id ?? "").trim();
+    if (v === "") prefsPatch.default_vehicle_id = null;
+    // Must be one of the active fleet ids the form offered (revalidated here).
+    else if ((input.allowed_vehicle_ids ?? []).includes(v)) prefsPatch.default_vehicle_id = v;
+    else return { ok: false, error: "That vehicle isn't in the active fleet." };
+  }
   if (Object.keys(prefsPatch).length > 0) {
     const { data: cur, error: curErr } = await db()
       .from("tech_directory")
@@ -204,7 +266,37 @@ export async function updateMySettings(input: {
   if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");
   revalidatePath("/me"); // simple_mode reshapes /me
-  revalidatePath("/", "layout"); // hide_quick_recorder is read in the root layout
+  revalidatePath("/", "layout"); // hide_quick_recorder + accent + logo_variant are layout-read
+  return { ok: true };
+}
+
+// ── Per-section collapse memory (Settings Wave feature 2) ───────────────────
+// Its OWN action, not the form: CollapsibleSection toggles optimistically and
+// fires this so the state persists for next visit. Merges into
+// prefs.collapsed_sections keyed by STABLE section slug (e.g. "job:cost").
+// Deletes the key when expanding to keep the map small. No revalidate — the
+// client already reflects the toggle; the server value only matters next load.
+export async function saveSectionCollapsed(
+  key: string,
+  collapsed: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const self = await requireSelf();
+  if (!self.ok) return { ok: false, error: self.error };
+  const techId = self.me.tech!.tech_id;
+  const k = String(key ?? "").trim().slice(0, 80);
+  if (!k) return { ok: false, error: "missing section key" };
+  const supa = db();
+  const { data: cur, error: curErr } = await supa
+    .from("tech_directory").select("prefs").eq("tech_id", techId).maybeSingle();
+  if (curErr) return { ok: false, error: curErr.message };
+  const existing = (cur?.prefs && typeof cur.prefs === "object" ? cur.prefs : {}) as Record<string, unknown>;
+  const map = { ...((existing.collapsed_sections && typeof existing.collapsed_sections === "object" ? existing.collapsed_sections : {}) as Record<string, boolean>) };
+  if (collapsed) map[k] = true; else delete map[k];
+  const { error } = await supa
+    .from("tech_directory")
+    .update({ prefs: { ...existing, collapsed_sections: map }, updated_at: new Date().toISOString() })
+    .eq("tech_id", techId);
+  if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
 

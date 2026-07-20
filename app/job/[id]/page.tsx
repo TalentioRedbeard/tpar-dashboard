@@ -516,8 +516,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const lineItemInvoices = Array.from(new Set(lineItems.map((li) => li.invoice_number).filter(Boolean)));
   // Header slims to identity — address/schedule/directions live in the rail
   // now, in the same place on every job (layout B, Danny's pick 2026-07-13).
+  // Settings Wave feature 1: per-tech banner choice — customer name (default) or
+  // job address. When address leads, the customer name moves into the description
+  // so identity never disappears.
+  const bannerIsAddress = me?.tech?.prefs?.job_banner === "address" && !!addressLine;
   const description = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      {bannerIsAddress ? (
+        <span className="text-sm font-medium text-neutral-700">{(j.customer_name as string) ?? "Unknown customer"}</span>
+      ) : null}
       <span className="font-mono text-xs text-neutral-500">{id}</span>
       {customerId ? (
         <Link href={`/customer/${customerId}`} className="text-brand-700 hover:underline">
@@ -530,7 +537,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   return (
     <PageShell
       kicker="Job"
-      title={(j.customer_name as string) ?? id}
+      title={bannerIsAddress ? addressLine : ((j.customer_name as string) ?? id)}
       description={description}
       backHref="/jobs"
       backLabel="All jobs"

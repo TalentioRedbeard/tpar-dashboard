@@ -18,6 +18,16 @@ export type TechPrefs = {
   simple_mode?: boolean;
   wrap_reminder?: boolean;
   processing_notes?: string;
+  // Settings Wave (2026-07-18) — all merged into prefs jsonb, honored by their
+  // own consumers (job banner, section-collapse memory, accent theme, app icon,
+  // personal bests, lifecycle nudges, default fuel vehicle).
+  job_banner?: "customer" | "address";
+  collapsed_sections?: Record<string, boolean>;
+  accent?: "gold" | "purple" | "teal";
+  logo_variant?: "default" | "type" | "outline" | "poster";
+  show_personal_bests?: boolean;
+  lifecycle_nudges?: "off" | "slack" | "text" | "text_call";
+  default_vehicle_id?: string | null;
   [key: string]: unknown;
 };
 
