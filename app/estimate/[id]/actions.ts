@@ -55,7 +55,7 @@ export async function updateEstimate(
   input: { status?: string | null; projectName?: string | null }
 ): Promise<{ ok: boolean; error?: string }> {
   const me = await getCurrentTech().catch(() => null);
-  if (!me?.isAdmin) return { ok: false, error: "Only admins can edit estimates." };
+  if (!(me?.isAdmin || me?.isManager)) return { ok: false, error: "Only managers or admins can edit estimates." };
 
   const patch: Record<string, unknown> = {};
   if (input.status !== undefined) patch.status = input.status?.trim() || null;

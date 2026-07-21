@@ -69,15 +69,21 @@ export function EntityPageShell({
 // A rail fact card — the fixed-place building block of the left lane.
 export function RailCard({
   label,
+  action,
   children,
 }: {
   label?: string;
+  /** Optional right-aligned control on the label row (e.g. an edit button). */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
-      {label ? (
-        <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-neutral-500">{label}</div>
+      {(label || action) ? (
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          {label ? <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-neutral-500">{label}</div> : <span />}
+          {action ?? null}
+        </div>
       ) : null}
       {children}
     </div>

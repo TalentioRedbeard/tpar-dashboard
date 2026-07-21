@@ -14,6 +14,9 @@ import { getBriefingForJob } from "./briefing-actions";
 import { listPinnedEmailsForJob } from "../../customer/[id]/email-actions";
 import { TriggerForms } from "./TriggerForms";
 import { FiredTriggersList } from "./FiredTriggersList";
+import { CustomerBasicsEditor, type CustomerBasicsInitial } from "../../../components/CustomerBasicsEditor";
+import { JobBasicsEditor, type JobBasicsInitial } from "../../../components/JobBasicsEditor";
+import { getAssignableTechs, type AssignableTech } from "./job-edit-actions";
 import { JobBriefingCard } from "../../../components/JobBriefingCard";
 import { AddJobLineItem } from "../../../components/AddJobLineItem";
 import { RefreshFromHcpButton } from "../../../components/RefreshFromHcpButton";
@@ -444,6 +447,55 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     : null;
   const callEnabled = process.env.CUSTOMER_VOICE_CALL_ENABLED === "true";
 
+  // Customer-basics edit (🖍️ on the Customer rail card) — leadership only. Prefill
+  // from the live HCP mirror + local overrides, same as /customer/[id]. Lets a
+  // manager fix the customer's name/phone/email right from the job (Danny 2026-07-21).
+  let custBasics: CustomerBasicsInitial | null = null;
+  if (canEdit && customerId) {
+    const [rawRes, ovRes] = await Promise.all([
+      supabase.from("hcp_customers_raw").select("first_name, last_name, email, mobile_number, raw").eq("hcp_customer_id", customerId).maybeSingle(),
+      supabase.from("customer_overrides").select("display_name_override, preferred_name, do_not_text, do_not_call").eq("hcp_customer_id", customerId).maybeSingle(),
+    ]);
+    const raw = (rawRes.data ?? {}) as Record<string, unknown>;
+    const rawObj = (raw.raw ?? {}) as Record<string, unknown>;
+    const a0 = (Array.isArray(rawObj.addresses) ? (rawObj.addresses as Array<Record<string, unknown>>)[0] : null) ?? {};
+    const ov = (ovRes.data ?? {}) as Record<string, unknown>;
+    custBasics = {
+      first_name: String(raw.first_name ?? ""),
+      last_name: String(raw.last_name ?? ""),
+      email: String(raw.email ?? ""),
+      mobile_number: String(raw.mobile_number ?? clientPhone10 ?? ""),
+      address: {
+        address_id: (a0.id as string | undefined) ?? undefined,
+        street: String(a0.street ?? ""),
+        street_line_2: String(a0.street_line_2 ?? ""),
+        city: String(a0.city ?? ""),
+        state: String(a0.state ?? ""),
+        zip: String(a0.zip ?? ""),
+      },
+      display_name_override: String(ov.display_name_override ?? ""),
+      preferred_name: String(ov.preferred_name ?? ""),
+      do_not_text: !!ov.do_not_text,
+      do_not_call: !!ov.do_not_call,
+    };
+  }
+
+  // Job-basics edit (🖍️ Edit job in the header) — leadership only. Prefill the
+  // current schedule (to keep duration) + tech, and the reassign roster.
+  let jobBasics: JobBasicsInitial | null = null;
+  let assignableTechs: AssignableTech[] = [];
+  if (canEdit) {
+    const [apptEndRes, techList] = await Promise.all([
+      supabase.from("appointments_master").select("scheduled_start, scheduled_end").eq("hcp_job_id", id).is("deleted_at", null).order("scheduled_start", { ascending: true }).limit(1).maybeSingle(),
+      getAssignableTechs(),
+    ]);
+    const s = (apptEndRes.data?.scheduled_start as string | null) ?? apptStart ?? null;
+    const e = (apptEndRes.data?.scheduled_end as string | null) ?? null;
+    const dur = s && e ? Math.round((new Date(e).getTime() - new Date(s).getTime()) / 60000) : 120;
+    jobBasics = { scheduledStartIso: s, durationMin: dur > 0 ? dur : 120, currentTechName: (j.tech_primary_name as string) ?? null };
+    assignableTechs = techList;
+  }
+
   // ── Lifecycle checklist strip (display-only — TriggerForms stays the
   // actuator). Done-logic mirrors TriggerForms exactly (fired trigger number
   // OR HCP-implied) so the strip and the buttons can never disagree; Schedule
@@ -564,6 +616,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </span>
           ) : null}
           {canWrite ? <RefreshFromHcpButton hcpJobId={id} /> : null}
+          {canEdit && jobBasics ? <JobBasicsEditor hcpJobId={id} initial={jobBasics} techs={assignableTechs} /> : null}
           {canWrite ? (
             <>
               <LinkButton href={`/estimate/new?job=${id}`} variant="primary">
@@ -595,7 +648,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         mobileRailLast
         rail={
           <>
-            <RailCard label="Customer">
+            <RailCard
+              label="Customer"
+              action={custBasics && customerId ? <CustomerBasicsEditor hcpCustomerId={customerId} initial={custBasics} /> : undefined}
+            >
               <div className="text-sm font-semibold text-neutral-900">
                 {customerId ? (
                   <Link href={`/customer/${customerId}`} className="hover:underline">

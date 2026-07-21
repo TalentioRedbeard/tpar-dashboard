@@ -68,7 +68,9 @@ export default async function EstimateDetailPage({
     );
   }
 
-  const canEdit = !!me.isAdmin;
+  // Managers can edit an estimate's name + status too (Danny 2026-07-21), not just
+  // admins — same leadership gate used elsewhere. (Edit is local bid_estimates fields.)
+  const canEdit = !!(me.isAdmin || me.isManager);
   // HCP deep-link is a LEADERSHIP convenience only (A4, 2026-07-16): techs stay
   // in-app. hcp_estimate_id is the csr_* wrapper id, which HCP's web UI rejects
   // — estimate_pipeline_v computes the working option-id URL (est_*/job_*

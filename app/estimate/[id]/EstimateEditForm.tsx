@@ -80,7 +80,7 @@ export function EstimateEditForm({
           {pending ? "Saving…" : "Save"}
         </button>
         {!canEdit ? (
-          <span className="text-xs italic text-neutral-500">View-only — admin to edit.</span>
+          <span className="text-xs italic text-neutral-500">View-only — leadership to edit.</span>
         ) : null}
       </div>
     </div>
