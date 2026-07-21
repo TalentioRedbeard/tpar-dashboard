@@ -20,6 +20,7 @@ import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
 import { ownerEmail, isOwner } from "@/lib/admin";
 import { revalidatePath } from "next/cache";
+import type { MyCapture } from "@/lib/capture-types";
 
 export type SaveRecordingResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -259,6 +260,90 @@ export async function finalizeRecording(input: {
 
   revalidatePath("/");
   return { ok: true, id };
+}
+
+// ── "My Captures" tray (Danny 2026-07-21) ──────────────────────────────────
+// The fix for "I recorded it and can't find it anywhere": a recording saves fine
+// (target_kind='customer'/'job'/…) but no tech-facing surface listed a tech's OWN
+// recordings. This lists them on /me, transcript-status-agnostic (the on-prem
+// transcript lands async and must never hide a saved capture), with actions to
+// turn one into an estimate or re-file it to a job.
+export async function listMyRecentCaptures(): Promise<MyCapture[]> {
+  const me = await getCurrentTech();
+  if (!me?.tech) return [];
+  const who = whoIdentity(me);
+  const supa = db();
+  const { data } = await supa
+    .from("recordings")
+    .select("id, created_at, duration_ms, label, transcript, transcript_status, target_kind, target_ref, status")
+    .eq("created_by", who)
+    .eq("status", "stored")
+    .gte("created_at", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(25);
+  type Row = {
+    id: string; created_at: string; duration_ms: number | null; label: string | null;
+    transcript: string | null; transcript_status: string | null;
+    target_kind: string | null; target_ref: string | null; status: string | null;
+  };
+  // Daily wraps have their own card; the Claude dev-loop is owner-only — drop both.
+  const rows = ((data ?? []) as Row[]).filter((r) => r.target_kind !== "daily-wrap" && r.target_kind !== "claude");
+
+  const cusIds = [...new Set(rows.filter((r) => r.target_kind === "customer" && r.target_ref).map((r) => r.target_ref as string))];
+  const nameById = new Map<string, string>();
+  if (cusIds.length) {
+    const { data: cs } = await supa
+      .from("hcp_customers_raw")
+      .select("hcp_customer_id, first_name, last_name, company")
+      .in("hcp_customer_id", cusIds);
+    for (const c of (cs ?? []) as Array<{ hcp_customer_id: string; first_name: string | null; last_name: string | null; company: string | null }>) {
+      const nm = [c.first_name, c.last_name].filter(Boolean).join(" ").trim() || c.company || "Customer";
+      nameById.set(c.hcp_customer_id, nm);
+    }
+  }
+
+  return rows.map((r): MyCapture => {
+    let filedLabel = "Unfiled";
+    let customer_id: string | null = null;
+    if (r.target_kind === "customer" && r.target_ref) { customer_id = r.target_ref; filedLabel = `Customer · ${nameById.get(r.target_ref) ?? "—"}`; }
+    else if (r.target_kind === "job" && r.target_ref) filedLabel = `Job #${r.target_ref.slice(-6)}`;
+    else if (r.target_kind === "estimate") filedLabel = "Estimate";
+    else if (r.target_kind === "note_to_danny") filedLabel = "Note to Danny";
+    else if (r.target_kind && r.target_kind !== "file") filedLabel = r.target_kind;
+    return {
+      id: r.id, created_at: r.created_at, duration_ms: r.duration_ms, label: r.label,
+      transcript: r.transcript, transcript_status: r.transcript_status,
+      target_kind: r.target_kind, target_ref: r.target_ref, customer_id, filedLabel,
+    };
+  });
+}
+
+// Re-file a capture the tech already made onto a job or customer (Danny's
+// "send it to a page/tile"). Creator-or-leadership only. A job number resolves
+// through the same orphan-safe resolver as finalize.
+export async function refileCapture(
+  id: string,
+  input: { targetKind: "job" | "customer"; targetRef: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await getCurrentTech();
+  if (!me?.tech) return { ok: false, error: "not signed in" };
+  const who = whoIdentity(me);
+  const supa = db();
+  const { data: rec } = await supa.from("recordings").select("id, created_by").eq("id", id).maybeSingle();
+  if (!rec) return { ok: false, error: "recording not found" };
+  if (rec.created_by !== who && !me.isAdmin && !me.isManager) return { ok: false, error: "not your recording" };
+
+  let targetRef = String(input.targetRef ?? "").trim();
+  if (!targetRef) return { ok: false, error: "Enter a job number." };
+  if (input.targetKind === "job" && !targetRef.startsWith("job_")) {
+    const res = await resolveJobRefInternal(targetRef);
+    if (!res.ok) return { ok: false, error: res.error };
+    targetRef = res.hcp_job_id;
+  }
+  const { error } = await supa.from("recordings").update({ target_kind: input.targetKind, target_ref: targetRef }).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/me");
+  return { ok: true };
 }
 
 // ── 6. Discard an unfiled capture (deletes object + row) ─────────────────────

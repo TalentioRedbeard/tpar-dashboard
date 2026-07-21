@@ -24,6 +24,8 @@ import { DismissJobButton } from "../../components/DismissJobButton";
 import { GpsLifecyclePrompt } from "../../components/GpsLifecyclePrompt";
 import { ScrollPanel } from "../../components/ui/ScrollPanel";
 import { DailyWrapCard } from "../../components/DailyWrapCard";
+import { MyCapturesCard } from "../../components/MyCapturesCard";
+import { listMyRecentCaptures } from "../../lib/recordings";
 import { FeedbackOutcomes } from "../../components/FeedbackOutcomes";
 import { MessageOfficeCard } from "../../components/MessageOfficeCard";
 import { TodaysOneThing } from "../../components/TodaysOneThing";
@@ -272,6 +274,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
     (((dailyWrapRes as { data: Array<{ created_at: string }> | null }).data) ?? [])
       .map((r) => r.created_at)
       .find((iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Chicago" }) === todayChi) ?? null;
+
+  // "My captures" — this tech's own recent recordings, so a note they made is
+  // never lost (Danny 2026-07-21). Own captures only; hidden in view-as.
+  const myCaptures = !viewingAs && me.tech ? await listMyRecentCaptures() : [];
 
   const comms = (commsRes.data ?? []) as Array<Record<string, unknown>>;
   const vehicle = vehicleRes.data as Record<string, unknown> | null;
@@ -582,6 +588,10 @@ export default async function MyPage({ searchParams }: { searchParams: Promise<R
       {!viewingAs && me.tech ? (
         <DailyWrapCard tech={techName} wrappedAt={todaysWrapAt} wrapReminder={me.tech.prefs.wrap_reminder === true} />
       ) : null}
+
+      {/* My captures — recordings this tech made, findable + actionable (the
+          "I recorded it and can't find it" fix). Both simple + full mode. */}
+      {!viewingAs && me.tech ? <MyCapturesCard captures={myCaptures} /> : null}
 
       {/* 👂 Heard — the wrap's closed loop (spec §3d). Renders in BOTH simple
           and full modes (simple-mode techs are the audience) and under cookie
