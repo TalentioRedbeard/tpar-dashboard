@@ -18,6 +18,7 @@
 
 import { db } from "@/lib/supabase";
 import { getCurrentTech } from "@/lib/current-tech";
+import { getSessionUser } from "@/lib/supabase-server";
 import { ownerEmail, isOwner } from "@/lib/admin";
 import { revalidatePath } from "next/cache";
 import type { MyCapture } from "@/lib/capture-types";
@@ -84,6 +85,10 @@ export async function createRecordingUpload(
 ): Promise<{ ok: true; id: string; path: string; token: string } | { ok: false; error: string }> {
   const me = await getCurrentTech();
   if (!me) return { ok: false, error: "not signed in" };
+  // Stable owner = the REAL signed-in user's auth uid. getSessionUser() reads the
+  // auth session directly, so this is the actual person even under view-as (an
+  // admin recording while impersonating a tech owns it AS the admin — intended).
+  const sess = await getSessionUser().catch(() => null);
 
   const mime = (input.mime || "audio/webm").split(";")[0];
   const ext = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : mime.includes("mpeg") ? "mp3" : "webm";
@@ -104,7 +109,8 @@ export async function createRecordingUpload(
       duration_ms: Number(input.durationMs ?? 0) || null,
       status: "uploading",
       target_kind: null, // unfiled until finalizeRecording
-      created_by: whoIdentity(me),
+      created_by: whoIdentity(me),       // display label only — collision-prone
+      created_by_uid: sess?.id ?? null,  // stable owner key (see Segment 0)
     })
     .select("id")
     .single();
@@ -367,15 +373,20 @@ export async function discardRecording(id: string): Promise<{ ok: true } | { ok:
 export async function getRecordingSignedUrl(recordingId: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const me = await getCurrentTech();
   if (!me) return { ok: false, error: "not signed in" };
+  const sess = await getSessionUser().catch(() => null);
   const supa = db();
-  const { data: rec } = await supa.from("recordings").select("audio_path, created_by, target_kind").eq("id", recordingId).maybeSingle();
+  const { data: rec } = await supa.from("recordings").select("audio_path, created_by_uid, target_kind").eq("id", recordingId).maybeSingle();
   if (!rec?.audio_path) return { ok: false, error: "recording not found" };
   const audioPath = rec.audio_path as string;
   // Authorize before signing: creator or leadership always; job/customer/estimate
   // recordings are company work product (playable by any signed-in staffer who can
   // reach them); private captures (note_to_danny / claude / file / unfiled) are
   // creator-or-leadership only — closes the IDOR on a directly-POSTed action.
-  const mine = rec.created_by === whoIdentity(me);
+  // Ownership is checked on the STABLE created_by_uid, NOT the display-name
+  // created_by (collision-prone — a 2nd "Chris" could otherwise reach the first's
+  // private audio). A NULL-uid legacy row is creator-inaccessible (fail-closed) —
+  // only leadership / work-product can reach it.
+  const mine = !!sess?.id && rec.created_by_uid === sess.id;
   const leadership = me.isAdmin || me.isManager;
   const workProduct = ["job", "customer", "estimate"].includes(String(rec.target_kind ?? ""));
   if (!mine && !leadership && !workProduct) return { ok: false, error: "not authorized" };
