@@ -70,6 +70,12 @@ function CaptureRow({ c }: { c: MyCapture }) {
             Build estimate →
           </Link>
         ) : null}
+        {c.target_kind === "job" && c.target_ref ? (
+          <Link href={`/job/${c.target_ref}`}
+            className="rounded-md bg-brand-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-800">
+            Open job →
+          </Link>
+        ) : null}
         {!attaching ? (
           <button type="button" onClick={() => { setAttaching(true); setDone(null); }}
             className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100">
