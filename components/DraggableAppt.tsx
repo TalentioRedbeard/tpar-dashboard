@@ -15,7 +15,15 @@ export type ApptPayload = {
   currentStart: string;
   currentTech: string;
   currentDate: string;
+  /** px from the block's top where the user grabbed it — so a block grabbed in its
+   *  middle lands its TOP at the cursor, not jumping up. Set on dragstart. */
+  grabOffsetY?: number;
 };
+
+// Same-document drag state. dataTransfer.getData() is blocked during `dragover`
+// (payload only readable on `drop`), so the live time-chip in CalendarDayDrop
+// reads the grab offset from here while hovering. Set on dragstart.
+export const dragState: { grabOffsetY: number } = { grabOffsetY: 0 };
 
 export function DraggableAppt({ payload, multiVisit, children }: { payload: ApptPayload; multiVisit?: boolean; children: ReactNode }) {
   if (!payload.apptId) return <>{children}</>;
@@ -33,11 +41,16 @@ export function DraggableAppt({ payload, multiVisit, children }: { payload: Appt
     <div
       draggable
       onDragStart={(e) => {
-        e.dataTransfer.setData(APPT_MIME, JSON.stringify(payload));
+        // Where within the block the drag began — reliably from the block's own
+        // rect (offsetY is unreliable when the target is a nested child).
+        const rect = e.currentTarget.getBoundingClientRect();
+        const grabOffsetY = Math.max(0, e.clientY - rect.top);
+        dragState.grabOffsetY = grabOffsetY;
+        e.dataTransfer.setData(APPT_MIME, JSON.stringify({ ...payload, grabOffsetY }));
         e.dataTransfer.effectAllowed = "move";
       }}
       className="cursor-grab active:cursor-grabbing"
-      title="Drag to a different tech/day — moves it in HCP immediately (Undo available)"
+      title="Drag to a different tech/day/time — moves it in HCP immediately (Undo available)"
     >
       {children}
     </div>

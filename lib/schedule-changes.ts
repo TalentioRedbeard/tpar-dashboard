@@ -105,15 +105,20 @@ export async function proposeJobMove(input: {
   current_date: string;    // YYYY-MM-DD (Chicago day it's on)
   new_tech: string;        // hcp_full_name of the drop row
   new_date: string;        // YYYY-MM-DD of the drop day
+  new_time?: string;       // HH:MM (Chicago) — time-precise drop; omit to preserve time-of-day
 }): Promise<Res> {
   const me = await gatePropose();
   if (!me) return { ok: false, error: "scheduling access required" };
   if (!input.appointment_id) return { ok: false, error: "no appointment" };
   const techChanged = !!input.new_tech && input.new_tech !== input.current_tech && input.new_tech !== "Unassigned";
   const dateChanged = !!input.new_date && input.new_date !== input.current_date;
-  if (!techChanged && !dateChanged) return { ok: true }; // dropped in place
-  // Preserve the current time-of-day (Chicago) on a move.
-  const proposedTime = new Date(input.current_start).toLocaleTimeString("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hour12: false }).slice(0, 5);
+  // Time-of-day (Chicago) the appointment currently sits at — the default when a
+  // drop doesn't carry a new time (a plain day/tech move preserves it). A time-
+  // precise drop passes new_time (HH:MM) and reschedules within the day.
+  const currentTime = new Date(input.current_start).toLocaleTimeString("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hour12: false }).slice(0, 5);
+  const proposedTime = /^\d{2}:\d{2}$/.test(input.new_time ?? "") ? input.new_time! : currentTime;
+  const timeChanged = proposedTime !== currentTime;
+  if (!techChanged && !dateChanged && !timeChanged) return { ok: true }; // dropped in place
   const supa = db();
   await supa.from("schedule_change_requests").update({ status: "dismissed" }).eq("appointment_id", input.appointment_id).eq("status", "pending");
   const { error } = await supa.from("schedule_change_requests").insert({
@@ -154,6 +159,7 @@ export async function applyJobMove(input: {
   current_date: string;    // YYYY-MM-DD (Chicago)
   new_tech: string;
   new_date: string;
+  new_time?: string;       // HH:MM (Chicago) — time-precise drop; omit to preserve time-of-day
 }): Promise<Res> {
   const me = await gate();
   if (!me) return { ok: false, error: "dispatch role required" };
@@ -162,7 +168,13 @@ export async function applyJobMove(input: {
 
   const techChanged = !!input.new_tech && input.new_tech !== input.current_tech && input.new_tech !== "Unassigned";
   const dateChanged = !!input.new_date && input.new_date !== input.current_date;
-  if (!techChanged && !dateChanged) return { ok: true }; // dropped in place
+  // Time-of-day (Chicago) of the slot being moved FROM. A time-precise drop
+  // carries new_time (HH:MM) and reschedules within the day; a plain move omits
+  // it and preserves the time-of-day.
+  const currentTime = new Date(input.current_start).toLocaleTimeString("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hour12: false }).slice(0, 5);
+  const proposedTime = /^\d{2}:\d{2}$/.test(input.new_time ?? "") ? input.new_time! : currentTime;
+  const timeChanged = proposedTime !== currentTime;
+  if (!techChanged && !dateChanged && !timeChanged) return { ok: true }; // dropped in place
 
   const supa = db();
 
@@ -196,8 +208,6 @@ export async function applyJobMove(input: {
     .maybeSingle();
   if (inflight) return { ok: false, error: "that move is already in flight" };
 
-  // Preserve the time-of-day (Chicago) of the slot being moved.
-  const proposedTime = new Date(input.current_start).toLocaleTimeString("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hour12: false }).slice(0, 5);
   const kind = techChanged ? "reassign" : "reschedule";
 
   // The audit/claim row — immediate moves land as 'applying' → 'applied' so

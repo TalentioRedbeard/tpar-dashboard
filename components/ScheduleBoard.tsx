@@ -1412,6 +1412,7 @@ function WeekView({
             const placed = layoutDay(timedOf(k));
             return (
               <CalendarDayDrop key={k} dateKey={k} mode={dropMode} disabled={isPast}
+                dayStartMin={DAY_START} dayEndMin={DAY_END} hourHeight={HOUR_H}
                 className={`relative min-w-0 flex-1 border-r border-neutral-200 ${isToday ? "bg-amber-50/40" : isPast ? "bg-neutral-50/40" : ""}`}
                 style={{ height: totalH }}>
                 {hours.map((h) => <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-neutral-100" style={{ top: yOf(h * 60) }} />)}
