@@ -27,6 +27,7 @@ import { ProvenanceCard, type ProvenanceItem } from "../../../components/ui/Prov
 import { getCurrentMembership } from "../../membership/actions";
 import { FlagButton } from "../../../components/FlagButton";
 import { EntityFlags } from "../../../components/EntityFlags";
+import { CustomerBasicsEditor, type CustomerBasicsInitial } from "../../../components/CustomerBasicsEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -354,6 +355,39 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     ? (((await supabase.from("customer_reports").select("*").eq("hcp_customer_id", id).order("created_at", { ascending: false }).limit(20)).data ?? []) as CustomerReport[])
     : [];
 
+  // Edit-basics prefill (leadership only) — live HCP mirror for name/phone/email
+  // + address (raw), plus TPAR-local overrides. Reads hcp_customers_raw (the live
+  // HCP truth) so the editor round-trips exactly what write-through will change.
+  let basicsInitial: CustomerBasicsInitial | null = null;
+  if (isLeadership) {
+    const [rawRes, ovRes] = await Promise.all([
+      supabase.from("hcp_customers_raw").select("first_name, last_name, email, mobile_number, raw").eq("hcp_customer_id", id).maybeSingle(),
+      supabase.from("customer_overrides").select("display_name_override, preferred_name, do_not_text, do_not_call").eq("hcp_customer_id", id).maybeSingle(),
+    ]);
+    const raw = (rawRes.data ?? {}) as Record<string, unknown>;
+    const rawObj = (raw.raw ?? {}) as Record<string, unknown>;
+    const a0 = (Array.isArray(rawObj.addresses) ? (rawObj.addresses as Array<Record<string, unknown>>)[0] : null) ?? {};
+    const ov = (ovRes.data ?? {}) as Record<string, unknown>;
+    basicsInitial = {
+      first_name: String(raw.first_name ?? cust.first_name ?? ""),
+      last_name: String(raw.last_name ?? cust.last_name ?? ""),
+      email: String(raw.email ?? cust.email ?? ""),
+      mobile_number: String(raw.mobile_number ?? (cust.phone_mobile10 != null ? cust.phone_mobile10 : "") ?? ""),
+      address: {
+        address_id: (a0.id as string | undefined) ?? undefined,
+        street: String(a0.street ?? ""),
+        street_line_2: String(a0.street_line_2 ?? ""),
+        city: String(a0.city ?? ""),
+        state: String(a0.state ?? ""),
+        zip: String(a0.zip ?? ""),
+      },
+      display_name_override: String(ov.display_name_override ?? ""),
+      preferred_name: String(ov.preferred_name ?? ""),
+      do_not_text: !!ov.do_not_text,
+      do_not_call: !!ov.do_not_call,
+    };
+  }
+
   return (
     <PageShell
       kicker="Customer"
@@ -365,6 +399,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       backLabel="All customers"
       actions={
         <div className="flex flex-wrap gap-2">
+          {isLeadership && basicsInitial ? (
+            <CustomerBasicsEditor hcpCustomerId={id} initial={basicsInitial} />
+          ) : null}
           {isLeadership ? (
             <LinkButton href={`/gallery?scope=customer&id=${id}`} variant="secondary">
               📷 Photos
