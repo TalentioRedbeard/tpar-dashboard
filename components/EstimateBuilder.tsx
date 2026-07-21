@@ -7,7 +7,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createEstimateForJob, generateLineDescription, lookupPriceForScope, type PriceMatch } from "../lib/estimate-actions";
-import { sendBuilderEstimateTracked } from "../lib/multi-option-estimate-actions";
+import { sendBuilderEstimateTracked, generateEstimateWriteup } from "../lib/multi-option-estimate-actions";
 
 type LineItem = {
   name: string;
@@ -63,6 +63,8 @@ export function EstimateBuilder({
   );
   const [note, setNote] = useState(initialNote ?? "");
   const [message, setMessage] = useState("");
+  const [notesBusy, setNotesBusy] = useState(false);
+  const [notesErr, setNotesErr] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ estimate_id: string; estimate_number: string; hcp_url: string | null } | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -93,6 +95,29 @@ export function EstimateBuilder({
       } else {
         setPerOptionError((prev) => ({ ...prev, [optIdx]: res.error }));
       }
+    });
+  }
+
+  // "Assemble Notes" — generate the whole-estimate Notes (warranty + applicable
+  // disclaimers) from the current line items and drop them into the customer message.
+  // Line-built estimates were shipping with no stipulations (PER_LINE_OVERRIDE strips
+  // Notes + the line path never ran the write-up); this closes that (Danny 2026-07-21).
+  function assembleNotes() {
+    setNotesErr(null);
+    setNotesBusy(true);
+    startTransition(async () => {
+      const res = await generateEstimateWriteup({
+        options: options.map((o) => ({
+          name: (o.name ?? "").trim() || "Option",
+          line_items: (o.line_items ?? []).filter((li) => li.name.trim()).map((li) => ({ name: li.name, description: li.description })),
+        })),
+        customerName,
+        notesOnly: true,
+      });
+      setNotesBusy(false);
+      if (!res.ok) { setNotesErr(res.error); return; }
+      const notes = res.writeup.trim();
+      if (notes) setMessage((prev) => (prev.trim() ? `${prev.trim()}\n\nNotes:\n${notes}` : `Notes:\n${notes}`));
     });
   }
 
@@ -634,7 +659,15 @@ export function EstimateBuilder({
           />
         </label>
         <label className="text-xs">
-          <span className="mb-1 block font-medium text-neutral-600">Customer-facing message</span>
+          <span className="mb-1 flex items-center justify-between gap-2 font-medium text-neutral-600">
+            <span>Customer-facing message</span>
+            <button type="button" onClick={assembleNotes} disabled={isPending}
+              title="Generate the warranty terms + applicable disclaimers for this estimate"
+              className="rounded-md border border-brand-300 bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-800 hover:bg-brand-100 disabled:opacity-50">
+              {notesBusy ? "Assembling…" : "✍️ Assemble Notes"}
+            </button>
+          </span>
+          {notesErr ? <span className="mb-1 block text-[11px] text-red-700">{notesErr}</span> : null}
           <textarea
             name="message"
             value={message}

@@ -444,6 +444,9 @@ export async function generateEstimateWriteup(input: {
   options: Array<{ name: string; line_items: Array<{ name: string; description?: string; customer_supplied?: boolean }> }>;
   customerName?: string;
   address?: string;
+  /** NOTES-ONLY: just the warranty + disclaimer bullets (the "Assemble Notes" button
+   *  on the line-built builder, which already has per-line descriptions). */
+  notesOnly?: boolean;
 }): Promise<WriteupResult> {
   const writer = await requireWriter();
   if (!writer.ok) return { ok: false, error: writer.error };
@@ -457,7 +460,7 @@ export async function generateEstimateWriteup(input: {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/generate-estimate-writeup`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
-    body: JSON.stringify({ options, customer_name: input.customerName, address: input.address }),
+    body: JSON.stringify({ options, customer_name: input.customerName, address: input.address, notes_only: input.notesOnly === true }),
   });
   const text = await r.text();
   if (!r.ok) return { ok: false, error: `write-up failed: ${r.status} ${text.slice(0, 200)}` };
