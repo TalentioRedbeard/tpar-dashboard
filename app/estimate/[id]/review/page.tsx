@@ -306,7 +306,7 @@ export default async function EstimateReviewPage({ params }: { params: Promise<{
           "Red BLOCK flags mean a price/scope needs a human decision before it can be pushed.",
           "Amber 'needs a distributor quote' means the materials number is an AI guess, not priced — get a real quote.",
           "Indigo open-questions are things to confirm on site (they could move the price).",
-          "When it looks right, pick the option and Approve — that marks it ready (it does NOT push to HCP yet).",
+          "When it looks right, pick the option and Approve — that sends it to HousecallPro as a customer estimate.",
         ],
       }}
     >
@@ -400,10 +400,10 @@ export default async function EstimateReviewPage({ params }: { params: Promise<{
           )}
         </Section>
 
-        {/* Approve affordance (v0 stub — no HCP push) */}
+        {/* Approve — records the review + sends the estimate to HCP (2026-07-21). */}
         <Section
-          title="Approve"
-          description="Records that a human reviewed this AI draft and which option you're approving, then marks it ready. Pushing to HCP is a separate step."
+          title="Approve & send"
+          description="Records that a human reviewed this AI draft and which option you're approving, then sends it to HousecallPro as a customer estimate."
         >
           <ReviewControls
             id={estimate.id}

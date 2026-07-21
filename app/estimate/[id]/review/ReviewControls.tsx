@@ -73,11 +73,11 @@ export function ReviewControls({
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <div className="text-sm font-semibold text-neutral-900">Approve this draft for the next step</div>
+      <div className="text-sm font-semibold text-neutral-900">Approve &amp; send to HousecallPro</div>
       <p className="mt-1 text-xs text-neutral-500">
-        v0: this records that a human reviewed the AI estimate and which option you&apos;re approving, then marks it
-        <span className="mx-1 font-medium">ready</span>. It does <span className="font-medium">not</span> push to HCP —
-        that&apos;s a deliberate separate step.
+        Records that you reviewed this estimate and which option you&apos;re approving, then
+        <span className="mx-1 font-medium">sends it to HousecallPro</span> as a customer estimate.
+        If the send fails, the draft is kept and the error is shown here.
       </p>
 
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -125,7 +125,7 @@ export function ReviewControls({
           disabled={pending || blockedByFlag || !optionLabel}
           className="rounded-md bg-brand-700 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {pending ? "Saving…" : "Approve & mark ready"}
+          {pending ? "Sending…" : "Approve & send to HCP"}
         </button>
         {blockedByFlag ? (
           <span className="text-xs italic text-red-600">Acknowledge the blocking flag above first.</span>
