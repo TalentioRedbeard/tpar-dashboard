@@ -35,24 +35,17 @@ export function CustomerBasicsEditor({ hcpCustomerId, initial }: { hcpCustomerId
   const openModal = () => { setF(initial); setErr(null); setOpen(true); };
 
   const set = <K extends keyof CustomerBasicsInitial>(k: K, v: CustomerBasicsInitial[K]) => setF((p) => ({ ...p, [k]: v }));
-  const setAddr = (k: keyof CustomerBasicsInitial["address"], v: string) => setF((p) => ({ ...p, address: { ...p.address, [k]: v } }));
 
   function save() {
     setErr(null);
-    // Diff vs initial — send only what changed.
+    // Diff vs initial — send only what changed. Address is NOT sent: HCP's public
+    // API doesn't accept address edits (verified), so it's shown read-only with an
+    // "Edit in HCP" link instead.
     const payload: CustomerBasicsInput = { hcp_customer_id: hcpCustomerId };
     if (f.first_name.trim() !== initial.first_name.trim()) payload.first_name = f.first_name.trim();
     if (f.last_name.trim() !== initial.last_name.trim()) payload.last_name = f.last_name.trim();
     if (f.email.trim() !== initial.email.trim()) payload.email = f.email.trim();
     if (f.mobile_number.trim() !== initial.mobile_number.trim()) payload.mobile_number = f.mobile_number.trim();
-    const a = f.address, ia = initial.address;
-    const addr: NonNullable<CustomerBasicsInput["address"]> = {};
-    if (a.street.trim() !== ia.street.trim()) addr.street = a.street.trim();
-    if (a.street_line_2.trim() !== ia.street_line_2.trim()) addr.street_line_2 = a.street_line_2.trim();
-    if (a.city.trim() !== ia.city.trim()) addr.city = a.city.trim();
-    if (a.state.trim() !== ia.state.trim()) addr.state = a.state.trim();
-    if (a.zip.trim() !== ia.zip.trim()) addr.zip = a.zip.trim();
-    if (Object.keys(addr).length > 0) { addr.address_id = ia.address_id; payload.address = addr; }
     if (f.display_name_override.trim() !== initial.display_name_override.trim()) payload.display_name_override = f.display_name_override.trim();
     if (f.preferred_name.trim() !== initial.preferred_name.trim()) payload.preferred_name = f.preferred_name.trim();
     if (f.do_not_text !== initial.do_not_text) payload.do_not_text = f.do_not_text;
@@ -88,7 +81,7 @@ export function CustomerBasicsEditor({ hcpCustomerId, initial }: { hcpCustomerId
               <button type="button" onClick={() => !pending && setOpen(false)} className="text-xs text-neutral-500 hover:text-neutral-800">close ×</button>
             </div>
             <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-800">
-              Name, phone, email + address <span className="font-semibold">write through to Housecall Pro</span> — the change is real and survives the next sync. Do-not-text/call + display name stay internal to TPAR.
+              Name, phone + email <span className="font-semibold">write through to Housecall Pro</span> — the change is real and survives the next sync. Do-not-text/call + display name stay internal to TPAR.
             </p>
 
             <div className="grid grid-cols-2 gap-3">
@@ -99,16 +92,17 @@ export function CustomerBasicsEditor({ hcpCustomerId, initial }: { hcpCustomerId
             </div>
 
             <div className="mt-4 border-t border-neutral-100 pt-3">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Address</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2"><label className={lbl}>Street</label><input className={input} value={f.address.street} disabled={pending} onChange={(e) => setAddr("street", e.target.value)} /></div>
-                <div className="col-span-2"><label className={lbl}>Street line 2</label><input className={input} value={f.address.street_line_2} disabled={pending} onChange={(e) => setAddr("street_line_2", e.target.value)} /></div>
-                <div><label className={lbl}>City</label><input className={input} value={f.address.city} disabled={pending} onChange={(e) => setAddr("city", e.target.value)} /></div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div><label className={lbl}>State</label><input className={input} value={f.address.state} disabled={pending} maxLength={2} onChange={(e) => setAddr("state", e.target.value.toUpperCase())} /></div>
-                  <div><label className={lbl}>ZIP</label><input className={input} value={f.address.zip} disabled={pending} inputMode="numeric" onChange={(e) => setAddr("zip", e.target.value)} /></div>
-                </div>
+              <div className="mb-1 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Service address</div>
+                <a href={`https://pro.housecallpro.com/app/customers/${hcpCustomerId}`} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-brand-700 hover:underline">Edit in HCP ↗</a>
               </div>
+              <div className="rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-sm text-neutral-700">
+                {[initial.address.street, initial.address.street_line_2].filter((s) => s.trim()).join(", ") || <span className="text-neutral-400">no address on file</span>}
+                {(initial.address.city || initial.address.state || initial.address.zip) ? (
+                  <div className="text-neutral-500">{[initial.address.city, initial.address.state].filter((s) => s.trim()).join(", ")} {initial.address.zip}</div>
+                ) : null}
+              </div>
+              <p className="mt-1 text-[10px] text-neutral-400">Housecall Pro’s API doesn’t accept address edits — change it in HCP and it syncs back here.</p>
             </div>
 
             <div className="mt-4 border-t border-neutral-100 pt-3">
