@@ -13,6 +13,7 @@ import { getFiredTriggersForJob } from "./trigger-actions";
 import { getBriefingForJob } from "./briefing-actions";
 import { listPinnedEmailsForJob } from "../../customer/[id]/email-actions";
 import { TriggerForms } from "./TriggerForms";
+import { FiredTriggersList } from "./FiredTriggersList";
 import { JobBriefingCard } from "../../../components/JobBriefingCard";
 import { AddJobLineItem } from "../../../components/AddJobLineItem";
 import { RefreshFromHcpButton } from "../../../components/RefreshFromHcpButton";
@@ -694,31 +695,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             briefing={briefing}
             hcpWorkStatus={jobRaw?.status ?? null}
           />
-          {firedTriggers.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-3">
-              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">Fired so far</div>
-              <ScrollPanel tier="standard">
-              <ul className="space-y-1 text-xs text-neutral-700">
-                {firedTriggers.map((t) => (
-                  <li key={t.id} className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono">#{t.trigger_number}</span>
-                    <span className="font-medium">{t.trigger_name}</span>
-                    <span className="text-neutral-500">·</span>
-                    {t.origin === "hcp_derived" ? (
-                      <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700" title="Derived from HCP work timestamps — not an in-app press">from HCP</span>
-                    ) : (
-                      <span>{t.fired_by ?? "—"}</span>
-                    )}
-                    <span className="text-neutral-400">·</span>
-                    <span className="text-neutral-500">
-                      {new Date(t.fired_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              </ScrollPanel>
-            </div>
-          )}
+          <FiredTriggersList firedTriggers={firedTriggers} hcpJobId={id} canEditTimes={canEdit} />
         </Section>
 
         {/* Photo nudge (Phase 1b): this job has no photos on file yet. Prompt the

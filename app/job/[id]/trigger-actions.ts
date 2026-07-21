@@ -334,16 +334,69 @@ export type FiredTrigger = {
   fired_at: string;
   origin: string | null; // 'dashboard' | 'gps_confirmed' | 'hcp_derived' | …
   context: Record<string, unknown>;
+  // Set when a manager|admin hand-edits fired_at (irreversible attribution).
+  fired_at_edited_by?: string | null;
+  fired_at_edited_at?: string | null;
+  fired_at_original?: string | null;
 };
 
 export async function getFiredTriggersForJob(hcp_job_id: string): Promise<FiredTrigger[]> {
   const supabase = db();
   const { data } = await supabase
     .from("job_lifecycle_events")
-    .select("id, trigger_number, trigger_name, fired_by, fired_at, origin, context")
+    .select("id, trigger_number, trigger_name, fired_by, fired_at, origin, context, fired_at_edited_by, fired_at_edited_at, fired_at_original")
     .eq("hcp_job_id", hcp_job_id)
     .order("fired_at", { ascending: true });
   return (data ?? []) as FiredTrigger[];
+}
+
+// ─── Edit a trigger's press time (managers|admins only) ─────────────────────
+// Corrects the fired_at of a lifecycle event when a trigger was pressed late /
+// early / on the wrong clock. Attribution is IRREVERSIBLE: once edited the row
+// carries fired_at_edited_by forever (there is no un-edit), and the ORIGINAL
+// press time is preserved on the first edit. Stage-duration views recompute off
+// fired_at, so the clocks move to match the corrected time — that's the point.
+export async function editTriggerFiredAt(input: {
+  event_id: string;
+  hcp_job_id: string;
+  new_fired_at: string; // ISO instant (from a datetime-local, interpreted as Chicago by the client)
+}): Promise<{ ok: true; edited_by: string } | { ok: false; error: string }> {
+  const me = await getCurrentTech();
+  // MGMT gate — admin|manager, NOT techs (techs can fire, only mgmt can rewrite history).
+  if (!(me?.isAdmin || me?.isManager)) {
+    return { ok: false, error: "Only managers or admins can edit trigger times." };
+  }
+  if (!input.event_id) return { ok: false, error: "Missing trigger." };
+  const when = new Date(input.new_fired_at);
+  if (Number.isNaN(when.getTime())) return { ok: false, error: "Invalid time." };
+  if (when.getTime() > Date.now() + 60_000) return { ok: false, error: "Trigger time can't be in the future." };
+
+  const supabase = db();
+  const { data: cur, error: readErr } = await supabase
+    .from("job_lifecycle_events")
+    .select("fired_at, fired_at_original")
+    .eq("id", input.event_id)
+    .maybeSingle();
+  if (readErr) return { ok: false, error: readErr.message };
+  if (!cur) return { ok: false, error: "Trigger not found." };
+
+  const editor = me.tech?.tech_short_name ?? me.email ?? "manager";
+  const patch: Record<string, unknown> = {
+    fired_at: when.toISOString(),
+    fired_at_edited_by: editor,
+    fired_at_edited_at: new Date().toISOString(),
+  };
+  // Preserve the original press time on the FIRST edit only.
+  if (!cur.fired_at_original) patch.fired_at_original = cur.fired_at;
+
+  const { error } = await supabase
+    .from("job_lifecycle_events")
+    .update(patch)
+    .eq("id", input.event_id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/job/${input.hcp_job_id}`);
+  return { ok: true, edited_by: editor };
 }
 
 // ─── On-demand "Refresh from HCP" ───────────────────────────────────────
