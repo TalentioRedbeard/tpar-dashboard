@@ -51,6 +51,10 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
   const tickRef = useRef<number | null>(null);
   const storedPendingRef = useRef<string | null>(null); // id whose bytes are uploaded but not yet marked stored
   const savingRef = useRef(false); // in-flight finalize guard (covers the ~900ms reset window)
+  // Set when the recording was started on a /job or /customer page → auto-attach it
+  // there once the audio is durable (Danny 2026-07-21). Cleared if the user changes
+  // the target (they've taken manual control).
+  const autoFileRef = useRef<{ target: Target; ref: string } | null>(null);
 
   // Confirm a typed job id/invoice number resolves to a real job before saving —
   // a raw invoice number silently orphaned the recording before (the C fix).
@@ -85,6 +89,20 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
     storedPendingRef.current = null;
     setUploadState("stored");
     void transcribeNow(slot.id);
+    // Recorded from a job/customer page → attach it there automatically, no Save
+    // tap needed (Danny 2026-07-21). The on-prem transcript still lands afterward
+    // (the worker no-clobbers). If finalize errors, fall back to the manual Save.
+    const auto = autoFileRef.current;
+    if (auto && (auto.target === "job" || auto.target === "customer") && !savingRef.current) {
+      savingRef.current = true;
+      const fin = await finalizeRecording({ id: slot.id, label: "", transcript: "", targetKind: auto.target, targetRef: auto.ref });
+      if (fin.ok) {
+        setMsg(auto.target === "job" ? "✓ Attached to this job" : "✓ Attached to this customer");
+        setTimeout(() => { reset(); router.refresh(); }, 1200);
+      } else {
+        savingRef.current = false; // let the user save manually
+      }
+    }
   }
 
   // Direct browser → Storage upload with bounded retry/backoff.
@@ -156,7 +174,7 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
         stream.getTracks().forEach((t) => t.stop());
         if (tickRef.current) { window.clearInterval(tickRef.current); tickRef.current = null; }
         const d = detectFromUrl();
-        if (d) { setTarget(d.target); setTargetRef(d.ref); }
+        if (d) { setTarget(d.target); setTargetRef(d.ref); autoFileRef.current = d; }
         else if (!isOwner && clockedInJobId) { setTarget("job"); setTargetRef(clockedInJobId); }
         setState("review");
         void beginUpload(b, dMs); // persist immediately — before the user picks a target
@@ -179,7 +197,7 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
   function reset() {
     setState("idle"); setBlob(null); setLabel(""); setTranscript(""); setTargetRef(""); setMsg(null);
     setTarget("note_to_danny"); setJobChip(null); setRecId(null); setUploadState("idle");
-    storedPendingRef.current = null; savingRef.current = false;
+    storedPendingRef.current = null; savingRef.current = false; autoFileRef.current = null;
   }
 
   // Discard an unfiled capture. Only delete once the audio has settled — deleting
@@ -260,7 +278,7 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
             className="mb-2 w-full resize-y rounded-md border border-neutral-300 px-2 py-1 text-sm"
           />
           <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label / title (optional)" className="mb-2 w-full rounded-md border border-neutral-300 px-2 py-1 text-sm" />
-          <select value={target} onChange={(e) => setTarget(e.target.value as Target)} className="mb-2 w-full rounded-md border border-neutral-300 px-2 py-1 text-sm">
+          <select value={target} onChange={(e) => { setTarget(e.target.value as Target); autoFileRef.current = null; }} className="mb-2 w-full rounded-md border border-neutral-300 px-2 py-1 text-sm">
             {isOwner ? <option value="claude">💬 Send to Claude (dev)</option> : null}
             <option value="note_to_danny">📨 Send to Danny</option>
             <option value="job">🧰 Attach to job</option>
