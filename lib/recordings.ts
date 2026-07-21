@@ -210,8 +210,9 @@ export async function finalizeRecording(input: {
   if (transcriptText) patch.transcript = transcriptText;
   // Pin harvestable lanes so the 30-day audio-retention sweep never reclaims them —
   // these are the voice-ID enrollment seeds + real work product (Danny 2026-07-20).
-  // Ambient/file/claude/estimate stay on the default window.
-  if (["daily-wrap", "job", "note_to_danny", "customer"].includes(targetKind)) patch.keep_audio = true;
+  // Estimate joined the pin list 2026-07-21 (Studio Seg 2) so an estimate-attached
+  // capture's audio is permanent too. Ambient/file/claude stay on the default window.
+  if (["daily-wrap", "job", "note_to_danny", "customer", "estimate"].includes(targetKind)) patch.keep_audio = true;
 
   // Idempotency: only the FIRST finalize (finalized_at still null) writes + fires
   // side-effects. A double-tap inside the ~900ms reset window updates zero rows

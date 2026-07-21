@@ -69,6 +69,10 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
   function detectFromUrl(): { target: Target; ref: string } | null {
     const m = pathname?.match(/^\/(job|customer)\/([^/?#]+)/);
     if (m) return { target: m[1] as Target, ref: decodeURIComponent(m[2]) };
+    // Estimate detail page (Studio Seg 2) — /estimate/<id> auto-attaches to that
+    // estimate, but NOT /estimate/new (the builder has no estimate id yet).
+    const e = pathname?.match(/^\/estimate\/([^/?#]+)/);
+    if (e && e[1] !== "new") return { target: "estimate", ref: decodeURIComponent(e[1]) };
     return null;
   }
 
@@ -93,11 +97,11 @@ export function GlobalRecorder({ isOwner = false, clockedInJobId = null }: { isO
     // tap needed (Danny 2026-07-21). The on-prem transcript still lands afterward
     // (the worker no-clobbers). If finalize errors, fall back to the manual Save.
     const auto = autoFileRef.current;
-    if (auto && (auto.target === "job" || auto.target === "customer") && !savingRef.current) {
+    if (auto && (auto.target === "job" || auto.target === "customer" || auto.target === "estimate") && !savingRef.current) {
       savingRef.current = true;
       const fin = await finalizeRecording({ id: slot.id, label: "", transcript: "", targetKind: auto.target, targetRef: auto.ref });
       if (fin.ok) {
-        setMsg(auto.target === "job" ? "✓ Attached to this job" : "✓ Attached to this customer");
+        setMsg(auto.target === "job" ? "✓ Attached to this job" : auto.target === "customer" ? "✓ Attached to this customer" : "✓ Attached to this estimate");
         setTimeout(() => { reset(); router.refresh(); }, 1200);
       } else {
         savingRef.current = false; // let the user save manually
