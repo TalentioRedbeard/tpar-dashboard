@@ -169,13 +169,17 @@ export async function finalizeRecording(input: {
 }): Promise<SaveRecordingResult> {
   const me = await getCurrentTech();
   if (!me) return { ok: false, error: "not signed in" };
+  const sess = await getSessionUser().catch(() => null);
   const id = String(input.id ?? "").trim();
   if (!id) return { ok: false, error: "missing recording id" };
   const supa = db();
 
-  const { data: rec } = await supa.from("recordings").select("id, created_by, status, duration_ms").eq("id", id).maybeSingle();
+  const { data: rec } = await supa.from("recordings").select("id, created_by_uid, status, duration_ms").eq("id", id).maybeSingle();
   if (!rec) return { ok: false, error: "recording not found" };
-  if (rec.created_by !== whoIdentity(me)) return { ok: false, error: "not your recording" };
+  // Ownership on the STABLE created_by_uid (not the collision-prone display name) —
+  // consistent with refile/discard/getRecordingSignedUrl.
+  const mine = !!sess?.id && rec.created_by_uid === sess.id;
+  if (!mine && !me.isAdmin && !me.isManager) return { ok: false, error: "not your recording" };
   if (rec.status !== "stored") return { ok: false, error: "audio is still uploading — give it a moment" };
 
   const label = String(input.label ?? "").trim().slice(0, 200) || null;
@@ -221,7 +225,6 @@ export async function finalizeRecording(input: {
     .from("recordings")
     .update(patch)
     .eq("id", id)
-    .eq("created_by", whoIdentity(me))
     .is("finalized_at", null)
     .select("id");
   if (updErr) return { ok: false, error: updErr.message };
@@ -275,27 +278,16 @@ export async function finalizeRecording(input: {
 // recordings. This lists them on /me, transcript-status-agnostic (the on-prem
 // transcript lands async and must never hide a saved capture), with actions to
 // turn one into an estimate or re-file it to a job.
-export async function listMyRecentCaptures(): Promise<MyCapture[]> {
-  const me = await getCurrentTech();
-  if (!me?.tech) return [];
-  const who = whoIdentity(me);
-  const supa = db();
-  const { data } = await supa
-    .from("recordings")
-    .select("id, created_at, duration_ms, label, transcript, transcript_status, target_kind, target_ref, status")
-    .eq("created_by", who)
-    .eq("status", "stored")
-    .gte("created_at", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
-    .order("created_at", { ascending: false })
-    .limit(25);
-  type Row = {
-    id: string; created_at: string; duration_ms: number | null; label: string | null;
-    transcript: string | null; transcript_status: string | null;
-    target_kind: string | null; target_ref: string | null; status: string | null;
-  };
-  // Daily wraps have their own card; the Claude dev-loop is owner-only — drop both.
-  const rows = ((data ?? []) as Row[]).filter((r) => r.target_kind !== "daily-wrap" && r.target_kind !== "claude");
+const CAPTURE_SELECT = "id, created_at, duration_ms, label, transcript, transcript_status, target_kind, target_ref, status";
+type CapRow = {
+  id: string; created_at: string; duration_ms: number | null; label: string | null;
+  transcript: string | null; transcript_status: string | null;
+  target_kind: string | null; target_ref: string | null; status: string | null;
+};
 
+// Resolve customer display names + map rows → MyCapture. Shared by the /me card
+// and the Studio hub so the labeling stays identical.
+async function mapCaptureRows(supa: ReturnType<typeof db>, rows: CapRow[]): Promise<MyCapture[]> {
   const cusIds = [...new Set(rows.filter((r) => r.target_kind === "customer" && r.target_ref).map((r) => r.target_ref as string))];
   const nameById = new Map<string, string>();
   if (cusIds.length) {
@@ -308,7 +300,6 @@ export async function listMyRecentCaptures(): Promise<MyCapture[]> {
       nameById.set(c.hcp_customer_id, nm);
     }
   }
-
   return rows.map((r): MyCapture => {
     let filedLabel = "Unfiled";
     let customer_id: string | null = null;
@@ -325,6 +316,56 @@ export async function listMyRecentCaptures(): Promise<MyCapture[]> {
   });
 }
 
+export async function listMyRecentCaptures(): Promise<MyCapture[]> {
+  const me = await getCurrentTech();
+  if (!me?.tech) return [];
+  // Scope on the STABLE owner uid (Studio Seg 0/1), not the collision-prone
+  // display name — a 2nd "Chris" must never see the first's captures.
+  const sess = await getSessionUser().catch(() => null);
+  if (!sess?.id) return [];
+  const supa = db();
+  const { data } = await supa
+    .from("recordings")
+    .select(CAPTURE_SELECT)
+    .eq("created_by_uid", sess.id)
+    .eq("status", "stored")
+    .gte("created_at", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(25);
+  // Daily wraps have their own card; the Claude dev-loop is owner-only — drop both.
+  const rows = ((data ?? []) as CapRow[]).filter((r) => r.target_kind !== "daily-wrap" && r.target_kind !== "claude");
+  return mapCaptureRows(supa, rows);
+}
+
+// Studio hub (Seg 1) — creator-scoped, split into the two-state model:
+//   inbox = unassigned (stored, not filed, no target_kind) — clears at 3 days
+//   filed = assigned/finalized (permanent) — excl. daily-wrap + claude
+// Scoped on created_by_uid; NEVER reuses the leadership all-company search.
+export async function listMyStudioCaptures(): Promise<{ inbox: MyCapture[]; filed: MyCapture[] }> {
+  const me = await getCurrentTech();
+  if (!me) return { inbox: [], filed: [] };
+  const sess = await getSessionUser().catch(() => null);
+  if (!sess?.id) return { inbox: [], filed: [] };
+  const supa = db();
+  const [inboxRes, filedRes] = await Promise.all([
+    supa.from("recordings").select(CAPTURE_SELECT)
+      .eq("created_by_uid", sess.id).eq("status", "stored")
+      .is("finalized_at", null).is("target_kind", null)
+      .order("created_at", { ascending: false }).limit(50),
+    // Filed = has a target_kind (the exact complement of the inbox's target_kind
+    // IS NULL). NOT keyed on finalized_at: refileCapture files a capture by setting
+    // target_kind without finalized_at, so keying on finalized_at would drop a
+    // just-refiled capture out of BOTH lists (it vanishes from the hub).
+    supa.from("recordings").select(CAPTURE_SELECT)
+      .eq("created_by_uid", sess.id).eq("status", "stored").not("target_kind", "is", null)
+      .order("created_at", { ascending: false }).limit(100),
+  ]);
+  const inboxRows = (inboxRes.data ?? []) as CapRow[];
+  const filedRows = ((filedRes.data ?? []) as CapRow[]).filter((r) => r.target_kind !== "daily-wrap" && r.target_kind !== "claude");
+  const [inbox, filed] = await Promise.all([mapCaptureRows(supa, inboxRows), mapCaptureRows(supa, filedRows)]);
+  return { inbox, filed };
+}
+
 // Re-file a capture the tech already made onto a job or customer (Danny's
 // "send it to a page/tile"). Creator-or-leadership only. A job number resolves
 // through the same orphan-safe resolver as finalize.
@@ -334,11 +375,12 @@ export async function refileCapture(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await getCurrentTech();
   if (!me?.tech) return { ok: false, error: "not signed in" };
-  const who = whoIdentity(me);
+  const sess = await getSessionUser().catch(() => null);
   const supa = db();
-  const { data: rec } = await supa.from("recordings").select("id, created_by").eq("id", id).maybeSingle();
+  const { data: rec } = await supa.from("recordings").select("id, created_by_uid, finalized_at").eq("id", id).maybeSingle();
   if (!rec) return { ok: false, error: "recording not found" };
-  if (rec.created_by !== who && !me.isAdmin && !me.isManager) return { ok: false, error: "not your recording" };
+  const mine = !!sess?.id && rec.created_by_uid === sess.id;
+  if (!mine && !me.isAdmin && !me.isManager) return { ok: false, error: "not your recording" };
 
   let targetRef = String(input.targetRef ?? "").trim();
   if (!targetRef) return { ok: false, error: "Enter a job number." };
@@ -347,9 +389,16 @@ export async function refileCapture(
     if (!res.ok) return { ok: false, error: res.error };
     targetRef = res.hcp_job_id;
   }
-  const { error } = await supa.from("recordings").update({ target_kind: input.targetKind, target_ref: targetRef }).eq("id", id);
+  // Filing is a finalize: pin the audio (job/customer are permanent work product,
+  // same as finalizeRecording's keep_audio) and stamp finalized_at if it wasn't
+  // already — otherwise a refiled capture sits target_kind-set but finalized_at-null
+  // and rides the 30-day sweep while the retention model thinks it's permanent.
+  const patch: Record<string, unknown> = { target_kind: input.targetKind, target_ref: targetRef, keep_audio: true };
+  if (!rec.finalized_at) patch.finalized_at = new Date().toISOString();
+  const { error } = await supa.from("recordings").update(patch).eq("id", id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/me");
+  revalidatePath("/studio");
   return { ok: true };
 }
 
@@ -357,15 +406,21 @@ export async function refileCapture(
 export async function discardRecording(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await getCurrentTech();
   if (!me) return { ok: false, error: "not signed in" };
+  const sess = await getSessionUser().catch(() => null);
   const supa = db();
-  const { data: rec } = await supa.from("recordings").select("audio_path, created_by, finalized_at").eq("id", id).maybeSingle();
+  const { data: rec } = await supa.from("recordings").select("audio_path, created_by_uid, finalized_at").eq("id", id).maybeSingle();
   if (!rec) return { ok: true }; // already gone
-  if (rec.created_by !== whoIdentity(me)) return { ok: false, error: "not your recording" };
+  const mine = !!sess?.id && rec.created_by_uid === sess.id;
+  if (!mine && !me.isAdmin && !me.isManager) return { ok: false, error: "not your recording" };
   if (rec.finalized_at) return { ok: false, error: "already saved — manage it from Studio" };
   if (rec.audio_path) {
     try { await supa.storage.from(BUCKET).remove([rec.audio_path as string]); } catch { /* best-effort */ }
   }
-  await supa.from("recordings").delete().eq("id", id).eq("created_by", whoIdentity(me)).is("finalized_at", null);
+  // Authorized above on created_by_uid — delete by id only. Keying the DELETE on
+  // the display-name created_by (as before) would no-op on a name mismatch (renamed
+  // tech / leadership discarding another's) AFTER the audio was already removed,
+  // leaving a dangling row with unplayable audio.
+  await supa.from("recordings").delete().eq("id", id).is("finalized_at", null);
   return { ok: true };
 }
 

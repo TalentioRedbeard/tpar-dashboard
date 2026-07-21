@@ -8,19 +8,30 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RecordingPlayer } from "./RecordingPlayer";
-import { refileCapture } from "../lib/recordings";
+import { refileCapture, discardRecording } from "../lib/recordings";
 import type { MyCapture } from "../lib/capture-types";
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "short", timeStyle: "short" });
 }
 
+// Days left before the 3-day inbox clear reclaims an unfiled capture's audio.
+function clearsIn(iso: string): string {
+  const ageDays = (Date.now() - new Date(iso).getTime()) / 86400000;
+  const left = Math.max(0, 3 - ageDays);
+  if (left < 1) return "clears today";
+  return `clears in ${Math.ceil(left)}d`;
+}
+
 export function MyCapturesCard({ captures }: { captures: MyCapture[] }) {
   if (!captures || captures.length === 0) return null;
   return (
     <section className="mb-8">
-      <h2 className="mb-1 text-base font-semibold text-neutral-800">🎙 My captures</h2>
-      <p className="mb-3 text-sm text-neutral-500">Voice notes you recorded — play them, turn one into an estimate, or file it to a job.</p>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h2 className="text-base font-semibold text-neutral-800">🎙 My captures</h2>
+        <Link href="/studio" className="text-xs font-medium text-brand-700 hover:underline">Open Studio →</Link>
+      </div>
+      <p className="mb-3 text-sm text-neutral-500">Voice notes you recorded — play them, turn one into an estimate, or file it to a job. <Link href="/studio" className="text-brand-700 hover:underline">Studio</Link> has your full inbox + filed history.</p>
       <ul className="space-y-2">
         {captures.map((c) => <CaptureRow key={c.id} c={c} />)}
       </ul>
@@ -28,7 +39,7 @@ export function MyCapturesCard({ captures }: { captures: MyCapture[] }) {
   );
 }
 
-function CaptureRow({ c }: { c: MyCapture }) {
+export function CaptureRow({ c, inbox = false }: { c: MyCapture; inbox?: boolean }) {
   const router = useRouter();
   const [attaching, setAttaching] = useState(false);
   const [job, setJob] = useState("");
@@ -47,6 +58,15 @@ function CaptureRow({ c }: { c: MyCapture }) {
     });
   }
 
+  function remove() {
+    setErr(null);
+    start(async () => {
+      const r = await discardRecording(c.id);
+      if (!r.ok) setErr(r.error);
+      else router.refresh();
+    });
+  }
+
   return (
     <li className="rounded-2xl border border-neutral-200 bg-white p-4">
       <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
@@ -54,6 +74,7 @@ function CaptureRow({ c }: { c: MyCapture }) {
         <span>{when(c.created_at)}</span>
         {c.duration_ms ? <><span>·</span><span>{Math.round(c.duration_ms / 1000)}s</span></> : null}
         {c.label ? <><span>·</span><span className="font-medium text-neutral-700">{c.label}</span></> : null}
+        {inbox ? <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">{clearsIn(c.created_at)}</span> : null}
         <span className="ml-auto"><RecordingPlayer id={c.id} /></span>
       </div>
 
@@ -92,6 +113,12 @@ function CaptureRow({ c }: { c: MyCapture }) {
             <button type="button" onClick={() => { setAttaching(false); setErr(null); }} className="text-xs text-neutral-500 hover:underline">cancel</button>
           </span>
         )}
+        {inbox && !attaching ? (
+          <button type="button" onClick={remove} disabled={pending}
+            className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+            Remove
+          </button>
+        ) : null}
         {done ? <span className="text-xs font-medium text-emerald-700">{done}</span> : null}
         {err ? <span className="text-xs text-red-700">{err}</span> : null}
       </div>
