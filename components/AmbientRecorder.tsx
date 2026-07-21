@@ -307,7 +307,7 @@ export function AmbientRecorder({ isOwner = false }: { isOwner?: boolean }) {
   ) : null;
 
   return (
-    <div className="fixed right-4 top-28 z-[55] flex flex-col items-end gap-1.5 print:hidden">
+    <div className="flex flex-col items-end gap-1.5">
       {inConversation ? (
         <button
           type="button"

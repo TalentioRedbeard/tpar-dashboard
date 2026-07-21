@@ -11,6 +11,7 @@ import { InstallPrompt } from "../components/InstallPrompt";
 import { ImpersonationBanner } from "../components/ImpersonationBanner";
 import { GlobalRecorder } from "../components/GlobalRecorder";
 import { AmbientRecorder } from "../components/AmbientRecorder";
+import { DraggableFloat } from "../components/DraggableFloat";
 import { isOwner } from "../lib/admin";
 
 const geistSans = Geist({
@@ -91,14 +92,24 @@ export default async function RootLayout({
         {user && <InstallPrompt />}
         {user ? (
           <>
-            {/* Quick-Record button — hidden per-user via Settings (hide_quick_recorder). */}
+            {/* Quick-Record button — hidden per-user via Settings (hide_quick_recorder).
+                Both recorders are DRAGGABLE (grip top-left) so they never sit over page
+                action buttons or the "Exit view-as" banner; position is per-device. */}
             {!me?.tech?.hide_quick_recorder && (
-              <GlobalRecorder
-                isOwner={isOwner(user.email)}
-                clockedInJobId={clock?.state === "clocked-in" ? clock.hcp_job_id : null}
-              />
+              <DraggableFloat storageKey="tpar-rec-quick" defaultTop={64} z={60}>
+                <GlobalRecorder
+                  isOwner={isOwner(user.email)}
+                  clockedInJobId={clock?.state === "clocked-in" ? clock.hcp_job_id : null}
+                />
+              </DraggableFloat>
             )}
-            <AmbientRecorder isOwner={isOwner(user.email)} />
+            {/* AmbientRecorder renders only for the owner — wrap only then, else the
+                draggable grip would float with no content behind it. */}
+            {isOwner(user.email) && (
+              <DraggableFloat storageKey="tpar-rec-ambient" defaultTop={112} z={55}>
+                <AmbientRecorder isOwner />
+              </DraggableFloat>
+            )}
           </>
         ) : null}
       </body>
