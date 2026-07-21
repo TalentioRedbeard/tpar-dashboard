@@ -690,7 +690,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             hcpCustomerId={customerId}
             appointmentId={null}
             firedTriggers={firedTriggers}
-            canWrite={canWrite}
+            canWrite={canWrite || canEdit}
             briefing={briefing}
             hcpWorkStatus={jobRaw?.status ?? null}
           />

@@ -120,7 +120,9 @@ interface FireTriggerArgs {
 
 async function fireJobTrigger(args: FireTriggerArgs): Promise<TriggerResult> {
   const me = await getCurrentTech();
-  if (!me?.canWrite) return { ok: false, error: "No write access." };
+  // canWrite = admin|tech; managers (isManager) can also update job triggers
+  // (Danny 2026-07-21) — they run jobs from dispatch and need the actuator too.
+  if (!me?.canWrite && !me?.isManager) return { ok: false, error: "No write access." };
 
   const supabase = db();
 
