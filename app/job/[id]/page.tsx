@@ -17,6 +17,7 @@ import { FiredTriggersList } from "./FiredTriggersList";
 import { CustomerBasicsEditor, type CustomerBasicsInitial } from "../../../components/CustomerBasicsEditor";
 import { JobBasicsEditor, type JobBasicsInitial } from "../../../components/JobBasicsEditor";
 import { getAssignableTechs, type AssignableTech } from "./job-edit-actions";
+import { HcpJobNoteBox } from "../../../components/HcpJobNoteBox";
 import { JobBriefingCard } from "../../../components/JobBriefingCard";
 import { AddJobLineItem } from "../../../components/AddJobLineItem";
 import { RefreshFromHcpButton } from "../../../components/RefreshFromHcpButton";
@@ -769,7 +770,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             booking arrives via the vendor's portal and the scope is logged into
             the HCP note, NOT as a captured call/text. Surface it up top so the
             tech sees scope + PO# + contact on arrival without digging. */}
-        {jobRaw?.hcp_notes || estRaw?.hcp_notes ? (
+        {jobRaw?.hcp_notes || estRaw?.hcp_notes || canWrite || canEdit ? (
           <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
             <div className="mb-1.5 flex items-center gap-2">
               <span className="text-base leading-none">📋</span>
@@ -785,6 +786,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 {estRaw.hcp_notes}
               </p>
             ) : null}
+            {!jobRaw?.hcp_notes && !estRaw?.hcp_notes ? (
+              <p className="text-xs text-amber-700/70">No Housecall Pro notes on this job yet.</p>
+            ) : null}
+            {canWrite || canEdit ? <HcpJobNoteBox hcpJobId={id} /> : null}
           </div>
         ) : null}
         {/* Job site (Street View + map + directions + call) lives in the rail now. */}

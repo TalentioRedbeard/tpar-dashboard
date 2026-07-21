@@ -14,9 +14,12 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./supabase";
-import { requireWriter, requireResolver } from "./current-tech";
+import { requireWriter, requireResolver, getCurrentTech } from "./current-tech";
+import { techWorkedJob } from "./tech-scope";
 
 const MAX_NOTE_LEN = 10_000;
+const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 export type AddNoteResult =
   | { ok: true }
@@ -61,6 +64,48 @@ export async function addJobNote(formData: FormData): Promise<AddNoteResult> {
     body,
   });
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/job/${jobId}`);
+  return { ok: true };
+}
+
+// Post a note INTO Housecall Pro (Danny 2026-07-21). HCP job notes are append-only
+// entries, so this ADDS one via the hcp-add-job-note edge fn; it mirrors back as
+// hcp_jobs_raw.hcp_notes on the next webhook/sync. Distinct from addJobNote (which
+// records a TPAR-local job_notes row). Any operator (admin|tech|manager) can post —
+// job notes are normal documentation.
+export async function postJobNoteToHcp(input: { hcp_job_id: string; content: string }): Promise<AddNoteResult> {
+  const jobId = (input.hcp_job_id ?? "").trim();
+  const content = (input.content ?? "").trim();
+  if (!jobId) return { ok: false, error: "missing hcp_job_id" };
+  if (!content) return { ok: false, error: "note content required" };
+  if (content.length > MAX_NOTE_LEN) return { ok: false, error: `note too long (>${MAX_NOTE_LEN} chars)` };
+
+  const me = await getCurrentTech().catch(() => null);
+  if (!me) return { ok: false, error: "Not signed in." };
+  if (!(me.canWrite || me.isManager)) return { ok: false, error: "No write access." };
+  // Per-job scope: admin|manager may note ANY job; a tech only jobs they worked
+  // (jobs_master.assigned_employees, the canonical rule). Server actions are
+  // directly invokable HTTP endpoints, so THIS — not the UI — is the boundary.
+  if (!me.isAdmin && !me.isManager) {
+    const worked = await techWorkedJob(me.tech?.hcp_employee_id, jobId);
+    if (!worked) return { ok: false, error: "You can only add notes to jobs you've worked." };
+  }
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return { ok: false, error: "Server isn't configured to write to HCP." };
+  const actor = me.tech?.tech_short_name ?? me.email ?? "app";
+
+  let res: Response;
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/hcp-add-job-note`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_ROLE_KEY}` },
+      body: JSON.stringify({ hcp_job_id: jobId, content, actor }),
+    });
+  } catch (e) {
+    return { ok: false, error: `Couldn't reach HCP: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  if (!res.ok || !j?.ok) return { ok: false, error: j?.error ?? `HCP note failed (${res.status}).` };
 
   revalidatePath(`/job/${jobId}`);
   return { ok: true };
