@@ -7,6 +7,9 @@
 import { PageShell } from "../../components/PageShell";
 import { GalleryGrid } from "../../components/GalleryGrid";
 import { GalleryFilter } from "../../components/GalleryFilter";
+import { GalleryUploadPanel } from "../../components/GalleryUploadPanel";
+import { getRecentJobs, type RecentJobOption } from "../photos/actions";
+import { getCurrentState as getClockState, type CurrentClockState } from "../time/actions";
 import { ReceiptsBrowser } from "../../components/ReceiptsBrowser";
 import { getCurrentTech } from "../../lib/current-tech";
 import { searchReceipts } from "../../lib/receipt-browse-actions";
@@ -78,6 +81,14 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
         backHref="/"
         backLabel="Home"
       >
+        {me.canWrite ? (
+          <div className="mb-4">
+            <Link href="/photos"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+              📷 Take or add a photo →
+            </Link>
+          </div>
+        ) : null}
         {isOffice ? (
           <div className="mb-4">
             <Link href="/gallery?cat=receipts"
@@ -141,6 +152,22 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
     else { title = "Photos · estimate"; }
   }
 
+  // Upload/take-a-photo affordance — the job gallery must let a tech ADD a photo,
+  // not just view (Danny 2026-07-22). Reuses the /photos pipeline, pre-scoped to
+  // this job. Only when the viewer can write + is authorized for the job.
+  const isJobScope = scope === "job" || scope === "segment";
+  let uploadProps: { recentJobs: RecentJobOption[]; clockedJobId: string | null } | null = null;
+  if (isJobScope && !unauthorized && me.canWrite) {
+    const [recentJobs, clockState] = await Promise.all([
+      getRecentJobs({ limit: 30 }).catch(() => [] as RecentJobOption[]),
+      me.tech ? getClockState().catch(() => null) : Promise.resolve(null),
+    ]);
+    const clockedJobId = clockState && clockState.state === "clocked-in"
+      ? (clockState as Extract<CurrentClockState, { state: "clocked-in" }>).hcp_job_id
+      : null;
+    uploadProps = { recentJobs, clockedJobId };
+  }
+
   // Filter tabs (the "filterable options"). Only show what we can target.
   const tabs: Array<{ label: string; scope: Scope; id: string }> = [];
   if (scope === "job" || scope === "segment") {
@@ -160,6 +187,22 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
       backHref={backHref}
       backLabel="Back"
     >
+      {uploadProps ? (
+        <GalleryUploadPanel
+          canWrite={me.canWrite}
+          recentJobs={uploadProps.recentJobs}
+          defaultJobId={id}
+          clockedJobId={uploadProps.clockedJobId}
+        />
+      ) : null}
+
+      {isJobScope && !unauthorized ? (
+        <details className="mb-4 rounded-xl border border-neutral-200 bg-white p-3">
+          <summary className="cursor-pointer select-none text-sm font-medium text-neutral-700">🔍 Find another job&rsquo;s photos</summary>
+          <div className="mt-3"><GalleryFilter isOffice={isOffice} /></div>
+        </details>
+      ) : null}
+
       {tabs.length > 1 ? (
         <div className="mb-4 flex flex-wrap gap-2">
           {tabs.map((t) => {
