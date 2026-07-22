@@ -8,7 +8,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RecordingPlayer } from "./RecordingPlayer";
-import { refileCapture, discardRecording } from "../lib/recordings";
+import { refileCapture, discardRecording, updateRecordingTranscript, renameRecording } from "../lib/recordings";
 import type { MyCapture } from "../lib/capture-types";
 
 function when(iso: string): string {
@@ -47,7 +47,30 @@ export function CaptureRow({ c, inbox = false }: { c: MyCapture; inbox?: boolean
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
-  const transcribing = !c.transcript && c.transcript_status !== "blank";
+  // "Transcribing…" only while genuinely in flight — an allowlist, not a deny of a
+  // single terminal status. Terminal states (blank/edited/failed/music/…) are NOT
+  // transcribing, so an emptied/edited capture never shows a false spinner.
+  const transcribing = !c.transcript && (c.transcript_status === null || c.transcript_status === "pending_local");
+
+  const [editing, setEditing] = useState(false);
+  const [eLabel, setELabel] = useState(c.label ?? "");
+  const [eTranscript, setETranscript] = useState(c.transcript ?? "");
+  function openEdit() { setELabel(c.label ?? ""); setETranscript(c.transcript ?? ""); setErr(null); setEditing(true); }
+  function saveEdit() {
+    setErr(null);
+    start(async () => {
+      if (eLabel.trim() !== (c.label ?? "").trim()) {
+        const r = await renameRecording(c.id, eLabel);
+        if (!r.ok) { setErr(r.error); return; }
+      }
+      if (eTranscript.trim() !== (c.transcript ?? "").trim()) {
+        const r = await updateRecordingTranscript(c.id, eTranscript);
+        if (!r.ok) { setErr(r.error); return; }
+      }
+      setEditing(false);
+      router.refresh();
+    });
+  }
 
   function attach() {
     setErr(null);
@@ -119,9 +142,39 @@ export function CaptureRow({ c, inbox = false }: { c: MyCapture; inbox?: boolean
             Remove
           </button>
         ) : null}
+        {!editing && !attaching ? (
+          <button type="button" onClick={openEdit}
+            className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100">
+            ✎ Edit
+          </button>
+        ) : null}
         {done ? <span className="text-xs font-medium text-emerald-700">{done}</span> : null}
         {err ? <span className="text-xs text-red-700">{err}</span> : null}
       </div>
+
+      {editing ? (
+        <div className="mt-3 space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-neutral-500">Label</label>
+            <input value={eLabel} onChange={(e) => setELabel(e.target.value)} disabled={pending} placeholder="a short title (optional)"
+              className="w-full rounded-md border border-neutral-300 px-2 py-1 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-neutral-500">Transcript</label>
+            <textarea value={eTranscript} onChange={(e) => setETranscript(e.target.value)} disabled={pending} rows={4}
+              placeholder="correct the transcript…"
+              className="w-full resize-y rounded-md border border-neutral-300 px-2 py-1 text-sm" />
+            <p className="mt-1 text-[10px] text-neutral-400">A saved correction won’t be overwritten by a late auto-transcription.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={saveEdit} disabled={pending}
+              className="rounded-md bg-brand-700 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-50">
+              {pending ? "Saving…" : "Save"}
+            </button>
+            <button type="button" onClick={() => setEditing(false)} disabled={pending} className="text-xs text-neutral-500 hover:underline">cancel</button>
+          </div>
+        </div>
+      ) : null}
     </li>
   );
 }

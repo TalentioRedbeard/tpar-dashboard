@@ -424,6 +424,53 @@ export async function discardRecording(id: string): Promise<{ ok: true } | { ok:
   return { ok: true };
 }
 
+// ── 7. Edit a capture (Studio Seg 5) — rename + transcript-correct ───────────
+// Creator (created_by_uid) or leadership only. Audio trim is a later phase.
+
+// Correct/replace the transcript text. Sets transcript_status='edited' so the
+// on-prem worker (which processes transcript_status='pending_local') won't clobber
+// a manual correction with a late auto-transcription.
+export async function updateRecordingTranscript(id: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  const sess = await getSessionUser().catch(() => null);
+  const supa = db();
+  const { data: rec } = await supa.from("recordings").select("created_by_uid").eq("id", id).maybeSingle();
+  if (!rec) return { ok: false, error: "recording not found" };
+  const mine = !!sess?.id && rec.created_by_uid === sess.id;
+  if (!mine && !me.isAdmin && !me.isManager) return { ok: false, error: "not your recording" };
+  const clean = String(text ?? "").trim().slice(0, 8000);
+  // A non-empty correction → 'edited' (takes it out of the worker's pending_local
+  // queue so a late auto-transcription won't clobber it). CLEARING it → 'blank' (a
+  // terminal status, not 'edited'+null) so it doesn't get stuck showing "Transcribing…"
+  // forever AND stays out of the queue. Never leave (null, 'edited').
+  const { error } = await supa.from("recordings")
+    .update({ transcript: clean || null, transcript_status: clean ? "edited" : "blank" })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/me");
+  revalidatePath("/studio");
+  return { ok: true };
+}
+
+// Rename/relabel a capture.
+export async function renameRecording(id: string, label: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await getCurrentTech();
+  if (!me) return { ok: false, error: "not signed in" };
+  const sess = await getSessionUser().catch(() => null);
+  const supa = db();
+  const { data: rec } = await supa.from("recordings").select("created_by_uid").eq("id", id).maybeSingle();
+  if (!rec) return { ok: false, error: "recording not found" };
+  const mine = !!sess?.id && rec.created_by_uid === sess.id;
+  if (!mine && !me.isAdmin && !me.isManager) return { ok: false, error: "not your recording" };
+  const clean = String(label ?? "").trim().slice(0, 200);
+  const { error } = await supa.from("recordings").update({ label: clean || null }).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/me");
+  revalidatePath("/studio");
+  return { ok: true };
+}
+
 // Short-lived signed URL for playing a recording. Signed-in users only; the
 // audio is otherwise inaccessible (private bucket).
 export async function getRecordingSignedUrl(recordingId: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
