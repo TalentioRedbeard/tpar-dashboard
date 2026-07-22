@@ -11,6 +11,7 @@ import { PageShell } from "@/components/PageShell";
 import { MultiOptionEstimateBuilder } from "@/components/MultiOptionEstimateBuilder";
 import { getSessionUser } from "@/lib/supabase-server";
 import { getCurrentTech } from "@/lib/current-tech";
+import { techWorkedJob, techWorkedCustomer } from "@/lib/tech-scope";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 export const metadata = { title: "New estimate · TPAR-DB" };
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function NewMultiOptionEstimatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ customer?: string; job?: string; appointment?: string }>;
+  searchParams: Promise<{ customer?: string; job?: string; appointment?: string; recording?: string }>;
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/login?from=/estimate/new");
@@ -30,6 +31,7 @@ export default async function NewMultiOptionEstimatePage({
   const sp = await searchParams;
   const customerParam = (sp.customer ?? "").trim();
   const jobParam = (sp.job ?? "").trim();
+  const recordingParam = (sp.recording ?? "").trim();
   const appointmentParam = (sp.appointment ?? "").trim();
 
   const supa = db();
@@ -105,6 +107,37 @@ export default async function NewMultiOptionEstimatePage({
         || "(customer)";
       initialCustomer = { hcpCustomerId: c.hcp_customer_id as string, name: nm };
       backHref = `/customer/${customerParam}`;
+    }
+  }
+
+  // Studio Seg 4 — "Build estimate from this recording". Seed the builder's freeform
+  // context with the recording's TRANSCRIPT so it auto-drafts (human-in-the-loop; the
+  // tech reviews/edits before anything is priced). Landmine-safe: transcript text goes
+  // in as freeform (never a voice_note reference against tech_voice_notes).
+  if (recordingParam && initialCustomer) {
+    const { data: rec } = await supa
+      .from("recordings")
+      .select("transcript, target_kind, target_ref")
+      .eq("id", recordingParam)
+      .maybeSingle();
+    const matchesJob = !!jobParam && rec?.target_kind === "job" && rec?.target_ref === jobParam;
+    const matchesCustomer = rec?.target_kind === "customer" && rec?.target_ref === initialCustomer.hcpCustomerId;
+    const transcript = (rec?.transcript as string | null)?.trim();
+    // AUTHORIZE THE REQUESTING USER — binding the recording to the URL job is not
+    // enough (a leaked job-id + recording UUID would otherwise let an out-of-scope
+    // tech read the transcript, bypassing the job page's techWorkedJob gate). A tech
+    // may only seed from a recording on a job/customer they actually worked; admin|
+    // manager see all.
+    let authorized = !!(me?.isAdmin || me?.isManager);
+    if (!authorized && me?.dashboardRole === "tech" && me.tech?.hcp_employee_id) {
+      if (matchesJob && jobParam) authorized = await techWorkedJob(me.tech.hcp_employee_id, jobParam);
+      else if (matchesCustomer) authorized = await techWorkedCustomer(me.tech.hcp_employee_id, initialCustomer.hcpCustomerId);
+    }
+    if (transcript && (matchesJob || matchesCustomer) && authorized) {
+      const seed = `Voice note (transcript):\n${transcript}`;
+      autoSeed = autoSeed
+        ? { ...autoSeed, freeform: [autoSeed.freeform, seed].filter(Boolean).join("\n\n") }
+        : { freeform: seed };
     }
   }
 

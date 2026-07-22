@@ -1246,6 +1246,16 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                     <span className="ml-auto"><RecordingPlayer id={r.id} /></span>
                   </div>
                   {r.transcript ? <p className="whitespace-pre-wrap text-sm text-neutral-800">{r.transcript}</p> : null}
+                  {r.transcript && canWrite ? (
+                    <div className="mt-2">
+                      <Link
+                        href={`/estimate/new?job=${id}&recording=${r.id}`}
+                        className="inline-flex items-center gap-1 rounded-md bg-brand-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-800"
+                      >
+                        🧾 Build estimate from this
+                      </Link>
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>
