@@ -8,6 +8,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RecordingPlayer } from "./RecordingPlayer";
+import { SendCaptureMenu } from "./SendCaptureMenu";
 import { refileCapture, discardRecording, updateRecordingTranscript, renameRecording } from "../lib/recordings";
 import type { MyCapture } from "../lib/capture-types";
 
@@ -148,6 +149,7 @@ export function CaptureRow({ c, inbox = false }: { c: MyCapture; inbox?: boolean
             ✎ Edit
           </button>
         ) : null}
+        {!editing && !attaching ? <SendCaptureMenu recordingId={c.id} /> : null}
         {done ? <span className="text-xs font-medium text-emerald-700">{done}</span> : null}
         {err ? <span className="text-xs text-red-700">{err}</span> : null}
       </div>
