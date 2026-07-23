@@ -44,10 +44,13 @@ export type Line = {
   // When set, it overrides the labor/materials cost-plus formula for the sell
   // price. Empty string = revert to the formula (lineModified).
   priceOverride: string;
+  // Customer is supplying this part/fixture — install labor-only, no material
+  // cost/markup, and the estimate auto-carries a "no warranty" stipulation.
+  customerSupplied: boolean;
 };
 type Opt = { name: string; lines: Line[] };
 
-const blankLine = (): Line => ({ q1: "", q2: "", q3: "", item: "", customName: "", hours: "4", crew: "2", materials: "0", description: "", modifierKeys: [], priceOverride: "" });
+const blankLine = (): Line => ({ q1: "", q2: "", q3: "", item: "", customName: "", hours: "4", crew: "2", materials: "0", description: "", modifierKeys: [], priceOverride: "", customerSupplied: false });
 const blankOpt = (i: number): Opt => ({ name: `Option ${i + 1}`, lines: [blankLine()] });
 
 // An untouched blank line (still at blankLine() defaults) — safe to replace
@@ -55,7 +58,7 @@ const blankOpt = (i: number): Opt => ({ name: `Option ${i + 1}`, lines: [blankLi
 const isPristineLine = (l: Line): boolean =>
   !l.q1 && !l.q2 && !l.q3 && !l.item && !l.customName.trim() && !l.description.trim()
   && l.hours === "4" && l.crew === "2" && l.materials === "0"
-  && l.modifierKeys.length === 0 && l.priceOverride === "";
+  && l.modifierKeys.length === 0 && l.priceOverride === "" && !l.customerSupplied;
 
 function chosenName(l: Line): string { return l.item === CUSTOM ? l.customName.trim() : l.item; }
 const linePrice = (l: Line): number => linePriceDollars(l.hours, l.crew, l.materials);
@@ -281,6 +284,7 @@ export function MultiOptionEstimateBuilder({
         // Carry the engine's value-based price as the sell-price override; the
         // hours/crew/materials stay as the visible cost basis beneath it.
         priceOverride: l.price || "",
+        customerSupplied: false,
       })),
     })));
     if (draftNote && !note.trim()) setNote(draftNote);
@@ -421,7 +425,7 @@ export function MultiOptionEstimateBuilder({
       // unit_cost stays the raw materials cost. (matches /estimate-draft.)
       const chosen = o.lines.filter((l) => chosenName(l));
       const oc = computeOption(o);
-      const line_items: Array<{ name: string; description?: string; quantity: number; unit_price_cents: number; unit_cost_cents: number; labor_hours: number }> =
+      const line_items: Array<{ name: string; description?: string; quantity: number; unit_price_cents: number; unit_cost_cents: number; labor_hours: number; customer_supplied?: boolean }> =
         chosen.map((l) => ({
           name: chosenName(l),
           description: l.description.trim() || undefined,
@@ -429,9 +433,12 @@ export function MultiOptionEstimateBuilder({
           // Sell price honors the value-based override (engine suggested_price /
           // hand-entered); falls back to the modifier-adjusted cost-plus formula.
           unit_price_cents: Math.round(lineSellPrice(o, l) * 100),
-          unit_cost_cents: materialsCostCents(l.materials),
+          // Customer-supplied → no material cost basis (we didn't buy it); the
+          // action also enforces this and tags the line + estimate stipulation.
+          unit_cost_cents: l.customerSupplied ? 0 : materialsCostCents(l.materials),
           // Carried only for the first-class bid_estimate_lines record (not HCP).
           labor_hours: Math.max(0, parseFloat(l.hours) || 0),
+          ...(l.customerSupplied ? { customer_supplied: true } : {}),
         }));
       // Equipment / permit modifiers → their own transparent line items so the
       // customer sees the charge and margin reporting treats it as cost.
@@ -707,6 +714,18 @@ export function MultiOptionEstimateBuilder({
                   <label className="block"><span className="text-xs font-medium text-neutral-600">Price $ (value-based — clear to use labor formula)</span>
                     <input type="number" min="0" step="1" value={l.priceOverride} onChange={(e) => updateLine(oi, li, { priceOverride: e.target.value })} placeholder="(uses formula)" className={inputCls} /></label>
                 </div>
+
+                {/* Customer-provided part → labor-only, no material cost, and the
+                    estimate auto-carries a "no warranty" stipulation. Checking it
+                    also zeroes Materials $ so the price + cost basis stay honest. */}
+                <label className="mt-2 flex items-start gap-2 text-xs text-neutral-700">
+                  <input type="checkbox" checked={l.customerSupplied}
+                    onChange={(e) => updateLine(oi, li, e.target.checked ? { customerSupplied: true, materials: "0" } : { customerSupplied: false })}
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-300" />
+                  <span>Customer provides this part
+                    <span className="block text-[11px] text-neutral-400">Labor-only — no material cost or markup. Adds &ldquo;customer-provided part — no warranty&rdquo; to the estimate automatically.</span>
+                  </span>
+                </label>
 
                 {/* Approved-BOM materials hint — deterministic standard-materials
                     cost for this service (service_material_estimate RPC). A

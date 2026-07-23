@@ -107,12 +107,14 @@ function toBuilderLine(
     return {
       q1: match.q1, q2: match.q2, q3: match.q3, item: match.item, customName: "",
       hours, crew, materials, description: p.description, modifierKeys, priceOverride,
+      customerSupplied: false,
     };
   }
   return {
     q1: "", q2: "", q3: "", item: CUSTOM,
     customName: (p.itemName || p.grounding.pricebookItemName || "Line item").trim().slice(0, 255),
     hours, crew, materials, description: p.description, modifierKeys, priceOverride,
+    customerSupplied: false,
   };
 }
 
@@ -130,6 +132,7 @@ function feeToBuilderLine(f: ProposedFee): Line {
     description: `${kindWord} from the "Price it with me" proposal — charged once for this option.`,
     modifierKeys: [],
     priceOverride: String(f.amountDollars),
+    customerSupplied: false,
   };
 }
 

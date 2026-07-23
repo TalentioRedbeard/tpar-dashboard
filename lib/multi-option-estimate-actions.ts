@@ -57,7 +57,19 @@ export type EstLineInput = {
   // Labor hours for this line (carried for the first-class bid_estimate_lines
   // record only — NOT sent to HCP). create-estimate-direct ignores it.
   labor_hours?: number;
+  // Customer is supplying this fixture/part (Danny 2026-07-22: "customer-provided
+  // part — no warranty" should be automatic on estimates). When true: our cost
+  // basis is forced to 0 (we didn't buy it), the line description is tagged, and
+  // a whole-estimate no-warranty stipulation is auto-appended to the message.
+  customer_supplied?: boolean;
 };
+
+// Whole-estimate stipulation auto-added when any line is customer-supplied. In
+// Danny's voice: warranty covers our workmanship + the parts WE supply; a part
+// the customer brings is installed labor-only and carries no warranty from us.
+const CUSTOMER_SUPPLIED_STIPULATION =
+  "Customer-provided parts: any fixture or part supplied by the customer is installed labor-only and carries no warranty from us. Our warranty covers our workmanship and the parts we supply.";
+const NO_WARRANTY_LINE_TAG = "Customer-provided part — no warranty on the part itself.";
 export type EstOptionInput = { name: string; line_items: EstLineInput[] };
 
 export type CreateMultiOptionInput = {
@@ -115,9 +127,20 @@ export async function createMultiOptionEstimate(input: CreateMultiOptionInput): 
           quantity: Number(li.quantity),
           unit_price_cents: Number(li.unit_price_cents),
         };
-        if (li.description && li.description.trim()) out.description = li.description.trim().slice(0, 1000);
+        let desc = (li.description && li.description.trim()) ? li.description.trim() : "";
         if (Number.isInteger(li.unit_cost_cents)) out.unit_cost_cents = Number(li.unit_cost_cents);
         if (typeof li.labor_hours === "number" && Number.isFinite(li.labor_hours)) out.labor_hours = li.labor_hours;
+        if (li.customer_supplied) {
+          out.customer_supplied = true;
+          out.unit_cost_cents = 0; // we didn't buy the part — no material cost/markup
+          // Reserve room for the tag so a long scope never truncates the no-warranty
+          // note off the end when we slice to HCP's 1000-char description cap.
+          const tag = `⚠ ${NO_WARRANTY_LINE_TAG}`;
+          const sep = desc ? "\n\n" : "";
+          const room = Math.max(0, 1000 - tag.length - sep.length);
+          desc = `${desc.slice(0, room)}${sep}${tag}`;
+        }
+        if (desc) out.description = desc.slice(0, 1000);
         return out;
       }),
   }));
@@ -151,7 +174,20 @@ export async function createMultiOptionEstimate(input: CreateMultiOptionInput): 
   const assignedEmployeeIds = (input.assignedEmployeeIds ?? []).filter((s) => typeof s === "string" && s.trim());
   if (assignedEmployeeIds.length > 0) body.assigned_employee_ids = assignedEmployeeIds;
   if (input.note && input.note.trim()) body.note = input.note.trim().slice(0, 8000);
-  if (input.message && input.message.trim()) body.message = input.message.trim().slice(0, 8000);
+
+  // Auto-stipulation: if any surviving line is customer-supplied, ensure the
+  // customer-facing message carries the no-warranty stipulation — automatically,
+  // whether or not anyone ran "Assemble Notes" (Danny 2026-07-22). Skip if the
+  // message already says as much, so we never double up.
+  const anyCustomerSupplied = options.some((o) => o.line_items.some((li) => li.customer_supplied === true));
+  let message = (input.message && input.message.trim()) ? input.message.trim() : "";
+  // Dedup against the ACTUAL stipulation text (a distinctive substring), not loose
+  // phrasing — otherwise an innocent "the customer provided the faucet" in the message
+  // would suppress the auto-stipulation, defeating the whole "automatic" intent.
+  if (anyCustomerSupplied && !message.toLowerCase().includes("labor-only and carries no warranty")) {
+    message = message ? `${message}\n\n${CUSTOMER_SUPPLIED_STIPULATION}` : CUSTOMER_SUPPLIED_STIPULATION;
+  }
+  if (message) body.message = message.slice(0, 8000);
 
   const r = await fetch(`${SUPABASE_URL}/functions/v1/create-estimate-direct`, {
     method: "POST",
