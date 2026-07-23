@@ -3,7 +3,11 @@
 // Inventory 2c-2 — the self-maintenance Review queue. Surfaces the grey-band
 // vendor-SKU candidates (match_status='needs_review') for a one-tap ruling:
 // confirm the proposed link, reject, or accept it as a new catalog part. A
-// confirm is PERMANENT (the matcher never re-asks). Leadership-gated.
+// confirm is PERMANENT (the matcher never re-asks). Open to any staff role —
+// technicians curate the catalog on slow days (Danny 2026-07-23) — and every
+// ruling is attributed (confirmed_by/confirmed_at) so it's accountable + undoable.
+// No cost/price is exposed here (descriptions + match only); the Market/catalog
+// surfaces that show vendor cost stay leadership-only.
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/supabase";
@@ -22,7 +26,14 @@ export type ReviewCandidate = {
 
 async function gate() {
   const me = await getCurrentTech();
-  return me && (me.isAdmin || me.isManager) ? me : null;
+  // Any real staff role (admin, manager, or tech) may curate — techs verify
+  // cross-vendor matches / add distinct parts. Not open to unauthenticated users.
+  return me && (me.isAdmin || me.isManager || me.dashboardRole === "tech") ? me : null;
+}
+
+// Short attribution label for who ruled on a match.
+function actorLabel(me: NonNullable<Awaited<ReturnType<typeof gate>>>): string {
+  return me.tech?.tech_short_name ?? me.realEmail ?? me.email;
 }
 
 export async function loadReviewQueue(): Promise<{ items: ReviewCandidate[]; proposable: number; noMatch: number; total: number } | null> {
@@ -55,20 +66,22 @@ export async function loadReviewQueue(): Promise<{ items: ReviewCandidate[]; pro
 
 // Confirm the proposed link — permanent.
 export async function confirmCandidate(skuId: number): Promise<{ ok: boolean; error?: string }> {
-  if (!(await gate())) return { ok: false, error: "not authorized" };
+  const me = await gate();
+  if (!me) return { ok: false, error: "not authorized" };
   const supa = db();
   const { data: row } = await supa.from("inv_vendor_skus").select("item_id").eq("id", skuId).maybeSingle();
   if (!row?.item_id) return { ok: false, error: "no proposed item to confirm" };
-  const { error } = await supa.from("inv_vendor_skus").update({ match_status: "confirmed", match_confidence: 1 }).eq("id", skuId);
+  const { error } = await supa.from("inv_vendor_skus").update({ match_status: "confirmed", match_confidence: 1, confirmed_by: actorLabel(me), confirmed_at: new Date().toISOString() }).eq("id", skuId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/shopping");
   return { ok: true };
 }
 
 export async function rejectCandidate(skuId: number): Promise<{ ok: boolean; error?: string }> {
-  if (!(await gate())) return { ok: false, error: "not authorized" };
+  const me = await gate();
+  if (!me) return { ok: false, error: "not authorized" };
   const supa = db();
-  const { error } = await supa.from("inv_vendor_skus").update({ match_status: "rejected", item_id: null }).eq("id", skuId);
+  const { error } = await supa.from("inv_vendor_skus").update({ match_status: "rejected", item_id: null, confirmed_by: actorLabel(me), confirmed_at: new Date().toISOString() }).eq("id", skuId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/shopping");
   return { ok: true };
@@ -77,7 +90,8 @@ export async function rejectCandidate(skuId: number): Promise<{ ok: boolean; err
 // Accept an unrecognized SKU as a NEW catalog part (the catalog accretes). The
 // new item gets categorized by the nightly/backfill categorizer (category null).
 export async function createItemFromCandidate(skuId: number): Promise<{ ok: boolean; error?: string }> {
-  if (!(await gate())) return { ok: false, error: "not authorized" };
+  const me = await gate();
+  if (!me) return { ok: false, error: "not authorized" };
   const supa = db();
   const { data: cand } = await supa.from("inv_vendor_skus").select("id, vendor_description, vendor_sku").eq("id", skuId).maybeSingle();
   if (!cand) return { ok: false, error: "candidate not found" };
@@ -88,7 +102,7 @@ export async function createItemFromCandidate(skuId: number): Promise<{ ok: bool
     .insert({ canonical_name: cand.vendor_description, normalized_name: normalized, source: "review_new" })
     .select("id").single();
   if (insErr || !item) return { ok: false, error: insErr?.message ?? "create failed" };
-  const { error } = await supa.from("inv_vendor_skus").update({ item_id: item.id, match_status: "confirmed", match_confidence: 1 }).eq("id", skuId);
+  const { error } = await supa.from("inv_vendor_skus").update({ item_id: item.id, match_status: "confirmed", match_confidence: 1, confirmed_by: actorLabel(me), confirmed_at: new Date().toISOString() }).eq("id", skuId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/shopping");
   return { ok: true };
