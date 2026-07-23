@@ -7,7 +7,14 @@
 
 import { db } from "@/lib/supabase";
 import { getCurrentTech, requireManagement } from "@/lib/current-tech";
+import { notifyManagement } from "@/lib/notify-management";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+
+// M/D from a YYYY-MM-DD key, timezone-stable (noon-UTC anchor).
+function fmtDay(d: string): string {
+  return new Date(`${d}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "numeric", day: "numeric" });
+}
 
 export type TimeOffRow = {
   id: string;
@@ -62,6 +69,19 @@ export async function requestTimeOff(input: {
     requested_role: roleOf(me),
   });
   if (error) return { ok: false, error: error.message };
+
+  // Actively ping the office — a pending request only surfaces if someone opens
+  // /manage, and submitting used to notify nobody (the 7/23 request sat unseen).
+  // Fire-and-forget via after(): the row is already committed, so a slow Slack DM
+  // (each sendDM waits up to 15s) must never make the tech watch a spinner. after()
+  // runs the fan-out once the response is flushed, surviving the serverless lifecycle.
+  const who = me.tech?.tech_short_name ?? me.tech?.hcp_full_name ?? me.realEmail ?? me.email;
+  const range = end !== start ? `${fmtDay(start)}–${fmtDay(end)}` : fmtDay(start);
+  const dmText = `🏖️ *Time-off request* — ${who} requests ${range}` +
+    (input.reason?.trim() ? `\nReason: ${input.reason.trim().slice(0, 200)}` : "") +
+    `\nApprove or decline: https://tpar-dashboard.vercel.app/manage`;
+  after(() => notifyManagement({ text: dmText, context: "time-off-request" }));
+
   revalidatePath("/schedule");
   revalidatePath("/dispatch");
   revalidatePath("/manage");
