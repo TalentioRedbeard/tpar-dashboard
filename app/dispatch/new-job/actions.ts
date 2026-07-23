@@ -39,8 +39,12 @@ export async function createJob(formData: FormData): Promise<CreateJobResult> {
   if (Number.isNaN(startUtc.getTime())) return { ok: false, error: "Invalid date/time." };
   const endUtc = new Date(startUtc.getTime() + Math.max(15, duration_min) * 60_000);
 
+  // notify_customer is now a REAL field the edge fn forwards to HCP's
+  // schedule.notify_customer (default OFF). The old "no-notify" tag was
+  // cosmetic — HCP ignored it, so unchecking the box did nothing and the
+  // customer got auto-texted anyway. Keep an audit tag for visibility only.
   const tags = ["dispatch-created"];
-  if (!notify_customer) tags.push("no-notify");
+  if (notify_customer) tags.push("customer-notified");
 
   const body = {
     customer_id,
@@ -52,6 +56,7 @@ export async function createJob(formData: FormData): Promise<CreateJobResult> {
     tags,
     work_status: "scheduled",
     arrival_window_minutes,
+    notify_customer,
   };
 
   try {
@@ -201,33 +206,63 @@ export async function getTechDayLoad(dateChi: string): Promise<TechDayLoad[]> {
   return Array.from(byTech.values());
 }
 
+export type OpenEstimate = { id: string; status: string; value_cents: number };
 export type CustomerSnapshot = {
   lifetime_jobs: number;
   last_visit: string | null;
   last_tech: string | null;
+  // Open (not-yet-converted) estimates for this customer. A booked-fresh job does
+  // NOT carry an estimate's price/scope (Courtney segment-2 $0 bug, 2026-07-22), so
+  // the form warns the CSR to build the job from the estimate in HCP instead.
+  open_estimates: OpenEstimate[];
 };
 
+// "Open" = still actionable, not converted/lost. Matches the customer page's
+// open-estimates filter so the two surfaces agree.
+const OPEN_EST_STATUS = /^(pending|sent|draft|approved)$/i;
+
 // Compact history strip for the booking form so the CSR doesn't leave the screen
-// to answer "is this a repeat customer / when were they last here / who took it".
+// to answer "is this a repeat customer / when were they last here / who took it" —
+// and, since 2026-07-22, "does this customer already have an open estimate?".
 export async function getCustomerSnapshot(customerId: string): Promise<CustomerSnapshot | null> {
   const gate = await requireScheduler();
   if (!gate.ok) return null;
   const id = customerId.trim();
   if (!id) return null;
   const supa = db();
-  const { data } = await supa
-    .from("appointments_master")
-    .select("scheduled_start, tech_primary_name")
-    .eq("hcp_customer_id", id)
-    .is("deleted_at", null)
-    .order("scheduled_start", { ascending: false, nullsFirst: false })
-    .limit(300);
-  const rows = (data ?? []) as Array<{ scheduled_start: string | null; tech_primary_name: string | null }>;
+  const [apptRes, estRes] = await Promise.all([
+    supa
+      .from("appointments_master")
+      .select("scheduled_start, tech_primary_name")
+      .eq("hcp_customer_id", id)
+      .is("deleted_at", null)
+      .order("scheduled_start", { ascending: false, nullsFirst: false })
+      .limit(300),
+    supa
+      .from("hcp_estimates_raw")
+      .select("hcp_estimate_id, status, raw")
+      .eq("hcp_customer_id", id)
+      .order("last_synced_at", { ascending: false, nullsFirst: false })
+      .limit(20),
+  ]);
+  const rows = (apptRes.data ?? []) as Array<{ scheduled_start: string | null; tech_primary_name: string | null }>;
   const withDate = rows.find((r) => r.scheduled_start);
+
+  const open_estimates: OpenEstimate[] = ((estRes.data ?? []) as Array<{ hcp_estimate_id: string; status: string | null; raw: Record<string, unknown> | null }>)
+    .map((e) => {
+      const raw = e.raw ?? {};
+      const opts = Array.isArray(raw.options) ? raw.options as Array<Record<string, unknown>> : [];
+      const value_cents = opts.reduce((sum, o) => sum + (Number((o.total_amount as number | undefined) ?? 0) || 0), 0);
+      const status = String(e.status ?? raw.work_status ?? "");
+      return { id: e.hcp_estimate_id, status, value_cents };
+    })
+    .filter((e) => OPEN_EST_STATUS.test(e.status));
+
   return {
     lifetime_jobs: rows.length,
     last_visit: withDate?.scheduled_start ?? null,
     last_tech: withDate?.tech_primary_name ?? null,
+    open_estimates,
   };
 }
 

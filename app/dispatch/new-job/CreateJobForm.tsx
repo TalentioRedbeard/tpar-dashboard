@@ -14,7 +14,8 @@ type CustomerHit = {
 };
 type CreateJobResult = { ok: true; hcp_job_id: string } | { ok: false; error: string };
 type TechDayLoad = { tech_full_name: string; appts: Array<{ start: string; end: string | null; customer: string | null; status: string | null }> };
-type CustomerSnapshot = { lifetime_jobs: number; last_visit: string | null; last_tech: string | null };
+type OpenEstimate = { id: string; status: string; value_cents: number };
+type CustomerSnapshot = { lifetime_jobs: number; last_visit: string | null; last_tech: string | null; open_estimates?: OpenEstimate[] };
 
 type AdvisorJobInput = { description: string; customer_id?: string; customer_name?: string; address?: string; city?: string; date_chi: string; duration_min?: number };
 type AdvisorRec = { tech_short_name: string; suggested_start_chi: string; fit_score: number; why: string; concerns?: string };
@@ -228,6 +229,26 @@ export function CreateJobForm({
             )}
           </div>
         )}
+        {selectedCustomer && snapshot && snapshot.open_estimates && snapshot.open_estimates.length > 0 && (
+          <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <div className="font-semibold">
+              ⚠ This customer has {snapshot.open_estimates.length} open estimate{snapshot.open_estimates.length === 1 ? "" : "s"}
+              {snapshot.open_estimates.some((e) => /approved/i.test(e.status)) ? " (one approved)" : ""}.
+            </div>
+            <p className="mt-0.5 text-amber-800">
+              Booking a fresh job here <span className="font-medium">won&apos;t carry the estimate&apos;s price or scope</span> — it&apos;ll come in at $0.
+              To keep the pricing, convert the estimate to a job in Housecall Pro instead.
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {snapshot.open_estimates.slice(0, 4).map((e) => (
+                <li key={e.id} className="flex items-baseline justify-between gap-2">
+                  <a href={`/estimate/${e.id}`} target="_blank" rel="noreferrer" className="font-mono text-amber-900 hover:underline">{e.id.slice(0, 14)}…</a>
+                  <span className="tabular-nums">{e.value_cents > 0 ? `$${(e.value_cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"} · {e.status}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {selectedCustomer && selectedCustomer.addresses.length > 0 && (
@@ -362,9 +383,9 @@ export function CreateJobForm({
       </div>
 
       <label className="flex items-start gap-2 text-sm text-neutral-700">
-        <input type="checkbox" name="notify_customer" defaultChecked className="mt-0.5 h-4 w-4 rounded border-neutral-300" />
-        <span>Text the customer their appointment confirmation
-          <span className="block text-xs text-neutral-400">On by default — uncheck for internal or test bookings. Scheduling never texts on its own.</span>
+        <input type="checkbox" name="notify_customer" className="mt-0.5 h-4 w-4 rounded border-neutral-300" />
+        <span>Text the customer an appointment confirmation now
+          <span className="block text-xs text-neutral-400">Off by default — reach out personally first. Check this only to send Housecall Pro&apos;s confirmation text right away.</span>
         </span>
       </label>
 
