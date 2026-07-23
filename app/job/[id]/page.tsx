@@ -454,7 +454,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   let custBasics: CustomerBasicsInitial | null = null;
   if (canEdit && customerId) {
     const [rawRes, ovRes] = await Promise.all([
-      supabase.from("hcp_customers_raw").select("first_name, last_name, email, mobile_number, raw").eq("hcp_customer_id", customerId).maybeSingle(),
+      supabase.from("hcp_customers_raw").select("first_name, last_name, email, mobile_number, notifications_enabled, raw").eq("hcp_customer_id", customerId).maybeSingle(),
       supabase.from("customer_overrides").select("display_name_override, preferred_name, do_not_text, do_not_call").eq("hcp_customer_id", customerId).maybeSingle(),
     ]);
     const raw = (rawRes.data ?? {}) as Record<string, unknown>;
@@ -466,6 +466,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       last_name: String(raw.last_name ?? ""),
       email: String(raw.email ?? ""),
       mobile_number: String(raw.mobile_number ?? clientPhone10 ?? ""),
+      notifications_enabled: raw.notifications_enabled !== false,
       address: {
         address_id: (a0.id as string | undefined) ?? undefined,
         street: String(a0.street ?? ""),

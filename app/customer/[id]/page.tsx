@@ -361,7 +361,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   let basicsInitial: CustomerBasicsInitial | null = null;
   if (isLeadership) {
     const [rawRes, ovRes] = await Promise.all([
-      supabase.from("hcp_customers_raw").select("first_name, last_name, email, mobile_number, raw").eq("hcp_customer_id", id).maybeSingle(),
+      supabase.from("hcp_customers_raw").select("first_name, last_name, email, mobile_number, notifications_enabled, raw").eq("hcp_customer_id", id).maybeSingle(),
       supabase.from("customer_overrides").select("display_name_override, preferred_name, do_not_text, do_not_call").eq("hcp_customer_id", id).maybeSingle(),
     ]);
     const raw = (rawRes.data ?? {}) as Record<string, unknown>;
@@ -373,6 +373,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       last_name: String(raw.last_name ?? cust.last_name ?? ""),
       email: String(raw.email ?? cust.email ?? ""),
       mobile_number: String(raw.mobile_number ?? (cust.phone_mobile10 != null ? cust.phone_mobile10 : "") ?? ""),
+      // notifications on unless HCP explicitly says off (null/unknown → on, HCP's default).
+      notifications_enabled: raw.notifications_enabled !== false,
       address: {
         address_id: (a0.id as string | undefined) ?? undefined,
         street: String(a0.street ?? ""),

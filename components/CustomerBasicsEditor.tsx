@@ -14,6 +14,7 @@ export type CustomerBasicsInitial = {
   last_name: string;
   email: string;
   mobile_number: string;             // 10-digit or formatted
+  notifications_enabled: boolean;    // HCP "Send notifications" master switch
   address: { address_id?: string; street: string; street_line_2: string; city: string; state: string; zip: string };
   display_name_override: string;
   preferred_name: string;
@@ -46,6 +47,7 @@ export function CustomerBasicsEditor({ hcpCustomerId, initial }: { hcpCustomerId
     if (f.last_name.trim() !== initial.last_name.trim()) payload.last_name = f.last_name.trim();
     if (f.email.trim() !== initial.email.trim()) payload.email = f.email.trim();
     if (f.mobile_number.trim() !== initial.mobile_number.trim()) payload.mobile_number = f.mobile_number.trim();
+    if (f.notifications_enabled !== initial.notifications_enabled) payload.notifications_enabled = f.notifications_enabled;
     if (f.display_name_override.trim() !== initial.display_name_override.trim()) payload.display_name_override = f.display_name_override.trim();
     if (f.preferred_name.trim() !== initial.preferred_name.trim()) payload.preferred_name = f.preferred_name.trim();
     if (f.do_not_text !== initial.do_not_text) payload.do_not_text = f.do_not_text;
@@ -81,7 +83,7 @@ export function CustomerBasicsEditor({ hcpCustomerId, initial }: { hcpCustomerId
               <button type="button" onClick={() => !pending && setOpen(false)} className="text-xs text-neutral-500 hover:text-neutral-800">close ×</button>
             </div>
             <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-800">
-              Name, phone + email <span className="font-semibold">write through to Housecall Pro</span> — the change is real and survives the next sync. Do-not-text/call + display name stay internal to TPAR.
+              Name, phone, email + the HCP notification switch <span className="font-semibold">write through to Housecall Pro</span> — the change is real and survives the next sync. Do-not-text/call + display name stay internal to TPAR.
             </p>
 
             <div className="grid grid-cols-2 gap-3">
@@ -89,6 +91,23 @@ export function CustomerBasicsEditor({ hcpCustomerId, initial }: { hcpCustomerId
               <div><label className={lbl}>Last name</label><input className={input} value={f.last_name} disabled={pending} onChange={(e) => set("last_name", e.target.value)} /></div>
               <div><label className={lbl}>Mobile phone</label><input className={input} value={f.mobile_number} disabled={pending} inputMode="tel" placeholder="9188451341" onChange={(e) => set("mobile_number", e.target.value)} /></div>
               <div><label className={lbl}>Email</label><input className={input} value={f.email} disabled={pending} inputMode="email" onChange={(e) => set("email", e.target.value)} /></div>
+            </div>
+
+            {/* HCP "Send notifications" master switch — write-through. The
+                notification-free-testing lever (Danny 2026-07-23): uncheck to run
+                test jobs/estimates on this customer without HCP texting them. */}
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5">
+              <label className="flex items-start gap-2.5 text-sm text-neutral-800">
+                <input type="checkbox" checked={f.notifications_enabled} disabled={pending}
+                  onChange={(e) => set("notifications_enabled", e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500" />
+                <span>
+                  <span className="font-semibold">🔔 Send Housecall Pro notifications</span>
+                  <span className="block text-[11px] leading-snug text-neutral-500">
+                    Writes through to HCP&rsquo;s customer &ldquo;Send notifications&rdquo; switch. <span className="font-medium text-amber-800">Uncheck to make this customer notification-free</span> — HCP then sends them NO texts or emails at all (appointment, on-my-way, invoices). Use for test customers.
+                  </span>
+                </span>
+              </label>
             </div>
 
             <div className="mt-4 border-t border-neutral-100 pt-3">

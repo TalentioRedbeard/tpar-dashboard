@@ -20,6 +20,7 @@ export type CustomerBasicsInput = {
   last_name?: string;
   email?: string;
   mobile_number?: string;
+  notifications_enabled?: boolean; // HCP "Send notifications" master switch (test-safety lever)
   address?: { address_id?: string; street?: string; street_line_2?: string; city?: string; state?: string; zip?: string };
   // TPAR-local (sync-safe overrides)
   display_name_override?: string | null;
@@ -54,6 +55,7 @@ export async function editCustomerBasics(
   if (input.last_name !== undefined)     { hcpBody.last_name = input.last_name; hasHcp = true; }
   if (input.email !== undefined)         { hcpBody.email = input.email; hasHcp = true; }
   if (input.mobile_number !== undefined) { hcpBody.mobile_number = input.mobile_number; hasHcp = true; }
+  if (input.notifications_enabled !== undefined) { hcpBody.notifications_enabled = input.notifications_enabled; hasHcp = true; }
   if (input.address && Object.values(input.address).some((v) => v !== undefined)) {
     hcpBody.address = input.address; hasHcp = true;
   }
