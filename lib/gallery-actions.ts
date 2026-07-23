@@ -257,6 +257,14 @@ export type GalleryPhoto = MediaFile & {
   downloadProxyUrl?: string; // full-file download via drive-media
   storageUrl?: string;       // set for Supabase-Storage photos (HCP backfill + in-app uploads);
                              // a direct public URL — not a Drive file, so it bypasses drive-zip.
+  // Photo Vision Gallery (2026-07-23, spec §8): vision-derived safety + label.
+  // `sensitive` = the row is flagged (marketing_safe=false / non-empty pii_flags / quarantined).
+  // Authorized in-app viewers (office, tech-on-job) MAY see it, but it must NEVER flow to a
+  // customer-facing / marketing / export surface — any "leaves the building" read filters to
+  // marketing_safe IS TRUE + quarantined_at IS NULL + office approval. `caption` = vision
+  // sublabel. Absent/NULL = unanalyzed (fail-closed: treat unanalyzed as not-marketing-safe).
+  sensitive?: boolean;
+  caption?: string | null;
 };
 export type GalleryResult =
   | { ok: true; photos: GalleryPhoto[]; trunks: string[]; capped: boolean }
@@ -352,7 +360,10 @@ async function storagePhotosForJobs(jobIds: string[]): Promise<GalleryPhoto[]> {
   const supa = db();
   const { data } = await supa
     .from("photo_labels")
-    .select("id, source, source_id, hcp_job_id, photo_url, primary_subject, labels, created_at")
+    // Photo Vision Gallery (spec §8): pull the safety columns so a labeled check/DL is
+    // carried as `sensitive` from the moment the sweep runs — the read layer must know
+    // about the flag BEFORE the sweep produces flagged rows, not after.
+    .select("id, source, source_id, hcp_job_id, photo_url, primary_subject, labels, created_at, marketing_safe, pii_flags, quarantined_at, caption")
     .in("hcp_job_id", jobIds.slice(0, JOBS_CAP))
     .not("photo_url", "is", null)
     .order("created_at", { ascending: false })
@@ -365,6 +376,10 @@ async function storagePhotosForJobs(jobIds: string[]): Promise<GalleryPhoto[]> {
     const mime = (labels.file_type as string | null) ?? mimeFromName(name);
     const src = (r.source as string | null) ?? "";
     const isImg = mime.startsWith("image/");
+    // Flagged if the vision pass said not-safe, saw any PII, or the object was quarantined.
+    // (All NULL/[] until the sweep runs → sensitive=false, no behavior change today.)
+    const piiFlags = Array.isArray(r.pii_flags) ? (r.pii_flags as unknown[]) : [];
+    const sensitive = r.marketing_safe === false || piiFlags.length > 0 || r.quarantined_at != null;
     out.push({
       id: `pl-${r.id}`,
       name,
@@ -380,6 +395,8 @@ async function storagePhotosForJobs(jobIds: string[]): Promise<GalleryPhoto[]> {
       lightboxProxyUrl: isImg ? storageThumb(url, 1400) : url,
       downloadProxyUrl: url,
       storageUrl: url,
+      sensitive,
+      caption: (r.caption as string | null) ?? null,
     });
   }
   return out;
