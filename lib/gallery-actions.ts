@@ -368,8 +368,26 @@ async function storagePhotosForJobs(jobIds: string[]): Promise<GalleryPhoto[]> {
     .not("photo_url", "is", null)
     .order("created_at", { ascending: false })
     .limit(2000);
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+
+  // Quarantined rows (spec §8 step 2c): their object was moved to the PRIVATE
+  // job-photos-quarantine bucket and the public URL is now dead. Mint short-lived signed
+  // URLs so authorized office viewers can still see the document — without re-exposing it
+  // publicly. This read path is already behind getGalleryPhotos' scope guard.
+  const Q_MARK = "/object/public/job-photos-quarantine/";
+  const qPaths = [...new Set(rows
+    .filter((r) => r.quarantined_at != null && typeof r.photo_url === "string" && (r.photo_url as string).includes(Q_MARK))
+    .map((r) => decodeURIComponent((r.photo_url as string).split(Q_MARK)[1].split("?")[0])))];
+  const signedByPath = new Map<string, string>();
+  if (qPaths.length > 0) {
+    const { data: signed } = await supa.storage.from("job-photos-quarantine").createSignedUrls(qPaths, 600);
+    for (const s of (signed ?? []) as Array<{ path?: string; signedUrl?: string }>) {
+      if (s.path && s.signedUrl) signedByPath.set(s.path, s.signedUrl);
+    }
+  }
+
   const out: GalleryPhoto[] = [];
-  for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+  for (const r of rows) {
     const url = r.photo_url as string;
     const labels = (r.labels as Record<string, unknown> | null) ?? {};
     const name = (labels.file_name as string | null) ?? url.split("/").pop()?.split("?")[0] ?? "photo";
@@ -377,24 +395,26 @@ async function storagePhotosForJobs(jobIds: string[]): Promise<GalleryPhoto[]> {
     const src = (r.source as string | null) ?? "";
     const isImg = mime.startsWith("image/");
     // Flagged if the vision pass said not-safe, saw any PII, or the object was quarantined.
-    // (All NULL/[] until the sweep runs → sensitive=false, no behavior change today.)
     const piiFlags = Array.isArray(r.pii_flags) ? (r.pii_flags as unknown[]) : [];
     const sensitive = r.marketing_safe === false || piiFlags.length > 0 || r.quarantined_at != null;
+    // For a quarantined row, serve the signed private URL everywhere (no public transform).
+    const qpath = (r.quarantined_at != null && url.includes(Q_MARK)) ? decodeURIComponent(url.split(Q_MARK)[1].split("?")[0]) : null;
+    const signed = qpath ? signedByPath.get(qpath) ?? null : null;
     out.push({
       id: `pl-${r.id}`,
       name,
       mimeType: mime,
-      thumbnailLink: isImg ? storageThumb(url, 400) : url,
-      webViewLink: url,
+      thumbnailLink: signed ?? (isImg ? storageThumb(url, 400) : url),
+      webViewLink: signed ?? url,
       createdTime: (r.created_at as string | null) ?? undefined,
       trunk: "",
       folderLabel: src === "hcp" ? "Housecall Pro" : src === "slack_job_media" ? "Slack" : src === "dashboard" ? "App upload" : "Photo",
       // Lightweight grid (~400px) + larger lightbox (~1400px) via image-transform;
       // full-res only on download. Videos pass through untransformed. (2026-06-17)
-      thumbProxyUrl: isImg ? storageThumb(url, 400) : url,
-      lightboxProxyUrl: isImg ? storageThumb(url, 1400) : url,
-      downloadProxyUrl: url,
-      storageUrl: url,
+      thumbProxyUrl: signed ?? (isImg ? storageThumb(url, 400) : url),
+      lightboxProxyUrl: signed ?? (isImg ? storageThumb(url, 1400) : url),
+      downloadProxyUrl: signed ?? url,
+      storageUrl: signed ?? url,
       sensitive,
       caption: (r.caption as string | null) ?? null,
     });
